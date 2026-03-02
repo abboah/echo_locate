@@ -1,0 +1,55 @@
+name: echo_locate
+description: "EchoLocate - Acoustic sonar mobile app for distance measurement and floor plan mapping."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # Audio
+  flutter_soloud: ^2.0.0
+
+  # Signal Processing
+  fftea: ^1.2.0
+
+  # Sensors
+  sensors_plus: ^5.0.1
+
+  # Database
+  drift: ^2.32.0
+  sqlite3_flutter_libs: ^0.5.32
+  path_provider: ^2.1.4
+
+  # PDF Export
+  pdf: ^3.11.1
+  printing: ^5.13.1
+
+  # State Management
+  flutter_riverpod: ^2.5.1
+
+  # Navigation
+  go_router: ^14.2.7
+
+  # Permissions
+  permission_handler: ^11.3.1
+
+  # Utils
+  logger: ^2.4.0
+  equatable: ^2.0.5
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  drift_dev: ^2.32.0
+  build_runner: ^2.4.12
+  mockito: ^5.4.4
+
+flutter:
+  uses-material-design: true
