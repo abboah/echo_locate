@@ -1,0 +1,49 @@
+-- Database schema for EchoLocate measurements
+-- This file defines the tables for storing measurement data
+
+-- Measurement table for storing individual distance measurements
+CREATE TABLE measurements (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  x REAL NOT NULL, -- X coordinate in meters
+  y REAL NOT NULL, -- Y coordinate in meters
+  distance REAL NOT NULL, -- Distance in meters
+  angle REAL NOT NULL, -- Angle in degrees
+  signal_strength REAL NOT NULL, -- Signal strength (0.0 to 1.0)
+  timestamp INTEGER NOT NULL -- Timestamp as milliseconds since epoch
+) STRICT;
+
+-- Index on timestamp for efficient date range queries
+CREATE INDEX idx_measurements_timestamp ON measurements(timestamp);
+
+-- Floor plans table for storing floor plan metadata
+CREATE TABLE floor_plans (
+  id TEXT PRIMARY KEY, -- UUID-style identifier
+  name TEXT NOT NULL,
+  description TEXT, -- Optional description
+  created_at INTEGER NOT NULL, -- Creation timestamp
+  updated_at INTEGER NOT NULL, -- Last update timestamp
+  total_points INTEGER NOT NULL DEFAULT 0,
+  area_estimate REAL NOT NULL DEFAULT 0.0,
+  measurement_date INTEGER NOT NULL,
+  scan_duration INTEGER, -- Duration in milliseconds
+  device_info TEXT -- Device/model information
+) STRICT;
+
+-- Floor plan points table for storing individual points in floor plans
+CREATE TABLE floor_plan_points (
+  id TEXT PRIMARY KEY, -- UUID-style identifier
+  floor_plan_id TEXT NOT NULL, -- Reference to floor_plans.id
+  x REAL NOT NULL, -- X coordinate in meters
+  y REAL NOT NULL, -- Y coordinate in meters
+  distance REAL, -- Distance in meters (NULL for reference points)
+  angle REAL, -- Angle in degrees (NULL for reference points)
+  signal_strength REAL, -- Signal strength (NULL for reference points)
+  measured_at INTEGER NOT NULL, -- Measurement timestamp
+  point_type TEXT NOT NULL DEFAULT 'measurement', -- Point type enum
+  FOREIGN KEY (floor_plan_id) REFERENCES floor_plans(id) ON DELETE CASCADE
+) STRICT;
+
+-- Indexes for efficient floor plan queries
+CREATE INDEX idx_floor_plans_created_at ON floor_plans(created_at);
+CREATE INDEX idx_floor_plan_points_floor_plan_id ON floor_plan_points(floor_plan_id);
+CREATE INDEX idx_floor_plan_points_type ON floor_plan_points(point_type);

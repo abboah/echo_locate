@@ -1,43 +1,275 @@
 import 'dart:typed_data';
+import 'package:flutter/services.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
+import 'package:echo_locate/core/utils/logger.dart';
+import 'package:echo_locate/features/floorplan/domain/floorplan_model.dart';
+import 'package:echo_locate/shared/models/measurement_point.dart';
 
-/// Service for exporting measurement data to PDF
+/// Service for exporting measurement data and floor plans to PDF
 class PDFExportService {
-  // TODO: Implement PDF export using pdf and printing packages
-
-  /// Exports measurement data to a PDF document
+  /// Export measurement data to a PDF document
   Future<Uint8List> exportMeasurementsToPDF({
     required String title,
-    required List<Map<String, dynamic>> measurements,
+    required List<MeasurementPoint> measurements,
   }) async {
-    // TODO: Implement PDF generation using pdf package
-    // final pdf = Document();
-    // pdf.addPage(...);
-    // return pdf.save();
-    return Uint8List(0);
+    try {
+      AppLogger.info('Generating PDF for ${measurements.length} measurements');
+
+      final pdf = pw.Document();
+
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          build: (context) => [
+            _buildHeader(title),
+            pw.SizedBox(height: 20),
+            _buildMeasurementsTable(measurements),
+            pw.SizedBox(height: 20),
+            _buildMeasurementsSummary(measurements),
+          ],
+        ),
+      );
+
+      final pdfData = await pdf.save();
+      AppLogger.info('PDF generated successfully (${pdfData.length} bytes)');
+      return pdfData;
+    } catch (e) {
+      AppLogger.error('Failed to generate measurements PDF: $e');
+      rethrow;
+    }
   }
 
-  /// Exports floor plan to a PDF document
-  Future<Uint8List> exportFloorPlanToPDF({
-    required String title,
-    required List<Map<String, dynamic>> points,
-  }) async {
-    // TODO: Implement floor plan PDF generation
-    return Uint8List(0);
+  /// Export floor plan to a PDF document
+  Future<Uint8List> exportFloorPlanToPDF({required FloorPlan floorPlan}) async {
+    try {
+      AppLogger.info('Generating PDF for floor plan: ${floorPlan.name}');
+
+      final pdf = pw.Document();
+
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          build: (context) => [
+            _buildHeader('Floor Plan: ${floorPlan.name}'),
+            pw.SizedBox(height: 20),
+            _buildFloorPlanInfo(floorPlan),
+            pw.SizedBox(height: 20),
+            _buildFloorPlanVisualization(floorPlan),
+            pw.SizedBox(height: 20),
+            _buildFloorPlanPointsTable(floorPlan.points),
+          ],
+        ),
+      );
+
+      final pdfData = await pdf.save();
+      AppLogger.info(
+        'Floor plan PDF generated successfully (${pdfData.length} bytes)',
+      );
+      return pdfData;
+    } catch (e) {
+      AppLogger.error('Failed to generate floor plan PDF: $e');
+      rethrow;
+    }
   }
 
-  /// Prints the PDF document
-  Future<void> printPDF(Uint8List pdfData) async {
-    // TODO: Implement printing using printing package
-    // await Printing.layoutPdf(onLayout: (format) async => pdfData);
+  /// Print the PDF document
+  Future<void> printPDF(Uint8List pdfData, {String? jobName}) async {
+    try {
+      await Printing.layoutPdf(
+        onLayout: (PdfPageFormat format) async => pdfData,
+        name: jobName ?? 'EchoLocate Export',
+      );
+      AppLogger.info('PDF sent to printer');
+    } catch (e) {
+      AppLogger.error('Failed to print PDF: $e');
+      rethrow;
+    }
   }
 
-  /// Saves the PDF to a file
+  /// Save the PDF to a file
   Future<String> savePDFToFile(Uint8List pdfData, String filename) async {
-    // TODO: Implement file saving using path_provider
-    // final directory = await getApplicationDocumentsDirectory();
-    // final file = File('${directory.path}/$filename');
-    // await file.writeAsBytes(pdfData);
-    // return file.path;
-    return '';
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final filePath = '${directory.path}/$filename';
+      final file = File(filePath);
+      await file.writeAsBytes(pdfData);
+      AppLogger.info('PDF saved to: $filePath');
+      return filePath;
+    } catch (e) {
+      AppLogger.error('Failed to save PDF: $e');
+      rethrow;
+    }
+  }
+
+  /// Share the PDF (opens system share dialog)
+  Future<void> sharePDF(Uint8List pdfData, String filename) async {
+    try {
+      await Printing.sharePdf(bytes: pdfData, filename: filename);
+      AppLogger.info('PDF shared: $filename');
+    } catch (e) {
+      AppLogger.error('Failed to share PDF: $e');
+      rethrow;
+    }
+  }
+
+  pw.Widget _buildHeader(String title) {
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text(
+          title,
+          style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold),
+        ),
+        pw.Text(
+          'Generated by EchoLocate on ${DateTime.now().toString()}',
+          style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey),
+        ),
+        pw.Divider(),
+      ],
+    );
+  }
+
+  pw.Widget _buildMeasurementsTable(List<MeasurementPoint> measurements) {
+    return pw.TableHelper.fromTextArray(
+      headers: [
+        'Time',
+        'Distance (m)',
+        'Angle (°)',
+        'X (m)',
+        'Y (m)',
+        'Signal',
+      ],
+      data: measurements
+          .map(
+            (m) => [
+              m.timestamp.toString().split('.')[0], // Remove milliseconds
+              m.distance.toStringAsFixed(2),
+              m.angle.toStringAsFixed(1),
+              m.x.toStringAsFixed(2),
+              m.y.toStringAsFixed(2),
+              '${(m.signalStrength * 100).toStringAsFixed(0)}%',
+            ],
+          )
+          .toList(),
+      headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+      cellAlignment: pw.Alignment.centerLeft,
+      headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
+      cellHeight: 25,
+    );
+  }
+
+  pw.Widget _buildMeasurementsSummary(List<MeasurementPoint> measurements) {
+    if (measurements.isEmpty) return pw.Container();
+
+    final distances = measurements.map((m) => m.distance);
+    final avgDistance = distances.reduce((a, b) => a + b) / distances.length;
+    final minDistance = distances.reduce((a, b) => a < b ? a : b);
+    final maxDistance = distances.reduce((a, b) => a > b ? a : b);
+
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text(
+          'Summary',
+          style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+        ),
+        pw.SizedBox(height: 10),
+        pw.Text('Total Measurements: ${measurements.length}'),
+        pw.Text('Average Distance: ${avgDistance.toStringAsFixed(2)} m'),
+        pw.Text('Minimum Distance: ${minDistance.toStringAsFixed(2)} m'),
+        pw.Text('Maximum Distance: ${maxDistance.toStringAsFixed(2)} m'),
+        pw.Text(
+          'Date Range: ${measurements.first.timestamp.toString().split(' ')[0]} to ${measurements.last.timestamp.toString().split(' ')[0]}',
+        ),
+      ],
+    );
+  }
+
+  pw.Widget _buildFloorPlanInfo(FloorPlan floorPlan) {
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text(
+          'Floor Plan Details',
+          style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+        ),
+        pw.SizedBox(height: 10),
+        pw.Text('Name: ${floorPlan.name}'),
+        if (floorPlan.description != null)
+          pw.Text('Description: ${floorPlan.description}'),
+        pw.Text('Created: ${floorPlan.createdAt.toString().split('.')[0]}'),
+        pw.Text('Points: ${floorPlan.points.length}'),
+        pw.Text(
+          'Estimated Area: ${floorPlan.metadata.areaEstimate.toStringAsFixed(2)} m²',
+        ),
+        pw.Text(
+          'Scan Duration: ${floorPlan.metadata.scanDuration?.inMinutes ?? 0} minutes',
+        ),
+      ],
+    );
+  }
+
+  pw.Widget _buildFloorPlanVisualization(FloorPlan floorPlan) {
+    // Simple text-based visualization for now
+    // In a real implementation, this would generate an actual floor plan diagram
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text(
+          'Floor Plan Visualization',
+          style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+        ),
+        pw.SizedBox(height: 10),
+        pw.Text(
+          'Measurement Points:',
+          style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+        ),
+        ...floorPlan.points
+            .where((p) => p.type == PointType.measurement)
+            .map(
+              (point) => pw.Text(
+                '  • (${point.x.toStringAsFixed(2)}, ${point.y.toStringAsFixed(2)}) - ${point.distance?.toStringAsFixed(2) ?? 'N/A'}m',
+              ),
+            ),
+        pw.SizedBox(height: 10),
+        pw.Text(
+          'Reference Points:',
+          style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+        ),
+        ...floorPlan.points
+            .where((p) => p.type != PointType.measurement)
+            .map(
+              (point) => pw.Text(
+                '  • ${point.type.name}: (${point.x.toStringAsFixed(2)}, ${point.y.toStringAsFixed(2)})',
+              ),
+            ),
+      ],
+    );
+  }
+
+  pw.Widget _buildFloorPlanPointsTable(List<FloorPlanPoint> points) {
+    return pw.TableHelper.fromTextArray(
+      headers: ['Type', 'X (m)', 'Y (m)', 'Distance (m)', 'Angle (°)', 'Time'],
+      data: points
+          .map(
+            (p) => [
+              p.type.name,
+              p.x.toStringAsFixed(2),
+              p.y.toStringAsFixed(2),
+              p.distance?.toStringAsFixed(2) ?? 'N/A',
+              p.angle?.toStringAsFixed(1) ?? 'N/A',
+              p.measuredAt.toString().split('.')[0],
+            ],
+          )
+          .toList(),
+      headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+      cellAlignment: pw.Alignment.centerLeft,
+      headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
+      cellHeight: 20,
+    );
   }
 }

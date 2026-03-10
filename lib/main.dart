@@ -1,26 +1,37 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path_provider/path_provider.dart';
 
 import 'app.dart';
+import 'core/database/database.dart';
+import 'core/database/database_providers.dart';
 import 'core/utils/logger.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Initialize Drift database
-  await initializeDatabase();
+  final database = await initializeDatabase();
 
   // Initialize logger
   AppLogger.info('EchoLocate application starting...');
 
-  runApp(const ProviderScope(child: App()));
+  runApp(
+    ProviderScope(
+      overrides: [
+        // Provide the database instance to the app
+        databaseProvider.overrideWithValue(database),
+      ],
+      child: const App(),
+    ),
+  );
 }
 
 /// Initialize Drift database for local storage
-Future<void> initializeDatabase() async {
-  final dir = await getApplicationDocumentsDirectory();
-  // Database will be initialized via Drift's generated code
-  // AppDatabase will be created after running build_runner
-  AppLogger.info('Drift database path: ${dir.path}');
+Future<AppDatabase> initializeDatabase() async {
+  // For now, use a simple synchronous database path
+  // In production, this should be in the app documents directory
+  final database = AppDatabase();
+  AppLogger.info('Drift database initialized');
+
+  return database;
 }

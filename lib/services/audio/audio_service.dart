@@ -1,8 +1,11 @@
+import 'dart:typed_data';
 import 'package:echo_locate/core/constants/app_constants.dart';
 import 'package:echo_locate/core/utils/logger.dart';
 import 'package:echo_locate/services/audio/chirp_generator.dart';
 import 'package:echo_locate/services/dsp/cross_correlation_service.dart';
 import 'package:echo_locate/services/dsp/tof_calculator.dart';
+import 'package:flutter_soloud/flutter_soloud.dart';
+import 'package:record/record.dart';
 
 /// Service for playing and recording audio using flutter_soloud for playback
 /// and the record package for microphone input
@@ -11,9 +14,17 @@ class AudioService {
   final CrossCorrelationService _crossCorrelation = CrossCorrelationService();
   final ToFCalculator _tofCalculator = ToFCalculator();
 
+  late final SoLoud _soLoud;
+  late final AudioRecorder _recorder;
+
   bool _isInitialized = false;
   bool _isRecording = false;
   List<double> _recordedSamples = [];
+
+  AudioService() {
+    _soLoud = SoLoud.instance;
+    _recorder = AudioRecorder();
+  }
 
   /// Initialize the audio service components
   /// Sets up flutter_soloud for audio playback
@@ -21,15 +32,15 @@ class AudioService {
     try {
       AppLogger.info('Initializing AudioService');
 
-      // TODO: Initialize flutter_soloud audio engine
-      // Example when flutter_soloud APIs are available:
-      // await SoLoud.instance.initialize();
+      // Initialize SoLoud
+      await _soLoud.init();
 
       _isInitialized = true;
       AppLogger.info('AudioService initialized successfully');
     } catch (e) {
       AppLogger.error('Failed to initialize AudioService: $e');
       _isInitialized = false;
+      rethrow;
     }
   }
 
@@ -37,8 +48,9 @@ class AudioService {
   ///
   /// Steps:
   /// 1. Generate chirp using ChirpGenerator with AppConstants values
-  /// 2. Play it through flutter_soloud
-  /// 3. Duration matches CHIRP_DURATION_MS
+  /// 2. Convert to WAV format
+  /// 3. Load and play through flutter_soloud
+  /// 4. Duration matches CHIRP_DURATION_MS
   Future<void> emitChirp() async {
     try {
       if (!_isInitialized) {
@@ -49,7 +61,6 @@ class AudioService {
       AppLogger.info('Generating chirp signal');
 
       // Generate chirp using ChirpGenerator with AppConstants values
-      // Create a linear FMCW sweep from startFreq to endFreq
       final chirp = _chirpGenerator.generateChirp(
         sampleRate: AppConstants.sampleRate,
         startFreq: AppConstants.chirpFrequencyStart,
@@ -62,16 +73,14 @@ class AudioService {
         'duration: ${AppConstants.chirpDurationMs}ms',
       );
 
-      // Play it through flutter_soloud
-      // Duration should match CHIRP_DURATION_MS
-      // TODO: Implement playback when flutter_soloud AudioSource creation is available
-      // Example when APIs are available:
-      // final audioSource = AudioSource.generate(
-      //   duration: AppConstants.chirpDurationMs / 1000.0,
-      //   sampleRate: AppConstants.sampleRate,
-      //   samples: chirp,
-      // );
-      // await SoLoud.instance.play(audioSource);
+      // Convert Float32List to WAV Uint8List
+      final wavData = _float32ListToWav(chirp, AppConstants.sampleRate);
+
+      // Load the WAV data into SoLoud
+      final audioSource = await _soLoud.loadMem('chirp.wav', wavData);
+
+      // Play the chirp
+      await _soLoud.play(audioSource);
 
       AppLogger.info('Chirp playback initiated');
     } catch (e) {
@@ -86,45 +95,47 @@ class AudioService {
   ///
   /// Returns:
   /// - List<double> containing normalized samples between -1.0 and 1.0
-  ///
-  /// TODO: The record package (pub.dev/packages/record) should be added as a
-  /// supplement for microphone capture, as flutter_soloud does not provide
-  /// direct microphone input recording capabilities. Once the record package
-  /// is integrated, this method should:
-  /// 1. Initialize the recorder from the record package
-  /// 2. Start recording for durationMs milliseconds
-  /// 3. Stop recording and retrieve the audio data
-  /// 4. Normalize samples to -1.0 to 1.0 range
-  /// 5. Return as List<double>
   Future<List<double>> recordEcho(int durationMs) async {
     try {
       AppLogger.info('Recording echo for ${durationMs}ms');
 
-      // TODO: Implement recording using the record package
-      // Example implementation once record package is added:
-      // final recorder = AudioRecorder();
-      // await recorder.start(
-      //   path: recordPath,
-      //   encoder: AudioEncoder.pcm16bit,
-      //   sampleRate: AppConstants.sampleRate,
-      // );
-      // await Future.delayed(Duration(milliseconds: durationMs));
-      // await recorder.stop();
-      // final audioBytes = await File(recordPath).readAsBytes();
-      // return _normalizeAudio(audioBytes);
+      // Check permissions
+      final hasPermission = await _recorder.hasPermission();
+      if (!hasPermission) {
+        throw Exception('Microphone permission not granted');
+      }
 
       _isRecording = true;
       _recordedSamples = [];
 
-      // For now, simulate recording with silence
-      // This allows the app to build and run without the record package
-      final expectedSamples = (AppConstants.sampleRate * durationMs / 1000)
-          .round();
-      _recordedSamples = List<double>.filled(expectedSamples, 0.0);
+      // Start recording to stream
+      final stream = await _recorder.startStream(
+        const RecordConfig(
+          encoder: AudioEncoder.pcm16bits,
+          sampleRate: AppConstants.sampleRate,
+          numChannels: 1,
+        ),
+      );
 
+      final samples = <int>[];
+      final subscription = stream.listen((data) {
+        // Convert Uint8List to Int16List
+        final int16Data = Int16List.view(data.buffer);
+        samples.addAll(int16Data);
+      });
+
+      // Wait for the recording duration
       await Future.delayed(Duration(milliseconds: durationMs));
 
+      // Stop recording
+      await _recorder.stop();
+      await subscription.cancel();
+
       _isRecording = false;
+
+      // Convert to normalized double samples
+      _recordedSamples = samples.map((s) => s / 32768.0).toList();
+
       AppLogger.info('Recording complete: ${_recordedSamples.length} samples');
 
       return _recordedSamples;
@@ -209,8 +220,8 @@ class AudioService {
   /// Dispose of audio resources
   Future<void> dispose() async {
     try {
-      // TODO: Dispose flutter_soloud resources when available
-      // Example: await SoLoud.instance.deinit();
+      _soLoud.deinit();
+      await _recorder.dispose();
 
       _isInitialized = false;
       _isRecording = false;
@@ -224,4 +235,54 @@ class AudioService {
   bool get isInitialized => _isInitialized;
   bool get isRecording => _isRecording;
   List<double> get recordedSamples => _recordedSamples;
+
+  /// Convert Float32List audio samples to WAV format Uint8List
+  Uint8List _float32ListToWav(Float32List samples, int sampleRate) {
+    final numSamples = samples.length;
+    const numChannels = 1; // Mono
+    const bitsPerSample = 16;
+    final byteRate = sampleRate * numChannels * bitsPerSample ~/ 8;
+    const blockAlign = numChannels * bitsPerSample ~/ 8;
+    final dataSize = numSamples * bitsPerSample ~/ 8;
+    final fileSize = 36 + dataSize;
+
+    final buffer = BytesBuilder();
+
+    // WAV header
+    buffer.add('RIFF'.codeUnits); // ChunkID
+    buffer.add(_int32ToBytes(fileSize)); // ChunkSize
+    buffer.add('WAVE'.codeUnits); // Format
+
+    // fmt subchunk
+    buffer.add('fmt '.codeUnits); // Subchunk1ID
+    buffer.add(_int32ToBytes(16)); // Subchunk1Size (16 for PCM)
+    buffer.add(_int16ToBytes(1)); // AudioFormat (1 for PCM)
+    buffer.add(_int16ToBytes(numChannels)); // NumChannels
+    buffer.add(_int32ToBytes(sampleRate)); // SampleRate
+    buffer.add(_int32ToBytes(byteRate)); // ByteRate
+    buffer.add(_int16ToBytes(blockAlign)); // BlockAlign
+    buffer.add(_int16ToBytes(bitsPerSample)); // BitsPerSample
+
+    // data subchunk
+    buffer.add('data'.codeUnits); // Subchunk2ID
+    buffer.add(_int32ToBytes(dataSize)); // Subchunk2Size
+
+    // Convert float samples to 16-bit PCM
+    for (final sample in samples) {
+      // Clamp to [-1, 1] and convert to 16-bit
+      final clamped = sample.clamp(-1.0, 1.0);
+      final pcm = (clamped * 32767).round();
+      buffer.add(_int16ToBytes(pcm));
+    }
+
+    return buffer.toBytes();
+  }
+
+  Uint8List _int16ToBytes(int value) {
+    return Uint8List(2)..buffer.asByteData().setInt16(0, value, Endian.little);
+  }
+
+  Uint8List _int32ToBytes(int value) {
+    return Uint8List(4)..buffer.asByteData().setInt32(0, value, Endian.little);
+  }
 }

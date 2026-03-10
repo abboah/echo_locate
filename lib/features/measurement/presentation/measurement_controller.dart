@@ -1,7 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:echo_locate/core/utils/logger.dart';
+import 'package:echo_locate/core/database/database_providers.dart';
 import 'package:echo_locate/services/audio/audio_service.dart';
 import 'package:echo_locate/services/sensor/sensor_service.dart';
+import 'package:echo_locate/features/measurement/data/measurement_repository.dart';
 import 'package:echo_locate/shared/models/measurement_point.dart';
 
 /// State class for measurement
@@ -51,9 +53,29 @@ class MeasurementState {
 class MeasurementController extends StateNotifier<MeasurementState> {
   final AudioService _audioService;
   final SensorService _sensorService;
+  final MeasurementRepository _repository;
 
-  MeasurementController(this._audioService, this._sensorService)
-    : super(const MeasurementState());
+  MeasurementController(
+    this._audioService,
+    this._sensorService,
+    this._repository,
+  ) : super(const MeasurementState()) {
+    // Load existing measurements on initialization
+    _loadMeasurements();
+  }
+
+  /// Load measurements from database on initialization
+  Future<void> _loadMeasurements() async {
+    try {
+      final measurements = await _repository.getAllMeasurements();
+      state = state.copyWith(history: measurements);
+      AppLogger.info(
+        'Loaded ${measurements.length} measurements from database',
+      );
+    } catch (e) {
+      AppLogger.error('Failed to load measurements: $e');
+    }
+  }
 
   /// Perform a single distance measurement
   ///
@@ -112,6 +134,9 @@ class MeasurementController extends StateNotifier<MeasurementState> {
         errorMessage: null,
       );
 
+      // Save measurement to database
+      await _repository.saveMeasurement(measurementPoint);
+
       AppLogger.info(
         'Measurement saved to history (total: ${updatedHistory.length})',
       );
@@ -127,9 +152,14 @@ class MeasurementController extends StateNotifier<MeasurementState> {
   }
 
   /// Clear measurement history
-  void clearHistory() {
-    state = state.copyWith(history: []);
-    AppLogger.info('Measurement history cleared');
+  Future<void> clearHistory() async {
+    try {
+      await _repository.deleteAllMeasurements();
+      state = state.copyWith(history: []);
+      AppLogger.info('Measurement history cleared');
+    } catch (e) {
+      AppLogger.error('Failed to clear measurement history: $e');
+    }
   }
 
   /// Reset current measurement
@@ -153,11 +183,18 @@ final sensorServiceProvider = Provider<SensorService>((ref) {
   return SensorService();
 });
 
+/// Provider for MeasurementRepository
+final measurementRepositoryProvider = Provider<MeasurementRepository>((ref) {
+  final database = ref.watch(databaseProvider);
+  return MeasurementRepository(database);
+});
+
 /// Provider for MeasurementController with Riverpod
-/// Injects AudioService and SensorService via constructor
+/// Injects AudioService, SensorService, and MeasurementRepository via constructor
 final measurementControllerProvider =
     StateNotifierProvider<MeasurementController, MeasurementState>((ref) {
       final audioService = ref.watch(audioServiceProvider);
       final sensorService = ref.watch(sensorServiceProvider);
-      return MeasurementController(audioService, sensorService);
+      final repository = ref.watch(measurementRepositoryProvider);
+      return MeasurementController(audioService, sensorService, repository);
     });
