@@ -1,55 +1,80 @@
 name: echo_locate
-description: "EchoLocate - Acoustic sonar mobile app for distance measurement and floor plan mapping."
+description: "EchoLocate v2 — crowdsourced indoor mapping + navigation accessibility aid."
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 2.0.0+1
 
 environment:
   sdk: ^3.11.0
 
+# NOTE: Phase 1 dependency set. Phase 2/3 deps (tflite, flutter_gl, pdf,
+# ARCore channel) are commented at the bottom and added when their phase starts.
+# Versions may need a bump on first `flutter pub get`.
 dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
 
-  # Audio
-  flutter_soloud: ^2.0.0
+  # --- Presentation: Bloc ---
+  flutter_bloc: ^8.1.6
+  bloc: ^8.1.4
 
-  # Signal Processing
-  fftea: ^1.2.0
+  # --- DI (service locator) ---
+  get_it: ^7.7.0
 
-  # Sensors
-  sensors_plus: ^5.0.1
-
-  # Database
-  drift: ^2.32.0
-  sqlite3_flutter_libs: ^0.5.32
-  path_provider: ^2.1.4
-
-  # PDF Export
-  pdf: ^3.11.1
-  printing: ^5.13.1
-
-  # State Management
-  flutter_riverpod: ^2.5.1
-
-  # Navigation
+  # --- Routing ---
   go_router: ^14.2.7
 
-  # Permissions
-  permission_handler: ^11.3.1
+  # --- Local persistence (Achieve repo cache + offline) ---
+  hive_ce: ^2.6.0
+  hive_ce_flutter: ^2.1.0
 
-  # Utils
-  logger: ^2.4.0
+  # --- Cloud / crowdsource ---
+  supabase_flutter: ^2.6.0
+
+  # --- Models ---
+  freezed_annotation: ^2.4.4
+  json_annotation: ^4.9.0
   equatable: ^2.0.5
+
+  # --- Design system ---
+  google_fonts: ^6.2.1
+
+  # --- Primary sense: camera + on-device ML Kit ---
+  camera: ^0.11.0
+  google_mlkit_object_detection: ^0.14.0
+  google_mlkit_text_recognition: ^0.13.0
+
+  # --- Acoustics (DSP ported from v1) ---
+  fftea: ^1.5.0
+  record: ^5.1.2
+  flutter_soloud: ^2.1.0
+
+  # --- Sensors / permissions / voice / utils ---
+  sensors_plus: ^6.0.1
+  permission_handler: ^11.3.1
+  flutter_tts: ^4.0.2
+  speech_to_text: ^7.0.0
+  logger: ^2.4.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
-  drift_dev: ^2.32.0
   build_runner: ^2.4.12
-  mockito: ^5.4.4
+  freezed: ^2.5.7
+  json_serializable: ^6.8.0
+  hive_ce_generator: ^1.7.0
+  bloc_test: ^9.1.7
+  mocktail: ^1.0.4
 
 flutter:
   uses-material-design: true
+
+# --- Deferred to later phases (uncomment when the phase starts) ---
+# Phase 2 (mapping/export):
+#   pdf: ^3.11.1
+#   printing: ^5.13.1
+# Phase 3 (intelligence / 3D):
+#   tflite_flutter: ^0.11.0
+#   flutter_gl: ^0.0.x

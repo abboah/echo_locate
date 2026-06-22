@@ -1,65 +1,134 @@
 import 'package:flutter/material.dart';
 
-/// Application theme configuration for EchoLocate
+import 'app_colors.dart';
+import 'app_dimens.dart';
+import 'app_typography.dart';
+
+/// Light + dark [ThemeData] built from EchoLocate's design tokens.
+///
+/// One warm accent (Coral), white/ink surfaces, no gradients. Both themes are
+/// driven by [AppColors] so the [ThemeCubit] can swap between them at runtime.
 class AppTheme {
   AppTheme._();
 
-  // Color Palette
-  static const Color primaryBackground = Color(0xFF0A0E1A);
-  static const Color primaryAccent = Color(0xFF00E5CC);
-  static const Color secondaryAccent = Color(0xFFE8EAF0);
-  static const Color surfaceColor = Color(0xFF151B2E);
-  static const Color errorColor = Color(0xFFFF5252);
+  static ThemeData get light => _build(
+        brightness: Brightness.light,
+        background: AppColors.white,
+        surface: AppColors.surface,
+        onSurface: AppColors.ink,
+        muted: AppColors.inkMuted,
+        hairline: AppColors.hairline,
+      );
 
-  static ThemeData get darkTheme {
+  static ThemeData get dark => _build(
+        brightness: Brightness.dark,
+        background: AppColors.darkBackground,
+        surface: AppColors.darkSurface,
+        onSurface: AppColors.darkOnSurface,
+        muted: AppColors.darkMuted,
+        hairline: AppColors.darkHairline,
+      );
+
+  static ThemeData _build({
+    required Brightness brightness,
+    required Color background,
+    required Color surface,
+    required Color onSurface,
+    required Color muted,
+    required Color hairline,
+  }) {
+    final colorScheme = ColorScheme(
+      brightness: brightness,
+      primary: AppColors.coral,
+      onPrimary: Colors.white,
+      secondary: AppColors.coral,
+      onSecondary: Colors.white,
+      surface: surface,
+      onSurface: onSurface,
+      error: AppColors.error,
+      onError: Colors.white,
+    );
+
     return ThemeData(
       useMaterial3: true,
-      brightness: Brightness.dark,
-      scaffoldBackgroundColor: primaryBackground,
-      colorScheme: const ColorScheme.dark(
-        primary: primaryAccent,
-        secondary: secondaryAccent,
-        surface: surfaceColor,
-        error: errorColor,
-        onPrimary: primaryBackground,
-        onSecondary: primaryBackground,
-        onSurface: secondaryAccent,
-        onError: secondaryAccent,
-      ),
-      appBarTheme: const AppBarTheme(
-        backgroundColor: primaryBackground,
-        foregroundColor: secondaryAccent,
+      brightness: brightness,
+      colorScheme: colorScheme,
+      scaffoldBackgroundColor: background,
+      textTheme: AppTypography.textTheme(onSurface, muted),
+      dividerColor: hairline,
+      appBarTheme: AppBarTheme(
+        backgroundColor: background,
+        foregroundColor: onSurface,
         elevation: 0,
-        centerTitle: true,
+        scrolledUnderElevation: 0,
+        centerTitle: false,
+      ),
+      cardTheme: CardThemeData(
+        color: surface,
+        elevation: AppDimens.cardElevation,
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppDimens.radiusLg),
+        ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: primaryAccent,
-          foregroundColor: primaryBackground,
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          backgroundColor: AppColors.coral,
+          foregroundColor: Colors.white,
+          disabledBackgroundColor: AppColors.coral.withValues(alpha: 0.4),
+          elevation: 0,
+          minimumSize: const Size.fromHeight(54),
+          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(AppDimens.radiusMd),
           ),
         ),
       ),
-      cardTheme: CardThemeData(
-        color: surfaceColor,
-        elevation: 4,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: onSurface,
+          minimumSize: const Size.fromHeight(54),
+          side: BorderSide(color: hairline),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppDimens.radiusMd),
+          ),
+        ),
       ),
-      textTheme: const TextTheme(
-        headlineLarge: TextStyle(
-          color: secondaryAccent,
-          fontSize: 32,
-          fontWeight: FontWeight.bold,
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: surface,
+        hintStyle: TextStyle(color: muted),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: AppDimens.space16,
+          vertical: AppDimens.space12,
         ),
-        headlineMedium: TextStyle(
-          color: secondaryAccent,
-          fontSize: 24,
-          fontWeight: FontWeight.w600,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppDimens.radiusMd),
+          borderSide: BorderSide(color: hairline),
         ),
-        bodyLarge: TextStyle(color: secondaryAccent, fontSize: 16),
-        bodyMedium: TextStyle(color: secondaryAccent, fontSize: 14),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppDimens.radiusMd),
+          borderSide: BorderSide(color: hairline),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppDimens.radiusMd),
+          borderSide: const BorderSide(color: AppColors.coral),
+        ),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: brightness == Brightness.dark
+            ? AppColors.darkElevated
+            : AppColors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppDimens.radiusXl),
+        ),
+      ),
+      bottomNavigationBarTheme: BottomNavigationBarThemeData(
+        backgroundColor: background,
+        selectedItemColor: AppColors.coral,
+        unselectedItemColor: muted,
+        type: BottomNavigationBarType.fixed,
+        elevation: 0,
       ),
     );
   }
