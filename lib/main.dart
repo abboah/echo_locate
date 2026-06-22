@@ -1,26 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 
 import 'app.dart';
-import 'core/utils/logger.dart';
+import 'services/injection_container.dart';
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Drift database
-  await initializeDatabase();
+  // Local persistence (Hive boxes back the Achieve-style repositories).
+  await Hive.initFlutter();
 
-  // Initialize logger
-  AppLogger.info('EchoLocate application starting...');
+  // Service locator: repositories, cubits/blocs, controllers.
+  await configureDependencies();
 
-  runApp(const ProviderScope(child: App()));
-}
-
-/// Initialize Drift database for local storage
-Future<void> initializeDatabase() async {
-  final dir = await getApplicationDocumentsDirectory();
-  // Database will be initialized via Drift's generated code
-  // AppDatabase will be created after running build_runner
-  AppLogger.info('Drift database path: ${dir.path}');
+  runApp(const App());
 }
