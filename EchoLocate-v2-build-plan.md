@@ -1,70 +1,32 @@
-# EchoLocate v2 — Build Plan (SOURCE OF TRUTH)
+# EchoLocate v2 — Build Plan (Rebuild · Bloc · Hive)
 
-> This document supersedes all earlier plans. If anything elsewhere disagrees with this file, **this file wins.** Last updated: 2026-06.
+A clean rebuild of EchoLocate as a cross-platform Flutter app for crowdsourced indoor mapping + navigation. Computer vision (ARCore) is the primary sensing layer; the **acoustic sonar is kept as a standalone feature** and also feeds room classification. State management: **Bloc**. Local persistence: **Hive**. Cloud: **Supabase**.
 
-A clean, from-scratch rebuild of EchoLocate as a cross-platform Flutter app for **crowdsourced indoor mapping + navigation, built as an accessibility aid (especially for the visually impaired).**
-
----
-
-## 0. What the app is (corrected concept)
-
-People **scan** indoor spaces with their phone camera; the app reconstructs a **floor plan**, those plans are **crowdsourced** to a community backend, and anyone can then **browse and navigate** a building turn-by-turn — including a fully **eyes-free voice/haptic mode**.
-
-**Sensing strategy (important — this changed):**
-- **Camera + on-device AI is the PRIMARY sense.** Obstacle/hazard detection and reading signs/room-numbers aloud (ML Kit), plus depth/proximity awareness. This is the part people actually use, and the part we demo.
-- **Acoustics is repositioned: room-type CLASSIFICATION, not ranging.** Phone acoustic *sonar/ranging* is not reliable (speaker↔mic crosstalk, 1/r⁴ echo loss, hardware roll-off, multipath). Instead the DSP analyzes **reverberation** to classify the space (corridor / small room / hall). This is the novel research contribution and it does **not** depend on the riskiest tech. A single-shot sonar distance + radar view is kept only as a small "lite" demo feature.
-- **Accessibility is the purpose** that ties it together (voice guidance + haptics).
-
-**Thesis framing:** lead with **acoustic room classification** as the technical novelty and **accessibility** as the impact; camera AI is the usable core and the impressive demo.
+> Supersedes the earlier build plan. This is the "rebuild fresh, keep the sound" version.
 
 ---
 
-## 1. Architecture — HYBRID: Bloc presentation + Achieve repositories
+## 0. Strategy
 
-> Decision: we use **flutter_bloc for the presentation layer**, sitting on top of **Achieve-style repositories**. We do **NOT** use Achieve's DataPage / OperationRunner / OverlayManager — Bloc owns screen state instead.
+Fresh Flutter project. Port the genuinely good parts of the old code (the DSP engine is well-written) into a new, clean structure built around Bloc + Hive.
 
-**Keep from Achieve:** Repository (abstract interface + impl with caching mixin), GetIt service locator, EventBus (optional, cross-feature).
-**Drop from Achieve:** DataPage, OperationRunnerState, OverlayManager. (`BlocBuilder` + a `loading/error/data` state replaces them.)
+**Sound is a first-class feature, not just a fallback.** It plays two roles:
+1. **Sonar feature** — single-shot distance measurement + radar view (the original idea, kept as one feature of the app).
+2. **Room classification + fallback** — the same DSP pipeline feeds a room-type classifier and a backup distance when vision fails.
 
-### Per-feature recipe
-1. **Model** — Freezed + Equatable, in `core/models/`.
-2. **Repository** — abstract interface + impl with `RepositoryMixin` caching (`runPersistedQuery` / `runSecureQuery` / `runEphemeralQuery` / `runOperation`), in `features/<feature>/`.
-3. **Bloc** — `event` / `state` / `bloc`; the Bloc calls the repository and emits `Loading / Loaded / Error`.
-4. **Page** — renders with `BlocBuilder`; `BlocListener` for one-off effects (dialogs, navigation, toasts).
-5. **Register** repository + bloc in `injection_container.dart` (GetIt).
-6. **Route** — named route in the dual go_router.
+This means you finish the acoustic I/O (mic + playback) anyway, and it pays off twice.
 
-### Live-sensing screens (vision / acoustic / scan / navigate)
-The feature Bloc **subscribes to a GetIt-registered stream controller** (camera / audio / depth) in `services/sensing/` and `emit`s a state per frame; UI renders via `BlocBuilder`. This isolates real-time work to a few controllers.
+**Port from old repo:** the DSP service (chirp generator, FFT cross-correlation, ToF, parabolic interpolation) — it's clean and decoupled. Rewrite everything else fresh under the new architecture.
 
-### Folder structure
-```
-lib/
-  core/
-    models/      Building, Floor, FloorPlan, Wall, Poi, ScanSession,
-                 Detection, RoomClass, Measurement, Contributor
-    theme/       tokens, typography, light_theme, dark_theme, ThemeCubit
-    config/
-  features/<feature>/
-    bloc/        <feature>_event · <feature>_state · <feature>_bloc
-    <feature>_repository.dart            (abstract + impl w/ RepositoryMixin)
-  ui/pages/
-    guest/   onboarding · permission primers · auth
-    user/    home · explore · building_detail · scan · navigate ·
-             map_view · accessibility(voice) · maps(saved) · profile · settings
-             (each may have /widgets)
-  shared/    widgets (cards, bottom_nav, buttons, dialogs, toasts, banners),
-             painters (radar, floor_plan), utils
-  services/
-    injection_container.dart             (GetIt: repos + blocs + controllers)
-    event_bus/
-    core/      supabase client · logging · config
-    sensing/   camera_controller · audio_engine(dsp) · depth_controller · sensor_service
-    ml/        mlkit (object detection + OCR) · tflite (room classifier)
-    routing/   a_star · graph_builder
-    export/    pdf
-  router/    guest_router.dart · user_router.dart
-```
+---
+
+## 1. The make-or-break: ARCore depth (do this first)
+
+- **ARCore is Android-only; iOS uses ARKit.** Put depth sensing behind a shared Dart interface; implement Android (ARCore) first.
+- Depth access needs a **custom platform channel** with native Kotlin — the Flutter ARCore plugins won't be enough.
+- **Build scanning Android-first.** The consumption side (sonar, browse, navigate, accessibility) is plain Flutter and runs on both platforms immediately.
+
+> **Spike M0 before anything else:** a throwaway Kotlin module that runs ARCore, grabs a depth frame + pose, and prints the numbers on a Flutter screen. If it works, proceed. If not, fall back to ML Kit segmentation + manual corner-tapping for the floor plan.
 
 ---
 
@@ -72,129 +34,152 @@ lib/
 
 | Layer | Choice |
 |---|---|
-| Framework | Flutter (Dart) — iOS + Android |
-| Presentation | **flutter_bloc** (events → states → BlocBuilder) |
-| Data layer | **Achieve-style repositories** + caching mixins |
-| DI | **get_it** (service locator) |
-| Routing | **go_router** — dual routers (guest/user), named routes only |
-| Local persistence | **hive_ce** (+ hive_ce_generator) behind repositories |
-| Cloud / crowdsource | **Supabase** (Postgres + Storage + Auth) |
-| Primary sense | **camera** + **google_mlkit** (object detection + text/OCR) |
-| Depth / mapping | monocular depth (proximity) first; **ARCore** depth = stretch (Android, platform channel) |
-| Acoustic | **fftea** (DSP, ported from v1) + **record** (mic) + **flutter_soloud** (playback) |
-| Acoustic classifier | **TFLite** (reverb → room type) |
+| Framework | Flutter (Dart) |
+| State management | **Bloc** (flutter_bloc) |
+| DI | get_it |
+| Routing | go_router |
+| Local persistence | **hive_ce** (Hive Community Edition) + hive_ce_generator |
+| Cloud / crowdsource | Supabase (Postgres + Storage + Auth) |
+| Depth sensing | ARCore Depth API (Android, platform channel); ARKit later for iOS |
+| On-device vision | Google ML Kit (object detection + text recognition) |
+| DSP | fftea (port existing chirp + cross-correlation) |
+| Audio | flutter_soloud (playback) + **record** (mic capture — was missing before) |
+| Acoustic classifier | TensorFlow Lite |
 | Sensors | sensors_plus |
-| Voice / accessibility | flutter_tts + speech_to_text + haptics |
-| Routing engine | custom **A\*** (Dart) |
-| 3D preview | flutter_gl (stretch / polish) |
+| Voice | flutter_tts + speech_to_text |
+| Routing engine | custom A* (Dart) |
+| 3D preview | flutter_gl |
 | Export | pdf + printing |
-| Models | freezed + json_serializable + equatable |
 
-> **Never repeat the v1 mistake:** commit to **hive_ce everywhere** (models, boxes, comments). Never reference any other local DB.
-
-**Hive boxes:** `floorPlansBox`, `scanSessionsBox`, `measurementsBox`, `cachedMapsBox`, `settingsBox` (holds `themeMode`).
+> **Don't repeat the old bug:** the old repo declared one DB but referenced another in comments. Commit to **hive_ce** everywhere — models, boxes, comments.
 
 ---
 
-## 3. Design system (from Figma `MGYeyWGqLMH3rSaabjvfvI`)
+## 3. Architecture (feature-first + Bloc + services)
 
-**Tokens (confirmed from the design):**
-| Token | Hex | Use |
-|---|---|---|
-| Coral | `#FB5B47` | single warm accent — primary actions, active states, route line |
-| Ink | `#1C1B1A` | text, dark surfaces (nav highlights, dialogs' primary button) |
-| Surface | `#F6F5F2` | cards, muted panels, scan placeholders |
-| White | `#FFFFFF` | page background |
+```
+lib/
+  core/            theme, design tokens, router, di (get_it), constants
+  data/
+    local/         Hive boxes, type adapters, local data sources
+    remote/        Supabase client, remote data sources
+    models/        Hive-annotated: Building, Floor, FloorPlan, Wall, Poi,
+                   ScanSession, Measurement, Contributor
+    repositories/  repo interfaces + implementations
+  features/
+    onboarding/    bloc / view / widgets
+    auth/
+    sonar/         <- KEPT sound feature: measure distance + radar
+    scan/          <- NEW: ARCore depth -> point cloud -> floor plan
+    acoustic/      <- room classifier + fallback (shares DSP with sonar)
+    explore/       building browser + detail
+    navigation/    graph builder, A*, turn-by-turn, AR overlay, obstacle alerts
+    accessibility/ voice mode, haptics
+    map_view/      2D floor-plan render + 3D preview
+    profile/       contributor stats, badges, leaderboard
+  services/        dsp, audio, vision (ARCore channel), sensor, mlkit,
+                   routing, export        <- shared engines
+  shared/          widgets, utils, painters (radar, floor plan)
+android/app/src/main/kotlin/...           <- ARCore native code
+```
 
-Style rule from the design notes: **"clean, one warm accent, white surfaces, no gradients."**
-- Typography: **Hanken Grotesk** (confirm exact weights/sizes from Figma text styles).
-- Rounded cards (~16 r), soft shadows, generous padding.
-- **Bottom nav:** 5 tabs — Home · Explore · **[center Scan FAB]** · Maps · Profile.
-- **Dark mode:** invert Surface/White ↔ Ink family; Coral stays the accent. Build both themes from the same tokens.
+Each feature folder: `bloc/` (event, state, bloc), `view/`, `widgets/`.
 
-**Shared components to build once (Phase 1):** primary/secondary button, card, bottom nav + center FAB, dialog (e.g. End navigation / Discard scan), toast (success + undo), inline banner (warning/error), permission-primer layout, list skeleton/empty/offline state.
+**Hive boxes:** `floorPlansBox`, `sessionsBox`, `measurementsBox`, `cachedMapsBox` (community maps downloaded from Supabase), `settingsBox`. Store a `FloorPlan` as one Hive object with embedded `walls` / `pois` lists. Listing = `box.values`; no joins needed locally.
 
-### Screen inventory (map → feature → phase)
-*Confirmed from Figma (15 screens + design system):*
-
-| Node | Screen | Feature | Phase |
-|---|---|---|---|
-| 7-488 | Home (location, search, Scan CTA, Recently mapped) | home | P1 |
-| 7-895 | Location permission primer | onboarding | P1 |
-| 7-939 | Camera permission primer (on-device, never stored) | onboarding | P1 |
-| 7-301 | Building detail (floors, rooms, Navigate here, 3D) | explore | P1 UI · P2 data |
-| 7-448 | Scan — camera view (Room type, Coverage, Size) | scan | P1 UI · P2 logic |
-| 7-703 | Scan-quality inline banners (low light / tracking lost) | scan | P2 |
-| 7-840 | Discard-scan dialog | scan | P2 |
-| 7-265 | Navigation — 2D route (turn-by-turn) | navigate | P2 |
-| 7-816 | End-navigation dialog | navigate | P2 |
-| 7-189 | 3D floor-plan preview (2D/3D toggle) | map_view | P3 |
-| 7-227 | Accessibility voice mode ("Turn right", waveform) | accessibility | P3 |
-| 7-866 | Success dialog — map uploaded + leaderboard | crowdsource | P2 |
-| 7-679 | Toast — success (location link copied) | shared | P1 |
-| 7-654 | Toast — undo (scan deleted) | shared | P1 |
-| 7-750 | Offline / error state (saved maps still work) | shared | P1 |
-| 7-162 | Design tokens sheet | design system | P1 |
-| 7-565 / 7-369 | Icon set | design system | P1 |
-| 7-139 | Route-visualization component | shared/painter | P2 |
-
-*Pending Figma reconnect (10 nodes — slot in when network returns):* `7-963, 7-728, 7-1010, 7-1122, 7-1155, 7-774, 7-372, 7-1089, 7-445, 7-1057` — expected to cover: onboarding/welcome, auth/sign-in, Explore/search, Maps/Saved list, Profile + leaderboard, **Settings (dark-mode toggle)**, 2D floor-plan view, loading/skeleton, plus more dialogs/toasts.
+**Bloc pattern for sensing:** stream frames in as events.
+- `ScanBloc`: `StartScan`, `DepthFrameReceived`, `FinishScan` -> `ScanInitial`, `Scanning(pointCloud, coverage)`, `ScanComplete(floorPlan)`
+- `SonarBloc`: `Measure` -> `SonarIdle`, `Measuring`, `SonarResult(distance, heading)`
+- plus `AuthBloc`, `ExploreBloc`, `NavigationBloc`, `AccessibilityBloc`.
 
 ---
 
-## 4. Phased build plan (UI is part of Phase 1)
+## 4. Build sequence (risk-ordered)
 
-Hard deadline **< 2 months**, scope **fixed by proposal** → protect a working spine at full depth; take the rest to proof-of-concept; deliver in 3 phases. **All UI screens are built in Phase 1 against mock repositories**, then later phases swap real data/logic into screens that already exist.
+Each milestone has an acceptance check. Build in order.
 
-### PHASE 1 — Foundation + Design System + Full UI Shell + Core Sensing (Weeks 1–4)
-**Build:**
-- Fresh project; hybrid architecture skeleton (Bloc + Achieve repos + GetIt + EventBus + dual go_router).
-- **Design system:** tokens, typography, **light + dark themes + ThemeCubit** (persisted to `settingsBox`), all shared components.
-- **All screens built and navigable against mock/stub repositories** — Home, Explore, Building detail, Scan, Navigate, Map view, Accessibility, Maps/Saved, Profile, Settings, onboarding + permission primers, dialogs, toasts, banners, offline/empty states — **in both light and dark.**
-- Hive init + adapters; Supabase client + auth (sign-in screens working).
-- **Functional core (the protected spine):**
-  - **Vision Assist** — camera stream + ML Kit object detection + OCR → spoken alerts (this is the "people will use it" feature).
-  - **Acoustic room classification** — finish audio I/O (record + soloud), port DSP, reverb features → classifier (rule-based first; TFLite later).
+### M0 — Spike: ARCore depth -> Flutter
+Native Kotlin ARCore session -> depth + pose -> platform channel -> Flutter.
+**Accept:** live depth numbers print on a real Android device.
 
-**Accept:** app runs; every screen navigable in light + dark; sign-in works; Vision Assist announces a door/sign; acoustic names the room type.
-**Background task from week 1:** collect & label reverb samples for the TFLite classifier.
+### M1 — Foundation
+Fresh project; folder structure; Bloc + get_it; go_router; design system (coral `#FB5B47`, ink `#1C1B1A`, Hanken Grotesk, tokens from the mockups); Hive init + adapters; Supabase client + auth (Google/Apple/email screens).
+**Accept:** app runs, theme applied, sign-in works, empty home renders.
 
-### PHASE 2 — Mapping, Crowdsource & Navigation (Weeks 5–6)
-**Build:**
-- **Scan → 2D floor plan:** depth/proximity ("wall 2 m ahead" + haptic), accumulate into a plan; wire the real pipeline into the existing Scan UI + quality banners + discard dialog.
-- **Crowdsource backend:** Supabase schema (buildings, floors, floor_plans, pois, contributors, ratings); upload a plan; browse nearby; cache to `cachedMapsBox`; wire real data into Home/Explore/Building detail/Maps.
-- **Navigation:** floor plan → graph → custom **A\*** → turn-by-turn (arrow + 2D route); wire Navigate UI + end-navigation dialog; obstacle alerts reuse Phase 1 vision.
+### M2 — Sonar feature (the kept sound feature)
+Port DSP engine (chirp, FFT cross-correlation, ToF, parabolic interpolation). Add **mic capture** (record) + **real playback** (flutter_soloud) — the I/O that was stubbed before. Wire `SonarBloc` to the radar view.
+*Fixes to land while porting:* real `fromPolar` trig (`x = d*cos θ, y = d*sin θ`), and a real noise gate (compare peak to RMS/sidelobe, not to itself).
+**Accept:** a real measurement produces a real distance + heading on the radar.
 
-**Accept:** scan a real room → recognizable plan; upload; open it on another device; pick a room and get guided there.
+### M3 — Scan -> 2D floor plan (vision)
+Accumulate depth frames into a point cloud (with pose); RANSAC/Hough line-fitting -> wall segments -> 2D plan; live render on the Scan screen.
+**Accept:** walk a real room, get a recognisable plan; dimensions sane vs tape.
 
-### PHASE 3 — Accessibility, Intelligence & Evaluation (Weeks 7–8)
-**Build:**
-- **Accessibility voice mode:** full flow (flutter_tts + speech_to_text + haptics), eyes-free operation; wire the voice-mode screen.
-- **Semantic labels** (ML Kit: doors/obstacles + room-number OCR placed on the plan); **swap in the TFLite** room classifier.
-- **Polish:** 3D extruded preview (flutter_gl), PDF export, profile/leaderboard.
-- **Evaluation (Chapter 5):** map accuracy vs tape (3 environments), classification accuracy, navigation success (sighted vs eyes-free) → tables + charts.
+### M4 — Semantic labels (ML Kit)
+Object detection (doors, obstacles) + text recognition (room numbers/signs); place labels on the plan.
+**Accept:** doors and room numbers appear during a scan.
 
-**Accept:** complete a navigation with the screen off; evaluation data ready.
+### M5 — Acoustic room classifier + fallback
+Reuse M2's DSP: extract reverb features -> TFLite classifier (corridor / small room / hall); acoustic fallback distance when depth is unreliable.
+**Accept:** classifier names the space type; fallback fires in low light.
+
+### M6 — Crowdsource backend
+Supabase schema (buildings, floors, floor_plans, pois, contributors, ratings); upload a plan; browse nearby buildings; building detail; load a plan; cache into `cachedMapsBox`.
+**Accept:** scan on one device, open it on another.
+
+### M7 — Navigation
+Floor plan -> navigation graph; A* routing; turn-by-turn voice + arrow; AR waypoint overlay; real-time obstacle alerts (ML Kit).
+**Accept:** pick a room, get guided there; obstacle announced en route.
+
+### M8 — Accessibility mode
+Full voice flow (flutter_tts + speech_to_text), proximity haptics, eyes-free operation.
+**Accept:** complete a navigation with the screen off.
+
+### M9 — Persistence, 3D, export, polish
+Hive persistence of plans/sessions/history; 3D extruded preview (flutter_gl); PDF export; profile/leaderboard; empty/error/loading/dialog/toast states from the mockups.
+**Accept:** offline reload works; PDF exports; all screens present.
+
+### M10 — Evaluation
+Map accuracy (3 environments vs tape), classification accuracy, navigation success rate (sighted vs accessibility).
+**Accept:** data tables + charts ready for Chapter 5.
 
 ---
 
-## 5. Risk list (honest)
-- **ARCore depth platform channel** — highest risk; **monocular depth is the default**, ARCore is stretch. Spike on a real device before depending on it.
-- **TFLite classifier** — needs a reverb dataset; **start collecting in week 1**, rule-based fallback first.
-- **Line-fitting on noisy point clouds (mapping)** — budget tuning time; allow manual correction.
-- **Navigation graph from imperfect plans** — plan for manual correction in the UI.
-- **flutter_gl (3D)** — least-maintained dep; keep in polish/stretch.
-- **< 2 months** — Phases 2–3 are proof-of-concept depth by design. Depth on the spine, breadth elsewhere, honest evaluation.
+## 5. Driving Claude Code
 
-## 6. Port-from-v1 checklist (fix on the way in)
-- [ ] DSP engine: ChirpGenerator, CrossCorrelationService, ToFCalculator → `services/sensing/audio_engine` (now feeding the **classifier**, not a radar).
-- [ ] Radar painter → `shared/painters/` (sonar "lite" demo only).
-- [ ] PDF export → `services/export/`.
-- [ ] **Fix:** `fromPolar` real trig (`x=d·cosθ, y=d·sinθ`); real noise gate (peak vs RMS/sidelobe); return `-1` on out-of-range instead of clamping; collapse duplicate Measurement models to one.
+1. **`CLAUDE.md` at repo root** — paste sections 2–3 (stack + architecture). Add: "State = Bloc, persistence = hive_ce, never reference any other DB."
+2. **M0 as a real spike** in a throwaway branch before anything depends on it.
+3. **One milestone per session, one task per prompt.** "Write the FloorPlan Hive model + adapter" beats "do the data layer."
+4. **Give the acceptance check up front.**
+5. **Point it at the HTML mockups** for any UI task.
+6. **Test on a real Android device** after M0, M2, M3, M5 — emulators won't give real ARCore/mic behaviour.
+7. **For each Bloc, specify events + states explicitly** in the prompt; Claude Code fills in the rest cleanly.
 
-## 7. Driving Claude Code
-- This file + `CLAUDE.md` are the contract. State = Bloc, data = Achieve repos, persistence = hive_ce, **never** reference Riverpod/Drift/Isar or DataPage.
-- **One screen or one Bloc per prompt**, with its acceptance check stated up front.
-- Point Claude at the specific Figma node for any UI task; build light + dark together.
-- Test on a real Android device after the sensing milestones (camera/mic/depth) — emulators lie.
-- For each Bloc, specify events + states explicitly.
+---
+
+## 6. Risk list (honest)
+
+- **ARCore<->Flutter channel (M0)** — highest risk; spike first.
+- **iOS scanning (ARKit)** — optional/later; ship Android-first scanning.
+- **Line-fitting on noisy point clouds (M3)** — budget tuning time.
+- **TFLite classifier (M5)** — needs reverb training samples per room type; keep scope small.
+- **Navigation graph from imperfect plans (M7)** — plan for manual correction in the UI.
+- **hive_ce** — community-maintained; pin the version and keep models simple (no relational queries locally).
+
+---
+
+## 7. Port-from-old checklist
+
+- [ ] DSP engine: ChirpGenerator, CrossCorrelationService, ToFCalculator -> `services/dsp/`
+- [ ] Radar painter -> `shared/painters/` (reused by sonar feature)
+- [ ] PDF export -> `services/export/`
+- [ ] Design tokens (from HTML mockups) -> `core/theme`
+- [ ] Supabase auth pattern (from JustBuy/JEPS) -> `data/remote` + `features/auth`
+
+**Fix on the way in:** `fromPolar` trig, noise-gate comparison, return `-1` on out-of-range instead of clamping, drop the duplicate Measurement models down to one.
+
+
+ i want to build a v2, so I'll create a new branch(echolocate
+  v2). this is what we are going to be doing. we will be redoing
+  all of that, checkout echolocate v2 build plan. what do you
+  think about it,
