@@ -3,18 +3,22 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_cubit.dart';
+import 'features/auth/bloc/auth_bloc.dart';
 import 'router/app_router.dart';
 import 'services/injection_container.dart';
 
-/// Root widget. Provides the app-wide [ThemeCubit] and rebuilds
+/// Root widget. Provides the app-wide [ThemeCubit] + [AuthBloc] and rebuilds
 /// `MaterialApp.router` on theme changes.
 class App extends StatelessWidget {
   const App({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider<ThemeCubit>.value(
-      value: getIt<ThemeCubit>(),
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider<ThemeCubit>.value(value: getIt<ThemeCubit>()),
+        BlocProvider<AuthBloc>.value(value: getIt<AuthBloc>()),
+      ],
       child: BlocBuilder<ThemeCubit, ThemeMode>(
         builder: (context, themeMode) {
           return MaterialApp.router(

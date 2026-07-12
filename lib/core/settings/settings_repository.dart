@@ -8,6 +8,18 @@ import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 abstract class SettingsRepository {
   ThemeMode getThemeMode();
   Future<void> setThemeMode(ThemeMode mode);
+
+  /// Whether the 3-step intro has been completed (router gate).
+  bool get onboardingSeen;
+  Future<void> setOnboardingSeen();
+
+  /// Whether the camera permission primer was shown before the first scan.
+  bool get cameraPrimerSeen;
+  Future<void> setCameraPrimerSeen();
+
+  /// Whether the location permission primer was shown before first Explore.
+  bool get locationPrimerSeen;
+  Future<void> setLocationPrimerSeen();
 }
 
 class HiveSettingsRepository implements SettingsRepository {
@@ -15,6 +27,9 @@ class HiveSettingsRepository implements SettingsRepository {
 
   static const boxName = 'settings';
   static const _themeKey = 'themeMode';
+  static const _onboardingKey = 'onboardingSeen';
+  static const _cameraPrimerKey = 'cameraPrimerSeen';
+  static const _locationPrimerKey = 'locationPrimerSeen';
 
   final Box _box;
 
@@ -31,4 +46,24 @@ class HiveSettingsRepository implements SettingsRepository {
   @override
   Future<void> setThemeMode(ThemeMode mode) =>
       _box.put(_themeKey, mode.name);
+
+  @override
+  bool get onboardingSeen => _box.get(_onboardingKey, defaultValue: false) as bool;
+
+  @override
+  Future<void> setOnboardingSeen() => _box.put(_onboardingKey, true);
+
+  @override
+  bool get cameraPrimerSeen =>
+      _box.get(_cameraPrimerKey, defaultValue: false) as bool;
+
+  @override
+  Future<void> setCameraPrimerSeen() => _box.put(_cameraPrimerKey, true);
+
+  @override
+  bool get locationPrimerSeen =>
+      _box.get(_locationPrimerKey, defaultValue: false) as bool;
+
+  @override
+  Future<void> setLocationPrimerSeen() => _box.put(_locationPrimerKey, true);
 }

@@ -177,9 +177,3 @@ Map accuracy (3 environments vs tape), classification accuracy, navigation succe
 - [ ] Supabase auth pattern (from JustBuy/JEPS) -> `data/remote` + `features/auth`
 
 **Fix on the way in:** `fromPolar` trig, noise-gate comparison, return `-1` on out-of-range instead of clamping, drop the duplicate Measurement models down to one.
-
-
- i want to build a v2, so I'll create a new branch(echolocate
-  v2). this is what we are going to be doing. we will be redoing
-  all of that, checkout echolocate v2 build plan. what do you
-  think about it,

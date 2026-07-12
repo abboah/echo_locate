@@ -13,6 +13,24 @@ class _FakeSettingsRepository implements SettingsRepository {
 
   @override
   Future<void> setThemeMode(ThemeMode m) async => mode = m;
+
+  @override
+  bool onboardingSeen = false;
+
+  @override
+  Future<void> setOnboardingSeen() async => onboardingSeen = true;
+
+  @override
+  bool cameraPrimerSeen = false;
+
+  @override
+  Future<void> setCameraPrimerSeen() async => cameraPrimerSeen = true;
+
+  @override
+  bool locationPrimerSeen = false;
+
+  @override
+  Future<void> setLocationPrimerSeen() async => locationPrimerSeen = true;
 }
 
 void main() {
