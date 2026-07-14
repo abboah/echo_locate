@@ -18,6 +18,7 @@ class AppRoutes {
   static const String profile = '/profile';
 
   // User — full-screen flows (pushed above the shell)
+  static const String assist = '/assist';
   static const String scan = '/scan';
   static const String cameraPrimer = '/camera-primer';
   static const String locationPrimer = '/location-primer';
@@ -39,6 +40,7 @@ class RouteNames {
   static const String maps = 'maps';
   static const String profile = 'profile';
 
+  static const String assist = 'assist';
   static const String scan = 'scan';
   static const String cameraPrimer = 'cameraPrimer';
   static const String locationPrimer = 'locationPrimer';

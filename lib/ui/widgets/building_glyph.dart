@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 
 import '../../core/theme/app_dimens.dart';
 
@@ -11,11 +12,11 @@ class BuildingGlyph extends StatelessWidget {
   final double size;
 
   static IconData iconFor(String glyph) => switch (glyph) {
-        'door' => Icons.meeting_room_outlined,
-        'home' => Icons.home_outlined,
-        'hall' => Icons.account_balance_outlined,
-        'book' => Icons.menu_book_outlined,
-        _ => Icons.apartment_outlined,
+        'door' => PhosphorIconsRegular.doorOpen,
+        'home' => PhosphorIconsRegular.houseLine,
+        'hall' => PhosphorIconsRegular.bank,
+        'book' => PhosphorIconsRegular.books,
+        _ => PhosphorIconsRegular.buildings,
       };
 
   @override

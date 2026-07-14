@@ -39,7 +39,6 @@ dependencies:
 
   # --- Design system ---
   google_fonts: ^6.2.1
-
   # --- Primary sense: camera + on-device ML Kit ---
   camera: ^0.11.0
   google_mlkit_object_detection: ^0.14.0
@@ -59,6 +58,7 @@ dependencies:
   flutter_tts: ^4.0.2
   speech_to_text: ^7.0.0
   logger: ^2.4.0
+  phosphoricons_flutter: ^1.0.0
 
 dev_dependencies:
   flutter_test:

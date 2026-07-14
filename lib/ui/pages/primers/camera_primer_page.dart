@@ -1,17 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 
-import '../../../core/routes/app_routes.dart';
 import '../../../core/settings/settings_repository.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimens.dart';
 import '../../../services/injection_container.dart';
 
-/// Camera permission primer (Figma 7:939), shown once before the first scan.
+/// Camera permission primer (Figma 7:939), shown once before the first
+/// camera experience (Assist Mode or Scan — [destinationName] decides).
 /// The real runtime permission request happens when the camera feed lands
-/// in Phase 2 sensing; this pre-prompt sets expectations first.
+/// in the Phase 1 sensing step; this pre-prompt sets expectations first.
 class CameraPrimerPage extends StatelessWidget {
-  const CameraPrimerPage({super.key});
+  const CameraPrimerPage({super.key, required this.destinationName});
+
+  final String destinationName;
 
   @override
   Widget build(BuildContext context) {
@@ -34,7 +37,7 @@ class CameraPrimerPage extends StatelessWidget {
                   borderRadius: BorderRadius.circular(AppDimens.radiusXl),
                 ),
                 child: const Icon(
-                  Icons.photo_camera_outlined,
+                  PhosphorIconsRegular.camera,
                   color: AppColors.coral,
                   size: 40,
                 ),
@@ -44,8 +47,9 @@ class CameraPrimerPage extends StatelessWidget {
                   style: theme.textTheme.headlineMedium),
               const SizedBox(height: AppDimens.space12),
               Text(
-                'EchoLocate uses your camera to map spaces and detect '
-                'obstacles. Frames are processed on-device and never stored.',
+                'EchoLocate uses your camera to detect obstacles and read '
+                'signs aloud as you move. It can also map spaces. Frames are '
+                'processed on-device and never stored.',
                 style: theme.textTheme.bodyMedium,
                 textAlign: TextAlign.center,
               ),
@@ -54,7 +58,7 @@ class CameraPrimerPage extends StatelessWidget {
                 onPressed: () async {
                   await getIt<SettingsRepository>().setCameraPrimerSeen();
                   if (context.mounted) {
-                    context.pushReplacementNamed(RouteNames.scan);
+                    context.pushReplacementNamed(destinationName);
                   }
                 },
                 child: const Text('Allow camera'),

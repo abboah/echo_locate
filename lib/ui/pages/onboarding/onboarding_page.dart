@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 
 import '../../../core/routes/app_routes.dart';
 import '../../../core/settings/settings_repository.dart';
@@ -20,21 +21,22 @@ class _Step {
 
 const _steps = [
   _Step(
-    Icons.map_outlined,
-    'Navigate inside\nany building',
-    "Find any room in places GPS can't reach — malls, hospitals, campuses.",
+    PhosphorIconsFill.personSimpleWalk,
+    'Move confidently,\nindoors',
+    'EchoLocate speaks what is around you as you walk — obstacles, doors, '
+        'and signs.',
   ),
   _Step(
-    Icons.filter_center_focus,
-    'Scan a space in\nminutes',
-    'Point your camera and walk. EchoLocate builds a floor plan as you go '
-        '— no special hardware.',
+    PhosphorIconsFill.mapTrifold,
+    'Find any room,\nanywhere',
+    "Turn-by-turn guidance in places GPS can't reach — malls, hospitals, "
+        'campuses.',
   ),
   _Step(
-    Icons.volume_up_outlined,
-    'Built for everyone,\nincluding the blind',
-    'Full voice guidance and obstacle alerts mean anyone can navigate '
-        'confidently.',
+    PhosphorIconsFill.handHeart,
+    'Built with blind and\nlow-vision users',
+    'Voice guidance, haptics, and a community that maps spaces for '
+        'each other.',
     inkIcon: true,
   ),
 ];

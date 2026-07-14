@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 
 import '../../../core/settings/settings_repository.dart';
 import '../../../core/theme/app_dimens.dart';
@@ -22,19 +23,19 @@ class LocationPrimerPage extends StatelessWidget {
             children: [
               const Spacer(),
               const _Benefit(
-                icon: Icons.location_on_outlined,
+                icon: PhosphorIconsRegular.mapPin,
                 title: 'Find nearby buildings',
                 body: 'See maps for the buildings around you',
               ),
               const SizedBox(height: AppDimens.space16),
               const _Benefit(
-                icon: Icons.near_me_outlined,
+                icon: PhosphorIconsRegular.navigationArrow,
                 title: 'Tag your scans',
                 body: 'Place new maps in the right location',
               ),
               const SizedBox(height: AppDimens.space16),
               const _Benefit(
-                icon: Icons.visibility_outlined,
+                icon: PhosphorIconsRegular.shieldCheck,
                 title: 'Private by default',
                 body: 'Location is only used while you map',
               ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 
 import '../../../core/routes/app_routes.dart';
 import '../../../core/theme/app_colors.dart';
@@ -67,7 +68,8 @@ class _SignInPageState extends State<SignInPage> {
                   autofillHints: const [AutofillHints.email],
                   decoration: const InputDecoration(
                     hintText: 'you@example.com',
-                    prefixIcon: Icon(Icons.mail_outline, size: 20),
+                    prefixIcon:
+                        Icon(PhosphorIconsRegular.envelopeSimple, size: 20),
                   ),
                 ),
                 const SizedBox(height: AppDimens.space16),
@@ -80,12 +82,13 @@ class _SignInPageState extends State<SignInPage> {
                   onSubmitted: (_) => _submit(),
                   decoration: InputDecoration(
                     hintText: 'Your password',
-                    prefixIcon: const Icon(Icons.lock_outline, size: 20),
+                    prefixIcon:
+                        const Icon(PhosphorIconsRegular.lockSimple, size: 20),
                     suffixIcon: IconButton(
                       icon: Icon(
                         _obscure
-                            ? Icons.visibility_outlined
-                            : Icons.visibility_off_outlined,
+                            ? PhosphorIconsRegular.eye
+                            : PhosphorIconsRegular.eyeSlash,
                         size: 20,
                       ),
                       onPressed: () => setState(() => _obscure = !_obscure),
@@ -179,7 +182,8 @@ class _BackCircle extends StatelessWidget {
             width: 42,
             height: 42,
             child: Icon(
-              Icons.chevron_left,
+              PhosphorIconsRegular.caretLeft,
+              size: 20,
               color: theme.colorScheme.onSurface,
             ),
           ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimens.dart';
@@ -127,7 +128,8 @@ class _ProfileView extends StatelessWidget {
                   onPressed: () => context
                       .read<AuthBloc>()
                       .add(const AuthSignOutRequested()),
-                  icon: const Icon(Icons.logout, color: AppColors.error),
+                  icon: const Icon(PhosphorIconsRegular.signOut,
+                      color: AppColors.error, size: 20),
                   label: const Text(
                     'Sign out',
                     style: TextStyle(color: AppColors.error),

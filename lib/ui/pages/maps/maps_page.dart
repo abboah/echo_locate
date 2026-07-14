@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 
 import '../../../core/routes/app_routes.dart';
 import '../../../core/theme/app_colors.dart';
@@ -75,7 +76,7 @@ class _MapsView extends StatelessWidget {
                         itemBuilder: (context, index) => BuildingListTile(
                           building: state.saved[index],
                           trailing: const Icon(
-                            Icons.download_done,
+                            PhosphorIconsFill.checkCircle,
                             color: AppColors.coral,
                             size: 20,
                           ),
@@ -103,7 +104,7 @@ class _EmptyMaps extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            Icons.map_outlined,
+            PhosphorIconsRegular.mapTrifold,
             size: 48,
             color: theme.textTheme.bodyMedium?.color,
           ),

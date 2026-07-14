@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 
 import '../../../core/routes/app_routes.dart';
 import '../../../core/settings/settings_repository.dart';
@@ -10,7 +11,7 @@ import '../../../features/explore/bloc/explore_bloc.dart';
 import '../../../services/injection_container.dart';
 import '../../widgets/app_search_field.dart';
 import '../../widgets/building_list_tile.dart';
-import '../scan/scan_flow.dart';
+import '../scan/camera_flow.dart';
 
 /// Explore tab (Figma 7:372): search, category chips, nearby buildings,
 /// pinned "Scan a new building" CTA.
@@ -137,7 +138,7 @@ class _ExploreView extends StatelessWidget {
                       const EdgeInsets.only(bottom: AppDimens.space12),
                   child: ElevatedButton.icon(
                     onPressed: () => openScanFlow(context),
-                    icon: const Icon(Icons.add),
+                    icon: const Icon(PhosphorIconsBold.plus, size: 18),
                     label: const Text('Scan a new building'),
                   ),
                 ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 
 /// Rounded search input used on Home and Explore.
 class AppSearchField extends StatelessWidget {
@@ -28,7 +29,8 @@ class AppSearchField extends StatelessWidget {
       decoration: InputDecoration(
         hintText: hint,
         prefixIcon: Icon(
-          Icons.search,
+          PhosphorIconsRegular.magnifyingGlass,
+          size: 20,
           color: Theme.of(context).textTheme.bodyMedium?.color,
         ),
       ),

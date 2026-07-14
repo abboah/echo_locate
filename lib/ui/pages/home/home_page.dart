@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 
 import '../../../core/models/building.dart';
 import '../../../core/routes/app_routes.dart';
@@ -13,9 +14,10 @@ import '../../widgets/app_search_field.dart';
 import '../../widgets/building_glyph.dart';
 import '../../widgets/percent_badge.dart';
 import '../../widgets/section_label.dart';
-import '../scan/scan_flow.dart';
+import '../scan/camera_flow.dart';
 
-/// Home tab (Figma 7:488): greeting, search, scan banner, recently mapped.
+/// Home tab (Figma 7:488, assist-first): greeting, search, assistance
+/// banner, scan card, recently mapped.
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
@@ -72,7 +74,9 @@ class _HomeView extends StatelessWidget {
               onTap: () => context.goNamed(RouteNames.explore),
             ),
             const SizedBox(height: AppDimens.space20),
-            const _ScanBanner(),
+            const _AssistBanner(),
+            const SizedBox(height: AppDimens.space12),
+            const _ScanCard(),
             const SizedBox(height: AppDimens.space24),
             SectionLabel(
               'Recently mapped',
@@ -118,17 +122,84 @@ class _HomeView extends StatelessWidget {
   }
 }
 
-/// Dark "Scan a space" banner card.
-class _ScanBanner extends StatelessWidget {
-  const _ScanBanner();
+/// Dark "Start assistance" banner — the headline action.
+class _AssistBanner extends StatelessWidget {
+  const _AssistBanner();
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final background = isDark ? AppColors.darkElevated : AppColors.ink;
 
+    return Semantics(
+      button: true,
+      label: 'Start assistance. Obstacle alerts and voice guidance as you walk.',
+      child: Material(
+        color: background,
+        borderRadius: BorderRadius.circular(AppDimens.radiusLg),
+        child: InkWell(
+          onTap: () => openAssistFlow(context),
+          borderRadius: BorderRadius.circular(AppDimens.radiusLg),
+          child: Padding(
+            padding: const EdgeInsets.all(AppDimens.space16),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: const BoxDecoration(
+                    color: AppColors.coral,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    PhosphorIconsFill.eye,
+                    color: Colors.white,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: AppDimens.space12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Start assistance',
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleMedium
+                            ?.copyWith(color: Colors.white),
+                      ),
+                      Text(
+                        'Obstacle alerts and voice guidance as you walk',
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodyMedium
+                            ?.copyWith(color: Colors.white70),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(PhosphorIconsRegular.caretRight,
+                    color: Colors.white70, size: 20),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Secondary contributor action: scan/map a space.
+class _ScanCard extends StatelessWidget {
+  const _ScanCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Material(
-      color: background,
+      color: theme.colorScheme.surface,
       borderRadius: BorderRadius.circular(AppDimens.radiusLg),
       child: InkWell(
         onTap: () => openScanFlow(context),
@@ -137,42 +208,29 @@ class _ScanBanner extends StatelessWidget {
           padding: const EdgeInsets.all(AppDimens.space16),
           child: Row(
             children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(AppDimens.radiusMd),
-                ),
-                child: const Icon(
-                  Icons.filter_center_focus,
-                  color: Colors.white,
-                  size: 22,
-                ),
+              Icon(
+                PhosphorIconsRegular.scan,
+                size: 22,
+                color: theme.colorScheme.onSurface,
               ),
               const SizedBox(width: AppDimens.space12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Text('Scan a space', style: theme.textTheme.titleMedium),
                     Text(
-                      'Scan a space',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleMedium
-                          ?.copyWith(color: Colors.white),
-                    ),
-                    Text(
-                      'Map a building in minutes',
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodyMedium
-                          ?.copyWith(color: Colors.white70),
+                      'Help map this building for others',
+                      style: theme.textTheme.bodyMedium,
                     ),
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right, color: Colors.white70),
+              Icon(
+                PhosphorIconsRegular.caretRight,
+                size: 20,
+                color: theme.textTheme.bodyMedium?.color,
+              ),
             ],
           ),
         ),

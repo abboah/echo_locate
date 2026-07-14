@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 
 import '../../../core/routes/app_routes.dart';
 import '../../../core/theme/app_colors.dart';
@@ -45,7 +46,7 @@ class WelcomePage extends StatelessWidget {
                           borderRadius:
                               BorderRadius.circular(AppDimens.radiusLg),
                         ),
-                        child: const Icon(Icons.map_outlined,
+                        child: const Icon(PhosphorIconsFill.mapTrifold,
                             color: Colors.white, size: 30),
                       ),
                     ),
@@ -57,7 +58,8 @@ class WelcomePage extends StatelessWidget {
                     ),
                     const SizedBox(height: AppDimens.space4),
                     Text(
-                      'Sign in to scan, save and contribute maps',
+                      'Sign in to get walking assistance, navigate, and '
+                      'contribute maps',
                       style: theme.textTheme.bodyMedium,
                       textAlign: TextAlign.center,
                     ),
@@ -72,7 +74,7 @@ class WelcomePage extends StatelessWidget {
                         backgroundColor:
                             isDark ? AppColors.darkElevated : AppColors.ink,
                       ),
-                      icon: const Icon(Icons.apple, size: 20),
+                      icon: const Icon(PhosphorIconsFill.appleLogo, size: 20),
                       label: const Text('Sign in with Apple'),
                     ),
                     const SizedBox(height: AppDimens.space12),
@@ -82,12 +84,10 @@ class WelcomePage extends StatelessWidget {
                           : () => context
                               .read<AuthBloc>()
                               .add(const AuthGoogleRequested()),
-                      icon: Text(
-                        'G',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          color: AppColors.coral,
-                          fontWeight: FontWeight.w800,
-                        ),
+                      icon: const Icon(
+                        PhosphorIconsBold.googleLogo,
+                        size: 20,
+                        color: AppColors.coral,
                       ),
                       label: const Text('Sign in with Google'),
                     ),
@@ -96,7 +96,8 @@ class WelcomePage extends StatelessWidget {
                       onPressed: busy
                           ? null
                           : () => context.pushNamed(RouteNames.signIn),
-                      icon: const Icon(Icons.mail_outline, size: 20),
+                      icon: const Icon(PhosphorIconsRegular.envelopeSimple,
+                          size: 20),
                       label: const Text('Continue with email'),
                     ),
                     const Spacer(),

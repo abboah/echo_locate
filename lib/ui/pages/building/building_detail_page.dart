@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 
 import '../../../core/models/building.dart';
 import '../../../core/routes/app_routes.dart';
@@ -184,7 +185,8 @@ class _BackCircle extends StatelessWidget {
           width: 42,
           height: 42,
           child: Icon(
-            Icons.chevron_left,
+            PhosphorIconsRegular.caretLeft,
+            size: 20,
             color: theme.colorScheme.onSurface,
           ),
         ),
@@ -247,9 +249,9 @@ class _RoomTile extends StatelessWidget {
   final Building building;
 
   static IconData _iconFor(String kind) => switch (kind) {
-        'hall' => Icons.event_seat_outlined,
-        'desk' => Icons.support_agent_outlined,
-        _ => Icons.meeting_room_outlined,
+        'hall' => PhosphorIconsRegular.armchair,
+        'desk' => PhosphorIconsRegular.question,
+        _ => PhosphorIconsRegular.doorOpen,
       };
 
   @override
@@ -290,7 +292,7 @@ class _RoomTile extends StatelessWidget {
               ),
             ),
             Icon(
-              Icons.near_me_outlined,
+              PhosphorIconsRegular.navigationArrow,
               size: 20,
               color: theme.textTheme.bodyMedium?.color,
             ),
@@ -326,7 +328,7 @@ class _BottomActions extends StatelessWidget {
                     content: Text('3D preview arrives in Phase 3'),
                   ),
                 ),
-                icon: const Icon(Icons.view_in_ar_outlined, size: 18),
+                icon: const Icon(PhosphorIconsRegular.cube, size: 18),
                 label: const Text('3D'),
               ),
             ),
@@ -338,7 +340,7 @@ class _BottomActions extends StatelessWidget {
                   pathParameters: {'id': building.id},
                   extra: building,
                 ),
-                icon: const Icon(Icons.navigation_outlined, size: 18),
+                icon: const Icon(PhosphorIconsFill.navigationArrow, size: 18),
                 label: const Text('Navigate here'),
               ),
             ),

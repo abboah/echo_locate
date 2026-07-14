@@ -8,6 +8,7 @@ import '../core/routes/app_routes.dart';
 import '../core/settings/settings_repository.dart';
 import '../features/auth/bloc/auth_bloc.dart';
 import '../services/injection_container.dart';
+import '../ui/pages/assist/assist_page.dart';
 import '../ui/pages/auth/sign_in_page.dart';
 import '../ui/pages/auth/sign_up_page.dart';
 import '../ui/pages/auth/welcome_page.dart';
@@ -100,6 +101,12 @@ final GoRouter appRouter = GoRouter(
 
     // --- User: full-screen flows above the shell ---
     GoRoute(
+      path: AppRoutes.assist,
+      name: RouteNames.assist,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const AssistPage(),
+    ),
+    GoRoute(
       path: AppRoutes.scan,
       name: RouteNames.scan,
       parentNavigatorKey: _rootNavigatorKey,
@@ -109,7 +116,9 @@ final GoRouter appRouter = GoRouter(
       path: AppRoutes.cameraPrimer,
       name: RouteNames.cameraPrimer,
       parentNavigatorKey: _rootNavigatorKey,
-      builder: (context, state) => const CameraPrimerPage(),
+      builder: (context, state) => CameraPrimerPage(
+        destinationName: state.extra as String? ?? RouteNames.assist,
+      ),
     ),
     GoRoute(
       path: AppRoutes.locationPrimer,

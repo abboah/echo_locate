@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 
 import '../../../core/models/building.dart';
 import '../../../core/theme/app_colors.dart';
@@ -44,7 +45,8 @@ class NavigationPage extends StatelessWidget {
                         width: 42,
                         height: 42,
                         child: Icon(
-                          Icons.chevron_left,
+                          PhosphorIconsRegular.caretLeft,
+                          size: 20,
                           color: theme.colorScheme.onSurface,
                         ),
                       ),
@@ -256,8 +258,8 @@ class _InstructionCard extends StatelessWidget {
                   color: AppColors.coral,
                   shape: BoxShape.circle,
                 ),
-                child:
-                    const Icon(Icons.arrow_upward, color: Colors.white),
+                child: const Icon(PhosphorIconsBold.arrowUp,
+                    color: Colors.white, size: 22),
               ),
               const SizedBox(width: AppDimens.space12),
               Expanded(

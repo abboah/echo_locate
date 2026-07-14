@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimens.dart';
@@ -71,8 +72,8 @@ class _ScanPageState extends State<ScanPage>
                         child: const SizedBox(
                           width: 42,
                           height: 42,
-                          child:
-                              Icon(Icons.close, color: Colors.white, size: 20),
+                          child: Icon(PhosphorIconsRegular.x,
+                              color: Colors.white, size: 20),
                         ),
                       ),
                     ),
