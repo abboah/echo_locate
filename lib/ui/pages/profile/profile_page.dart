@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 
+import '../../../core/routes/app_routes.dart';
+import '../../../core/settings/settings_repository.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimens.dart';
 import '../../../core/theme/theme_cubit.dart';
@@ -111,16 +114,40 @@ class _ProfileView extends StatelessWidget {
                 const SectionLabel('Preferences'),
                 const SizedBox(height: AppDimens.space8),
                 Card(
-                  child: SwitchListTile(
-                    title: Text('Dark mode',
-                        style: theme.textTheme.titleMedium),
-                    subtitle: Text('Easier on the eyes at night',
-                        style: theme.textTheme.bodyMedium),
-                    activeThumbColor: AppColors.coral,
-                    value: theme.brightness == Brightness.dark,
-                    onChanged: (dark) => context
-                        .read<ThemeCubit>()
-                        .setMode(dark ? ThemeMode.dark : ThemeMode.light),
+                  child: Column(
+                    children: [
+                      SwitchListTile(
+                        title: Text('Dark mode',
+                            style: theme.textTheme.titleMedium),
+                        subtitle: Text('Easier on the eyes at night',
+                            style: theme.textTheme.bodyMedium),
+                        activeThumbColor: AppColors.coral,
+                        value: theme.brightness == Brightness.dark,
+                        onChanged: (dark) => context
+                            .read<ThemeCubit>()
+                            .setMode(
+                                dark ? ThemeMode.dark : ThemeMode.light),
+                      ),
+                      Divider(height: 1, color: theme.dividerColor),
+                      ListTile(
+                        title: Text('View the intro again',
+                            style: theme.textTheme.titleMedium),
+                        subtitle: Text('Replay the 3-step welcome tour',
+                            style: theme.textTheme.bodyMedium),
+                        trailing: Icon(
+                          PhosphorIconsRegular.caretRight,
+                          size: 18,
+                          color: theme.textTheme.bodyMedium?.color,
+                        ),
+                        onTap: () async {
+                          await getIt<SettingsRepository>()
+                              .resetOnboarding();
+                          if (context.mounted) {
+                            context.goNamed(RouteNames.onboarding);
+                          }
+                        },
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: AppDimens.space24),

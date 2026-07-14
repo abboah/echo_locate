@@ -13,6 +13,9 @@ abstract class SettingsRepository {
   bool get onboardingSeen;
   Future<void> setOnboardingSeen();
 
+  /// Clears the intro flag so it plays again ("View the intro" on Profile).
+  Future<void> resetOnboarding();
+
   /// Whether the camera permission primer was shown before the first scan.
   bool get cameraPrimerSeen;
   Future<void> setCameraPrimerSeen();
@@ -52,6 +55,9 @@ class HiveSettingsRepository implements SettingsRepository {
 
   @override
   Future<void> setOnboardingSeen() => _box.put(_onboardingKey, true);
+
+  @override
+  Future<void> resetOnboarding() => _box.put(_onboardingKey, false);
 
   @override
   bool get cameraPrimerSeen =>

@@ -21,6 +21,9 @@ class _FakeSettingsRepository implements SettingsRepository {
   Future<void> setOnboardingSeen() async => onboardingSeen = true;
 
   @override
+  Future<void> resetOnboarding() async => onboardingSeen = false;
+
+  @override
   bool cameraPrimerSeen = false;
 
   @override
