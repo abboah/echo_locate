@@ -1,11 +1,15 @@
 import 'package:get_it/get_it.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/config/app_config.dart';
 import '../core/settings/settings_repository.dart';
 import '../core/theme/theme_cubit.dart';
 import '../data/repository_mixin.dart';
+import '../features/assist/bloc/assist_bloc.dart';
 import '../features/auth/auth_repository.dart';
 import '../features/auth/bloc/auth_bloc.dart';
+import '../features/auth/supabase_auth_repository.dart';
 import '../features/building_detail/bloc/building_detail_bloc.dart';
 import '../features/buildings/building_repository.dart';
 import '../features/explore/bloc/explore_bloc.dart';
@@ -13,6 +17,8 @@ import '../features/home/bloc/home_bloc.dart';
 import '../features/maps/bloc/maps_bloc.dart';
 import '../features/profile/bloc/profile_bloc.dart';
 import '../features/profile/profile_repository.dart';
+import 'sensing/detection_service.dart';
+import 'speech/speech_service.dart';
 
 /// Global service locator. Repositories, blocs/cubits, and stream controllers
 /// are registered here. See CLAUDE.md for the per-feature registration recipe.
@@ -30,7 +36,9 @@ Future<void> configureDependencies() async {
     () => HiveSettingsRepository(settingsBox),
   );
   getIt.registerLazySingleton<AuthRepository>(
-    () => MockAuthRepository(settingsBox),
+    () => AppConfig.hasSupabase
+        ? SupabaseAuthRepository(Supabase.instance.client)
+        : MockAuthRepository(settingsBox),
   );
   getIt.registerLazySingleton<BuildingRepository>(
     () => MockBuildingRepository(),
@@ -38,6 +46,10 @@ Future<void> configureDependencies() async {
   getIt.registerLazySingleton<ProfileRepository>(
     () => MockProfileRepository(getIt<AuthRepository>()),
   );
+
+  // --- Sensing / speech engines (hardware owners; Blocs subscribe) ---
+  getIt.registerLazySingleton<DetectionService>(() => DetectionService());
+  getIt.registerLazySingleton<SpeechService>(() => SpeechService());
 
   // --- App-wide cubits/blocs (singletons) ---
   getIt.registerLazySingleton<ThemeCubit>(
@@ -48,6 +60,9 @@ Future<void> configureDependencies() async {
   );
 
   // --- Feature blocs (one fresh instance per screen visit) ---
+  getIt.registerFactory<AssistBloc>(
+    () => AssistBloc(getIt<DetectionService>(), getIt<SpeechService>()),
+  );
   getIt.registerFactory<HomeBloc>(
     () => HomeBloc(getIt<BuildingRepository>()),
   );

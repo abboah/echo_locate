@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 
 import '../../../core/settings/settings_repository.dart';
@@ -57,6 +58,9 @@ class CameraPrimerPage extends StatelessWidget {
               ElevatedButton(
                 onPressed: () async {
                   await getIt<SettingsRepository>().setCameraPrimerSeen();
+                  // Real system prompt; if denied, Assist falls back to
+                  // demo mode rather than blocking.
+                  await Permission.camera.request();
                   if (context.mounted) {
                     context.pushReplacementNamed(destinationName);
                   }

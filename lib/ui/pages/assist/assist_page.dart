@@ -1,249 +1,294 @@
-import 'dart:async';
-
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_tts/flutter_tts.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimens.dart';
+import '../../../features/assist/bloc/assist_bloc.dart';
+import '../../../services/injection_container.dart';
+import '../../../services/sensing/detection_service.dart';
 
 /// Assist Mode — the headline experience: obstacle alerts + voice guidance
 /// while the user moves.
 ///
-/// Phase 1: dark placeholder viewport with mock callouts cycling on a timer
-/// and spoken via TTS, so the voice delivery is testable end-to-end today.
-/// The camera + ML Kit detection stream replaces [_mockCallouts] in the
-/// Phase 1 sensing step — this layout and the TTS path stay.
-class AssistPage extends StatefulWidget {
+/// Live mode shows the camera feed with real ML Kit detections spoken via
+/// TTS. When no camera is available (emulator, permission denied) the Bloc
+/// falls back to a scripted demo loop over the dark viewport.
+class AssistPage extends StatelessWidget {
   const AssistPage({super.key});
 
   @override
-  State<AssistPage> createState() => _AssistPageState();
+  Widget build(BuildContext context) {
+    return BlocProvider(
+      create: (_) => getIt<AssistBloc>()..add(const AssistStarted()),
+      child: const _AssistView(),
+    );
+  }
 }
 
-class _Callout {
-  const _Callout(this.icon, this.text, this.detail);
+class _AssistView extends StatefulWidget {
+  const _AssistView();
 
-  final IconData icon;
-  final String text;
-  final String detail;
+  @override
+  State<_AssistView> createState() => _AssistViewState();
 }
 
-const _mockCallouts = [
-  _Callout(PhosphorIconsFill.door, 'Door ahead', 'about 3 steps'),
-  _Callout(PhosphorIconsFill.armchair, 'Chair on your left', 'close by'),
-  _Callout(PhosphorIconsFill.arrowBendUpRight, 'Path bends right',
-      'in 5 steps'),
-  _Callout(PhosphorIconsFill.textT, 'Sign: "Room 204"', 'on your right'),
-];
-
-class _AssistPageState extends State<AssistPage>
+class _AssistViewState extends State<_AssistView>
     with SingleTickerProviderStateMixin {
   late final AnimationController _pulse = AnimationController(
     vsync: this,
     duration: const Duration(seconds: 2),
   )..repeat();
 
-  final FlutterTts _tts = FlutterTts();
-  Timer? _timer;
-  int _calloutIndex = 0;
-  bool _voiceOn = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _speak(_mockCallouts[_calloutIndex]);
-    _timer = Timer.periodic(const Duration(seconds: 4), (_) {
-      setState(() {
-        _calloutIndex = (_calloutIndex + 1) % _mockCallouts.length;
-      });
-      _speak(_mockCallouts[_calloutIndex]);
-    });
-  }
-
-  Future<void> _speak(_Callout callout) async {
-    if (!_voiceOn) return;
-    try {
-      await _tts.speak('${callout.text}, ${callout.detail}');
-    } catch (_) {
-      // TTS unavailable (e.g. emulator without a TTS engine) — stay silent.
-    }
-  }
-
   @override
   void dispose() {
-    _timer?.cancel();
-    _tts.stop();
     _pulse.dispose();
     super.dispose();
   }
 
+  static IconData _iconFor(String label) => switch (label) {
+        'furniture' => PhosphorIconsFill.armchair,
+        'doorway' => PhosphorIconsFill.door,
+        'plant' => PhosphorIconsFill.plant,
+        'clothing item' => PhosphorIconsFill.tShirt,
+        'food item' => PhosphorIconsFill.forkKnife,
+        'path' => PhosphorIconsFill.arrowBendUpRight,
+        'sign' => PhosphorIconsFill.textT,
+        _ => PhosphorIconsFill.warningCircle,
+      };
+
   @override
   Widget build(BuildContext context) {
     const viewportColor = Color(0xFF161514);
-    final callout = _mockCallouts[_calloutIndex];
 
     return Scaffold(
       backgroundColor: viewportColor,
-      body: Column(
-        children: [
-          Expanded(
-            child: SafeArea(
-              bottom: false,
-              child: Stack(
-                children: [
-                  // Pulsing rings around the assist glyph.
-                  Center(
-                    child: AnimatedBuilder(
-                      animation: _pulse,
-                      builder: (context, _) => CustomPaint(
-                        size: const Size(260, 260),
-                        painter: _PulsePainter(t: _pulse.value),
-                        child: const SizedBox(
-                          width: 260,
-                          height: 260,
-                          child: Center(
-                            child: Icon(
-                              PhosphorIconsFill.eye,
-                              color: Colors.white,
-                              size: 52,
+      body: BlocBuilder<AssistBloc, AssistState>(
+        builder: (context, state) {
+          final callout = state.callout;
+
+          return Column(
+            children: [
+              Expanded(
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // Viewport: live camera feed, or pulsing glyph while
+                    // starting / in demo mode.
+                    if (state.status == AssistStatus.live)
+                      const _CameraViewport()
+                    else
+                      Center(
+                        child: AnimatedBuilder(
+                          animation: _pulse,
+                          builder: (context, _) => CustomPaint(
+                            size: const Size(260, 260),
+                            painter: _PulsePainter(t: _pulse.value),
+                            child: const SizedBox(
+                              width: 260,
+                              height: 260,
+                              child: Center(
+                                child: Icon(
+                                  PhosphorIconsFill.eye,
+                                  color: Colors.white,
+                                  size: 52,
+                                ),
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  ),
-                  Positioned(
-                    left: AppDimens.space16,
-                    top: AppDimens.space12,
-                    child: Material(
-                      color: Colors.white.withValues(alpha: 0.12),
-                      shape: const CircleBorder(),
-                      child: InkWell(
-                        onTap: () => context.pop(),
-                        customBorder: const CircleBorder(),
-                        child: const SizedBox(
-                          width: 42,
-                          height: 42,
-                          child: Icon(PhosphorIconsRegular.x,
-                              color: Colors.white, size: 20),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    top: AppDimens.space20,
-                    left: 0,
-                    right: 0,
-                    child: Center(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: AppDimens.space12,
-                          vertical: AppDimens.space8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.12),
-                          borderRadius:
-                              BorderRadius.circular(AppDimens.radiusPill),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _LiveDot(),
-                            SizedBox(width: AppDimens.space8),
-                            Text(
-                              'Assisting',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
+                    SafeArea(
+                      bottom: false,
+                      child: Stack(
+                        children: [
+                          Positioned(
+                            left: AppDimens.space16,
+                            top: AppDimens.space12,
+                            child: Material(
+                              color: Colors.black.withValues(alpha: 0.35),
+                              shape: const CircleBorder(),
+                              child: InkWell(
+                                onTap: () => context.pop(),
+                                customBorder: const CircleBorder(),
+                                child: const SizedBox(
+                                  width: 42,
+                                  height: 42,
+                                  child: Icon(PhosphorIconsRegular.x,
+                                      color: Colors.white, size: 20),
+                                ),
                               ),
                             ),
-                          ],
-                        ),
+                          ),
+                          Positioned(
+                            top: AppDimens.space20,
+                            left: 0,
+                            right: 0,
+                            child: Center(
+                              child: _StatusPill(status: state.status),
+                            ),
+                          ),
+                          // Latest callout card.
+                          Positioned(
+                            left: AppDimens.space16,
+                            right: AppDimens.space16,
+                            bottom: AppDimens.space20,
+                            child: Semantics(
+                              liveRegion: true,
+                              child: Container(
+                                padding:
+                                    const EdgeInsets.all(AppDimens.space16),
+                                decoration: BoxDecoration(
+                                  color:
+                                      Colors.black.withValues(alpha: 0.45),
+                                  borderRadius: BorderRadius.circular(
+                                      AppDimens.radiusLg),
+                                ),
+                                child: callout == null
+                                    ? const Text(
+                                        'Looking around you…',
+                                        style: TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 15),
+                                      )
+                                    : Row(
+                                        children: [
+                                          Container(
+                                            width: 44,
+                                            height: 44,
+                                            decoration: BoxDecoration(
+                                              color: callout.urgent
+                                                  ? AppColors.error
+                                                  : AppColors.coral,
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: Icon(
+                                                _iconFor(callout.label),
+                                                color: Colors.white,
+                                                size: 22),
+                                          ),
+                                          const SizedBox(
+                                              width: AppDimens.space12),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  callout.title,
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 17,
+                                                    fontWeight:
+                                                        FontWeight.w600,
+                                                  ),
+                                                ),
+                                                Text(
+                                                  callout.detail,
+                                                  style: const TextStyle(
+                                                      color: Colors.white70,
+                                                      fontSize: 14),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                  // Latest callout card.
-                  Positioned(
-                    left: AppDimens.space16,
-                    right: AppDimens.space16,
-                    bottom: AppDimens.space20,
-                    child: Semantics(
-                      liveRegion: true,
-                      child: Container(
-                        padding: const EdgeInsets.all(AppDimens.space16),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.10),
-                          borderRadius:
-                              BorderRadius.circular(AppDimens.radiusLg),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 44,
-                              height: 44,
-                              decoration: const BoxDecoration(
-                                color: AppColors.coral,
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(callout.icon,
-                                  color: Colors.white, size: 22),
-                            ),
-                            const SizedBox(width: AppDimens.space12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    callout.text,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  Text(
-                                    callout.detail,
-                                    style: const TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 14),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ),
-          _AssistSheet(
-            voiceOn: _voiceOn,
-            onVoiceToggle: () => setState(() => _voiceOn = !_voiceOn),
-          ),
-        ],
+              _AssistSheet(
+                voiceOn: state.voiceOn,
+                onVoiceToggle: () => context
+                    .read<AssistBloc>()
+                    .add(const AssistVoiceToggled()),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 }
 
-class _LiveDot extends StatelessWidget {
-  const _LiveDot();
+/// Full-bleed camera preview (cover-fit, portrait-corrected).
+class _CameraViewport extends StatelessWidget {
+  const _CameraViewport();
 
   @override
   Widget build(BuildContext context) {
+    final controller = getIt<DetectionService>().camera;
+    if (controller == null || !controller.value.isInitialized) {
+      return const ColoredBox(color: Color(0xFF161514));
+    }
+    final preview = controller.value.previewSize!;
+    return ClipRect(
+      child: FittedBox(
+        fit: BoxFit.cover,
+        clipBehavior: Clip.hardEdge,
+        child: SizedBox(
+          // Preview size is landscape; swap for portrait rendering.
+          width: preview.height,
+          height: preview.width,
+          child: CameraPreview(controller),
+        ),
+      ),
+    );
+  }
+}
+
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({required this.status});
+
+  final AssistStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = switch (status) {
+      AssistStatus.starting => 'Starting…',
+      AssistStatus.live => 'Assisting',
+      AssistStatus.demo => 'Demo — no camera',
+    };
     return Container(
-      width: 8,
-      height: 8,
-      decoration: const BoxDecoration(
-        color: AppColors.coral,
-        shape: BoxShape.circle,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppDimens.space12,
+        vertical: AppDimens.space8,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(AppDimens.radiusPill),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: status == AssistStatus.live
+                  ? AppColors.coral
+                  : Colors.white54,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: AppDimens.space8),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -325,7 +370,7 @@ class _AssistSheet extends StatelessWidget {
                 const _AssistChip(
                   icon: PhosphorIconsFill.textT,
                   label: 'Read signs',
-                  value: 'On',
+                  value: 'Soon',
                 ),
                 const SizedBox(width: AppDimens.space8),
                 Expanded(
