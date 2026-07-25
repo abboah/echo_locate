@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:hive_ce_flutter/hive_ce_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-/// Small persistent settings store (Achieve-style repository over a Hive box).
+/// Small persistent settings store (repository over shared_preferences).
 ///
 /// Kept deliberately tiny; it's the first concrete example of the
-/// repository pattern the rest of the app follows.
+/// repository pattern the rest of the app follows. shared_preferences is
+/// the one deliberate exception to the hive_ce rule: tiny scalar flags
+/// (onboarding/theme/primers) are what it exists for, and supabase_flutter
+/// already persists its session through it.
 abstract class SettingsRepository {
   ThemeMode getThemeMode();
   Future<void> setThemeMode(ThemeMode mode);
@@ -25,20 +28,19 @@ abstract class SettingsRepository {
   Future<void> setLocationPrimerSeen();
 }
 
-class HiveSettingsRepository implements SettingsRepository {
-  HiveSettingsRepository(this._box);
+class SharedPrefsSettingsRepository implements SettingsRepository {
+  SharedPrefsSettingsRepository(this._prefs);
 
-  static const boxName = 'settings';
   static const _themeKey = 'themeMode';
   static const _onboardingKey = 'onboardingSeen';
   static const _cameraPrimerKey = 'cameraPrimerSeen';
   static const _locationPrimerKey = 'locationPrimerSeen';
 
-  final Box _box;
+  final SharedPreferences _prefs;
 
   @override
   ThemeMode getThemeMode() {
-    final raw = _box.get(_themeKey) as String?;
+    final raw = _prefs.getString(_themeKey);
     return switch (raw) {
       'light' => ThemeMode.light,
       'dark' => ThemeMode.dark,
@@ -47,29 +49,31 @@ class HiveSettingsRepository implements SettingsRepository {
   }
 
   @override
-  Future<void> setThemeMode(ThemeMode mode) =>
-      _box.put(_themeKey, mode.name);
+  Future<void> setThemeMode(ThemeMode mode) async =>
+      _prefs.setString(_themeKey, mode.name);
 
   @override
-  bool get onboardingSeen => _box.get(_onboardingKey, defaultValue: false) as bool;
+  bool get onboardingSeen => _prefs.getBool(_onboardingKey) ?? false;
 
   @override
-  Future<void> setOnboardingSeen() => _box.put(_onboardingKey, true);
+  Future<void> setOnboardingSeen() async =>
+      _prefs.setBool(_onboardingKey, true);
 
   @override
-  Future<void> resetOnboarding() => _box.put(_onboardingKey, false);
+  Future<void> resetOnboarding() async =>
+      _prefs.setBool(_onboardingKey, false);
 
   @override
-  bool get cameraPrimerSeen =>
-      _box.get(_cameraPrimerKey, defaultValue: false) as bool;
+  bool get cameraPrimerSeen => _prefs.getBool(_cameraPrimerKey) ?? false;
 
   @override
-  Future<void> setCameraPrimerSeen() => _box.put(_cameraPrimerKey, true);
+  Future<void> setCameraPrimerSeen() async =>
+      _prefs.setBool(_cameraPrimerKey, true);
 
   @override
-  bool get locationPrimerSeen =>
-      _box.get(_locationPrimerKey, defaultValue: false) as bool;
+  bool get locationPrimerSeen => _prefs.getBool(_locationPrimerKey) ?? false;
 
   @override
-  Future<void> setLocationPrimerSeen() => _box.put(_locationPrimerKey, true);
+  Future<void> setLocationPrimerSeen() async =>
+      _prefs.setBool(_locationPrimerKey, true);
 }

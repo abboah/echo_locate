@@ -16,7 +16,7 @@ Crowdsourced indoor mapping + navigation, built as an **accessibility aid** (esp
 - **Live-sensing screens** (vision/acoustic/scan/navigate): the Bloc subscribes to a GetIt stream controller in `services/sensing/` and emits per frame.
 
 ## Hard rules
-- **State = Bloc. Data = Achieve repositories. Persistence = hive_ce. Routing = go_router (dual guest/user, named routes only). DI = get_it.**
+- **State = Bloc. Data = Achieve repositories. Persistence = hive_ce (exception: scalar settings/onboarding flags use shared_preferences). Routing = go_router (dual guest/user, named routes only). DI = get_it.**
 - **NEVER** reference Riverpod, Drift, Isar, Provider, or Achieve's DataPage/OperationRunner. Commit to **hive_ce everywhere** (models, boxes, comments).
 - Build every screen in **light AND dark** (ThemeCubit + tokens). No gradients.
 - Repositories return typed models, never `dynamic`.

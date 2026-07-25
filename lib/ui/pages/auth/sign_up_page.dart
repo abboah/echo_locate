@@ -31,11 +31,13 @@ class _SignUpPageState extends State<SignUpPage> {
   }
 
   void _submit() {
-    context.read<AuthBloc>().add(AuthSignUpSubmitted(
-          fullName: _name.text,
-          email: _email.text.trim(),
-          password: _password.text,
-        ));
+    context.read<AuthBloc>().add(
+      AuthSignUpSubmitted(
+        fullName: _name.text,
+        email: _email.text.trim(),
+        password: _password.text,
+      ),
+    );
   }
 
   @override
@@ -46,19 +48,19 @@ class _SignUpPageState extends State<SignUpPage> {
       body: SafeArea(
         child: BlocBuilder<AuthBloc, AuthState>(
           builder: (context, state) {
-            final unauthenticated =
-                state is AuthUnauthenticated ? state : null;
+            final unauthenticated = state is AuthUnauthenticated ? state : null;
             final busy = unauthenticated?.inProgress ?? false;
             final error = unauthenticated?.error;
             // Route the error to the field it belongs to (the design shows
             // the password error inline under the field).
-            final nameError =
-                error != null && error.contains('name') ? error : null;
-            final emailError =
-                error != null && error.contains('email') ? error : null;
-            final passwordError = error != null &&
-                    nameError == null &&
-                    emailError == null
+            final nameError = error != null && error.contains('name')
+                ? error
+                : null;
+            final emailError = error != null && error.contains('email')
+                ? error
+                : null;
+            final passwordError =
+                error != null && nameError == null && emailError == null
                 ? error
                 : null;
 
@@ -80,7 +82,7 @@ class _SignUpPageState extends State<SignUpPage> {
                   controller: _name,
                   autofillHints: const [AutofillHints.name],
                   decoration: InputDecoration(
-                    hintText: 'John Adomako',
+                    hintText: 'John Doe',
                     errorText: nameError,
                   ),
                 ),
@@ -106,8 +108,10 @@ class _SignUpPageState extends State<SignUpPage> {
                   onSubmitted: (_) => _submit(),
                   decoration: InputDecoration(
                     hintText: 'At least 8 characters',
-                    prefixIcon:
-                        const Icon(PhosphorIconsRegular.lockSimple, size: 20),
+                    prefixIcon: const Icon(
+                      PhosphorIconsRegular.lockSimple,
+                      size: 20,
+                    ),
                     suffixIcon: IconButton(
                       icon: Icon(
                         _obscure
@@ -143,12 +147,13 @@ class _SignUpPageState extends State<SignUpPage> {
                       children: [
                         WidgetSpan(
                           child: GestureDetector(
-                            onTap: () => context
-                                .pushReplacementNamed(RouteNames.signIn),
+                            onTap: () =>
+                                context.pushReplacementNamed(RouteNames.signIn),
                             child: Text(
                               'Sign in',
-                              style: theme.textTheme.labelLarge
-                                  ?.copyWith(color: AppColors.coral),
+                              style: theme.textTheme.labelLarge?.copyWith(
+                                color: AppColors.coral,
+                              ),
                             ),
                           ),
                         ),

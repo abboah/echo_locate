@@ -49,6 +49,10 @@ class MockAuthRepository with RepositoryMixin implements AuthRepository {
     }
   }
 
+  /// Same box name the settings used to live in, so an existing mock
+  /// session survives the settings move to shared_preferences.
+  static const boxName = 'settings';
+
   static const _userKey = 'auth_user';
   static const _latency = Duration(milliseconds: 600);
 
@@ -72,11 +76,13 @@ class MockAuthRepository with RepositoryMixin implements AuthRepository {
       _validatePassword(password);
       await Future<void>.delayed(_latency);
       final name = email.split('@').first;
-      return _setUser(AuthUser(
-        id: 'mock-${email.hashCode}',
-        fullName: name.isEmpty ? 'Mapper' : _titleCase(name),
-        email: email,
-      ));
+      return _setUser(
+        AuthUser(
+          id: 'mock-${email.hashCode}',
+          fullName: name.isEmpty ? 'Mapper' : _titleCase(name),
+          email: email,
+        ),
+      );
     });
   }
 
@@ -93,11 +99,13 @@ class MockAuthRepository with RepositoryMixin implements AuthRepository {
       _validateEmail(email);
       _validatePassword(password);
       await Future<void>.delayed(_latency);
-      return _setUser(AuthUser(
-        id: 'mock-${email.hashCode}',
-        fullName: fullName.trim(),
-        email: email,
-      ));
+      return _setUser(
+        AuthUser(
+          id: 'mock-${email.hashCode}',
+          fullName: fullName.trim(),
+          email: email,
+        ),
+      );
     });
   }
 
@@ -105,11 +113,13 @@ class MockAuthRepository with RepositoryMixin implements AuthRepository {
   Future<AuthUser> signInWithGoogle() {
     return runOperation('sign_in_google', () async {
       await Future<void>.delayed(_latency);
-      return _setUser(const AuthUser(
-        id: 'mock-google',
-        fullName: 'John Adomako',
-        email: 'john@knust.edu.gh',
-      ));
+      return _setUser(
+        const AuthUser(
+          id: 'mock-google',
+          fullName: 'John Doe',
+          email: 'johndoe@knust.edu.gh',
+        ),
+      );
     });
   }
 
@@ -117,11 +127,13 @@ class MockAuthRepository with RepositoryMixin implements AuthRepository {
   Future<AuthUser> signInWithApple() {
     return runOperation('sign_in_apple', () async {
       await Future<void>.delayed(_latency);
-      return _setUser(const AuthUser(
-        id: 'mock-apple',
-        fullName: 'John Adomako',
-        email: 'john@knust.edu.gh',
-      ));
+      return _setUser(
+        const AuthUser(
+          id: 'mock-apple',
+          fullName: 'John Doe',
+          email: 'johndoe@knust.edu.gh',
+        ),
+      );
     });
   }
 

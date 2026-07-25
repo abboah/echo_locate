@@ -101,8 +101,18 @@ class SupabaseAuthRepository with RepositoryMixin implements AuthRepository {
     RepositoryMixin.clearEphemeralCache();
   }
 
-  String _friendly(AuthException e) => switch (e.message) {
-        'Invalid login credentials' => 'Wrong email or password',
-        _ => e.message,
-      };
+  String _friendly(AuthException e) {
+    // Network-level failure (no route, DNS, refused): gotrue wraps the raw
+    // ClientException/SocketException text in a retryable AuthException —
+    // never show that to a person.
+    if (e is AuthRetryableFetchException) {
+      return 'Could not reach the server. '
+          'Check your internet connection and try again.';
+    }
+    return switch (e.message) {
+      // Same 400 for wrong password AND unknown account (anti-enumeration).
+      'Invalid login credentials' => 'Wrong email or password',
+      _ => e.message,
+    };
+  }
 }

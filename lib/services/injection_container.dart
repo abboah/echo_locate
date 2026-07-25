@@ -1,5 +1,6 @@
 import 'package:get_it/get_it.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/config/app_config.dart';
@@ -27,18 +28,21 @@ final getIt = GetIt.instance;
 /// Call once at startup (after `Hive.initFlutter()`), before `runApp`.
 Future<void> configureDependencies() async {
   // --- Local persistence ---
-  final settingsBox = await Hive.openBox(HiveSettingsRepository.boxName);
+  final prefs = await SharedPreferences.getInstance(); // settings/onboarding
   await Hive.openBox(repoCacheBoxName); // backs RepositoryMixin persisted queries
+  // Mock auth keeps its session in a Hive box; only needed without Supabase.
+  final mockAuthBox =
+      AppConfig.hasSupabase ? null : await Hive.openBox(MockAuthRepository.boxName);
 
   // --- Repositories (mock impls behind abstract interfaces; Supabase
   //     versions swap in per-line here in Phase 2 without touching UI) ---
   getIt.registerLazySingleton<SettingsRepository>(
-    () => HiveSettingsRepository(settingsBox),
+    () => SharedPrefsSettingsRepository(prefs),
   );
   getIt.registerLazySingleton<AuthRepository>(
     () => AppConfig.hasSupabase
         ? SupabaseAuthRepository(Supabase.instance.client)
-        : MockAuthRepository(settingsBox),
+        : MockAuthRepository(mockAuthBox!),
   );
   getIt.registerLazySingleton<BuildingRepository>(
     () => MockBuildingRepository(),

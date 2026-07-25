@@ -23,28 +23,30 @@ void main() {
     await tempDir.delete(recursive: true);
   });
 
-  test('sign up rejects short passwords with the design error message',
-      () async {
-    expect(
-      () => repository.signUpWithEmail(
-        fullName: 'John Adomako',
-        email: 'john@knust.edu.gh',
-        password: 'abc',
-      ),
-      throwsA(
-        isA<OperationFailure>().having(
-          (f) => f.message,
-          'message',
-          'Use at least 8 characters',
+  test(
+    'sign up rejects short passwords with the design error message',
+    () async {
+      expect(
+        () => repository.signUpWithEmail(
+          fullName: 'John Doe',
+          email: 'johndoe@knust.edu.gh',
+          password: 'abc',
         ),
-      ),
-    );
-  });
+        throwsA(
+          isA<OperationFailure>().having(
+            (f) => f.message,
+            'message',
+            'Use at least 8 characters',
+          ),
+        ),
+      );
+    },
+  );
 
   test('sign up rejects invalid emails', () async {
     expect(
       () => repository.signUpWithEmail(
-        fullName: 'John Adomako',
+        fullName: 'John Doe',
         email: 'not-an-email',
         password: 'longenough',
       ),
@@ -57,15 +59,15 @@ void main() {
     final sub = repository.authStateChanges.listen(emissions.add);
 
     final user = await repository.signInWithEmail(
-      email: 'john@knust.edu.gh',
+      email: 'johndoe@knust.edu.gh',
       password: 'longenough',
     );
 
-    expect(user.email, 'john@knust.edu.gh');
+    expect(user.email, 'johndoe@knust.edu.gh');
     expect(repository.currentUser, isNotNull);
     // Session persisted: a new repository over the same box restores it.
     final revived = MockAuthRepository(box);
-    expect(revived.currentUser?.email, 'john@knust.edu.gh');
+    expect(revived.currentUser?.email, 'johndoe@knust.edu.gh');
 
     await pumpEventQueue();
     expect(emissions, hasLength(1));
@@ -74,7 +76,7 @@ void main() {
 
   test('sign out clears the session', () async {
     await repository.signInWithEmail(
-      email: 'john@knust.edu.gh',
+      email: 'johndoe@knust.edu.gh',
       password: 'longenough',
     );
     await repository.signOut();

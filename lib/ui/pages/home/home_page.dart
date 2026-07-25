@@ -61,8 +61,9 @@ class _HomeView extends StatelessWidget {
                   backgroundColor: AppColors.coralSoft,
                   child: Text(
                     user?.initial ?? '?',
-                    style: theme.textTheme.titleMedium
-                        ?.copyWith(color: AppColors.coral),
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      color: AppColors.coral,
+                    ),
                   ),
                 ),
               ],
@@ -76,6 +77,7 @@ class _HomeView extends StatelessWidget {
             const SizedBox(height: AppDimens.space20),
             const _AssistBanner(),
             const SizedBox(height: AppDimens.space12),
+
             const _ScanCard(),
             const SizedBox(height: AppDimens.space24),
             SectionLabel(
@@ -84,8 +86,9 @@ class _HomeView extends StatelessWidget {
                 onTap: () => context.goNamed(RouteNames.explore),
                 child: Text(
                   'See all',
-                  style: theme.textTheme.labelLarge
-                      ?.copyWith(color: AppColors.coral),
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: AppColors.coral,
+                  ),
                 ),
               ),
             ),
@@ -93,26 +96,26 @@ class _HomeView extends StatelessWidget {
             BlocBuilder<HomeBloc, HomeState>(
               builder: (context, state) => switch (state.status) {
                 HomeStatus.initial || HomeStatus.loading => const Padding(
-                    padding: EdgeInsets.symmetric(vertical: AppDimens.space48),
-                    child: Center(child: CircularProgressIndicator()),
-                  ),
+                  padding: EdgeInsets.symmetric(vertical: AppDimens.space48),
+                  child: Center(child: CircularProgressIndicator()),
+                ),
                 HomeStatus.failure => _LoadError(
-                    message: state.error ?? 'Could not load buildings',
-                    onRetry: () =>
-                        context.read<HomeBloc>().add(const HomeStarted()),
-                  ),
+                  message: state.error ?? 'Could not load buildings',
+                  onRetry: () =>
+                      context.read<HomeBloc>().add(const HomeStarted()),
+                ),
                 HomeStatus.success => GridView.count(
-                    crossAxisCount: 2,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    mainAxisSpacing: AppDimens.space16,
-                    crossAxisSpacing: AppDimens.space16,
-                    childAspectRatio: 0.82,
-                    children: [
-                      for (final building in state.recent)
-                        _BuildingCard(building: building),
-                    ],
-                  ),
+                  crossAxisCount: 2,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  mainAxisSpacing: AppDimens.space16,
+                  crossAxisSpacing: AppDimens.space16,
+                  childAspectRatio: 0.82,
+                  children: [
+                    for (final building in state.recent)
+                      _BuildingCard(building: building),
+                  ],
+                ),
               },
             ),
           ],
@@ -133,7 +136,8 @@ class _AssistBanner extends StatelessWidget {
 
     return Semantics(
       button: true,
-      label: 'Start assistance. Obstacle alerts and voice guidance as you walk.',
+      label:
+          'Start assistance. Obstacle alerts and voice guidance as you walk.',
       child: Material(
         color: background,
         borderRadius: BorderRadius.circular(AppDimens.radiusLg),
@@ -164,23 +168,24 @@ class _AssistBanner extends StatelessWidget {
                     children: [
                       Text(
                         'Start assistance',
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleMedium
-                            ?.copyWith(color: Colors.white),
+                        style: Theme.of(
+                          context,
+                        ).textTheme.titleMedium?.copyWith(color: Colors.white),
                       ),
                       Text(
                         'Obstacle alerts and voice guidance as you walk',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodyMedium
-                            ?.copyWith(color: Colors.white70),
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodyMedium?.copyWith(color: Colors.white70),
                       ),
                     ],
                   ),
                 ),
-                const Icon(PhosphorIconsRegular.caretRight,
-                    color: Colors.white70, size: 20),
+                const Icon(
+                  PhosphorIconsRegular.caretRight,
+                  color: Colors.white70,
+                  size: 20,
+                ),
               ],
             ),
           ),

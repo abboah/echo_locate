@@ -28,6 +28,9 @@ dependencies:
   # --- Local persistence (Achieve repo cache + offline) ---
   hive_ce: ^2.6.0
   hive_ce_flutter: ^2.1.0
+  # Settings/onboarding flags (production pattern; also what supabase_flutter
+  # uses internally for session storage).
+  shared_preferences: ^2.3.0
 
   # --- Cloud / crowdsource ---
   supabase_flutter: ^2.6.0
