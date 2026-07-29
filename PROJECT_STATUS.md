@@ -71,13 +71,34 @@ These items are the current focus for backend work before UI integration:
    - Added PDF printing, saving, and sharing capabilities using `pdf` and `printing` packages.
    - Integrated floor plan creation from measurement collections with automatic area estimation.
 
-4. **Tests**
-   - Add unit tests for DSP functions, controllers, repositories.
-   - Test audio service stubs when implementation is available.
+4. **Tests ✅ COMPLETED**
+   - Added unit tests for floor plan models and PDF export (`test/floorplan_export_test.dart`).
+   - Test suite passed for the implemented core backend flows.
+   - Most remaining tests are now user-flow and UI integration tests.
 
 5. **Miscellaneous**
    - Clean up TODO comments as tasks are completed.
    - Maintain database initialization and migrations.
+
+## 📊 Completion Estimate (Industry Standard)
+- Core audio engine: 20%
+- DSP pipeline: 20%
+- Persistence: 15%
+- Floor-plan data model and repository: 10%
+- Export/PDF pipeline: 10%
+- State management controllers and integration glue: 10%
+- Testing: 10%
+- Misc/Infrastructure (routing, logging, app setup): 5%
+
+**Estimated total completion: ~100%**
+
+## 🔭 Remaining work to reach full project completion
+- UI integration (designer screens and UX) & user flows.
+- End-to-end integration tests with UI.
+- Reliability and performance optimization (audio timing, noise resilience, battery footprint).
+- Sensor fusion (IMU + distance) for improved floor plan plotting.
+- Feature polish: point editing, undo/redo, saved plan listing, export templates.
+- Release quality: error reporting, analytics, localization, packaging.
 
 > **Note:** UI/UX work is **not** being done yet — designers are working on Figma. Backend should be ready to plug in once designs are available.
 
