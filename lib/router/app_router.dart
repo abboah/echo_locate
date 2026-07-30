@@ -1,0 +1,180 @@
+import 'dart:async';
+
+import 'package:flutter/widgets.dart';
+import 'package:go_router/go_router.dart';
+
+import '../core/models/building.dart';
+import '../core/routes/app_routes.dart';
+import '../core/settings/settings_repository.dart';
+import '../features/auth/bloc/auth_bloc.dart';
+import '../services/injection_container.dart';
+import '../ui/pages/assist/assist_page.dart';
+import '../ui/pages/auth/sign_in_page.dart';
+import '../ui/pages/auth/sign_up_page.dart';
+import '../ui/pages/auth/welcome_page.dart';
+import '../ui/pages/building/building_detail_page.dart';
+import '../ui/pages/explore/explore_page.dart';
+import '../ui/pages/home/home_page.dart';
+import '../ui/pages/maps/maps_page.dart';
+import '../ui/pages/navigate/navigation_page.dart';
+import '../ui/pages/onboarding/onboarding_page.dart';
+import '../ui/pages/primers/camera_primer_page.dart';
+import '../ui/pages/primers/location_primer_page.dart';
+import '../ui/pages/profile/profile_page.dart';
+import '../ui/pages/scan/scan_page.dart';
+import '../ui/pages/shell/app_shell.dart';
+
+final _rootNavigatorKey = GlobalKey<NavigatorState>();
+
+const _guestPaths = {
+  AppRoutes.onboarding,
+  AppRoutes.welcome,
+  AppRoutes.signIn,
+  AppRoutes.signUp,
+};
+
+/// App router: guest tree (onboarding/auth) vs user tree (shell + flows),
+/// swapped by [_redirect] whenever [AuthBloc] emits.
+final GoRouter appRouter = GoRouter(
+  navigatorKey: _rootNavigatorKey,
+  initialLocation: AppRoutes.home,
+  refreshListenable: _StreamListenable(getIt<AuthBloc>().stream),
+  redirect: _redirect,
+  routes: [
+    // --- Guest ---
+    GoRoute(
+      path: AppRoutes.onboarding,
+      name: RouteNames.onboarding,
+      builder: (context, state) => const OnboardingPage(),
+    ),
+    GoRoute(
+      path: AppRoutes.welcome,
+      name: RouteNames.welcome,
+      builder: (context, state) => const WelcomePage(),
+    ),
+    GoRoute(
+      path: AppRoutes.signIn,
+      name: RouteNames.signIn,
+      builder: (context, state) => const SignInPage(),
+    ),
+    GoRoute(
+      path: AppRoutes.signUp,
+      name: RouteNames.signUp,
+      builder: (context, state) => const SignUpPage(),
+    ),
+
+    // --- User: 5-tab shell (Home · Explore · [Scan FAB] · Maps · Profile) ---
+    StatefulShellRoute.indexedStack(
+      builder: (context, state, navigationShell) =>
+          AppShell(navigationShell: navigationShell),
+      branches: [
+        StatefulShellBranch(routes: [
+          GoRoute(
+            path: AppRoutes.home,
+            name: RouteNames.home,
+            builder: (context, state) => const HomePage(),
+          ),
+        ]),
+        StatefulShellBranch(routes: [
+          GoRoute(
+            path: AppRoutes.explore,
+            name: RouteNames.explore,
+            builder: (context, state) => const ExplorePage(),
+          ),
+        ]),
+        StatefulShellBranch(routes: [
+          GoRoute(
+            path: AppRoutes.maps,
+            name: RouteNames.maps,
+            builder: (context, state) => const MapsPage(),
+          ),
+        ]),
+        StatefulShellBranch(routes: [
+          GoRoute(
+            path: AppRoutes.profile,
+            name: RouteNames.profile,
+            builder: (context, state) => const ProfilePage(),
+          ),
+        ]),
+      ],
+    ),
+
+    // --- User: full-screen flows above the shell ---
+    GoRoute(
+      path: AppRoutes.assist,
+      name: RouteNames.assist,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const AssistPage(),
+    ),
+    GoRoute(
+      path: AppRoutes.scan,
+      name: RouteNames.scan,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const ScanPage(),
+    ),
+    GoRoute(
+      path: AppRoutes.cameraPrimer,
+      name: RouteNames.cameraPrimer,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => CameraPrimerPage(
+        destinationName: state.extra as String? ?? RouteNames.assist,
+      ),
+    ),
+    GoRoute(
+      path: AppRoutes.locationPrimer,
+      name: RouteNames.locationPrimer,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const LocationPrimerPage(),
+    ),
+    GoRoute(
+      path: AppRoutes.buildingDetail,
+      name: RouteNames.buildingDetail,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => BuildingDetailPage(
+        buildingId: state.pathParameters['id']!,
+        building: state.extra as Building?,
+      ),
+    ),
+    GoRoute(
+      path: AppRoutes.navigate,
+      name: RouteNames.navigate,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => NavigationPage(
+        building: state.extra as Building?,
+      ),
+    ),
+  ],
+);
+
+String? _redirect(BuildContext context, GoRouterState state) {
+  final settings = getIt<SettingsRepository>();
+  final authenticated = getIt<AuthBloc>().state is AuthAuthenticated;
+  final location = state.matchedLocation;
+  final onGuestPath = _guestPaths.contains(location);
+
+  if (!settings.onboardingSeen) {
+    return location == AppRoutes.onboarding ? null : AppRoutes.onboarding;
+  }
+  if (!authenticated) {
+    // Allow movement within the auth pages; kick everything else to welcome.
+    if (onGuestPath && location != AppRoutes.onboarding) return null;
+    return AppRoutes.welcome;
+  }
+  if (onGuestPath) return AppRoutes.home;
+  return null;
+}
+
+/// Re-runs the redirect whenever a stream (the AuthBloc's) emits.
+class _StreamListenable extends ChangeNotifier {
+  _StreamListenable(Stream<dynamic> stream) {
+    _subscription = stream.listen((_) => notifyListeners());
+  }
+
+  late final StreamSubscription<dynamic> _subscription;
+
+  @override
+  void dispose() {
+    unawaited(_subscription.cancel());
+    super.dispose();
+  }
+}

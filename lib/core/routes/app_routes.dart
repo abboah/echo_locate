@@ -1,33 +1,49 @@
-import 'package:go_router/go_router.dart';
-
-import '../../features/home/presentation/home_screen.dart';
-import '../../features/measurement/presentation/measurement_screen.dart';
-import '../../features/floorplan/presentation/floorplan_screen.dart';
-
-/// Application route paths
+/// Route paths + names. Use these constants only — never raw strings.
+///
+/// Guest tree (onboarding/auth) and user tree (shell + detail flows) are
+/// swapped by the router redirect based on [AuthBloc] state.
 class AppRoutes {
   AppRoutes._();
 
+  // Guest
+  static const String onboarding = '/onboarding';
+  static const String welcome = '/welcome';
+  static const String signIn = '/sign-in';
+  static const String signUp = '/sign-up';
+
+  // User — shell tabs
   static const String home = '/';
-  static const String measure = '/measure';
-  static const String floorplan = '/floorplan';
+  static const String explore = '/explore';
+  static const String maps = '/maps';
+  static const String profile = '/profile';
+
+  // User — full-screen flows (pushed above the shell)
+  static const String assist = '/assist';
+  static const String scan = '/scan';
+  static const String cameraPrimer = '/camera-primer';
+  static const String locationPrimer = '/location-primer';
+  static const String buildingDetail = '/building/:id';
+  static const String navigate = '/building/:id/navigate';
 }
 
-/// GoRouter configuration for the application
-final GoRouter appRouter = GoRouter(
-  initialLocation: AppRoutes.home,
-  routes: [
-    GoRoute(
-      path: AppRoutes.home,
-      builder: (context, state) => const HomeScreen(),
-    ),
-    GoRoute(
-      path: AppRoutes.measure,
-      builder: (context, state) => const MeasurementScreen(),
-    ),
-    GoRoute(
-      path: AppRoutes.floorplan,
-      builder: (context, state) => const FloorPlanScreen(),
-    ),
-  ],
-);
+/// go_router route names (for pushNamed/goNamed).
+class RouteNames {
+  RouteNames._();
+
+  static const String onboarding = 'onboarding';
+  static const String welcome = 'welcome';
+  static const String signIn = 'signIn';
+  static const String signUp = 'signUp';
+
+  static const String home = 'home';
+  static const String explore = 'explore';
+  static const String maps = 'maps';
+  static const String profile = 'profile';
+
+  static const String assist = 'assist';
+  static const String scan = 'scan';
+  static const String cameraPrimer = 'cameraPrimer';
+  static const String locationPrimer = 'locationPrimer';
+  static const String buildingDetail = 'buildingDetail';
+  static const String navigate = 'navigate';
+}
