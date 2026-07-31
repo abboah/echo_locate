@@ -458,4 +458,58 @@ void main() {
     );
     expect(result, isNull);
   });
+
+  group('capture timestamp', () {
+    test('the calculator leaves it unset', () {
+      // ToFCalculator sees a correlation array and nothing else — only the
+      // audio service knows when the sound left the speaker.
+      final correlation = correlator.correlate(
+        syntheticCapture(
+          breakthroughOffset: 30000,
+          echoDelaySamples: delaySamplesFor(1.0),
+        ),
+        chirp,
+      );
+      final result = calculator.calculate(
+        correlation: correlation,
+        sampleRate: params.sampleRate,
+      );
+
+      expect(result, isNotNull);
+      expect(result!.capturedAt, isNull);
+    });
+
+    test('at() stamps the reading without disturbing the measurement', () {
+      final correlation = correlator.correlate(
+        syntheticCapture(
+          breakthroughOffset: 30000,
+          echoDelaySamples: delaySamplesFor(1.0),
+        ),
+        chirp,
+      );
+      final result = calculator.calculate(
+        correlation: correlation,
+        sampleRate: params.sampleRate,
+      )!;
+      final timestamp = DateTime(2026, 7, 31, 12, 30);
+      final stamped = result.at(timestamp);
+
+      expect(stamped.capturedAt, timestamp);
+      expect(stamped.distanceMeters, result.distanceMeters);
+      expect(stamped.peakToNoiseRatio, result.peakToNoiseRatio);
+    });
+
+    test('two readings alike but for capture time are not equal', () {
+      // Equality feeds Bloc state emission: two sweeps that happen to land on
+      // the same distance are still distinct measurements, and collapsing
+      // them would drop a frame from the fusion record.
+      const a = ToFResult(distanceMeters: 1.0, peakToNoiseRatio: 12.0);
+      final b = a.at(DateTime(2026, 7, 31, 12, 30));
+      final c = a.at(DateTime(2026, 7, 31, 12, 31));
+
+      expect(b, isNot(equals(a)));
+      expect(b, isNot(equals(c)));
+      expect(b, equals(a.at(DateTime(2026, 7, 31, 12, 30))));
+    });
+  });
 }

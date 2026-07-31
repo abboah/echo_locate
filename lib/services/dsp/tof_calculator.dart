@@ -9,6 +9,7 @@ class ToFResult extends Equatable {
   const ToFResult({
     required this.distanceMeters,
     required this.peakToNoiseRatio,
+    this.capturedAt,
   });
 
   final double distanceMeters;
@@ -17,8 +18,28 @@ class ToFResult extends Equatable {
   /// [ToFCalculator.noiseGateRatio] for the measured scale.
   final double peakToNoiseRatio;
 
+  /// When the chirp that produced this reading was emitted.
+  ///
+  /// Needed to pair an acoustic range with a camera depth frame: the two
+  /// sensors run on independent schedules, so without a capture time there is
+  /// no way to know which depth frame a given ping is describing. Set by
+  /// [SonarAudioService], which is the only layer that knows when the sound
+  /// actually left the speaker — [ToFCalculator] sees a correlation array and
+  /// nothing else, so it leaves this null.
+  ///
+  /// Wall clock, not a monotonic counter: it is only ever compared against
+  /// other Dart-side timestamps taken the same way.
+  final DateTime? capturedAt;
+
+  /// This reading, stamped with its emission time.
+  ToFResult at(DateTime timestamp) => ToFResult(
+        distanceMeters: distanceMeters,
+        peakToNoiseRatio: peakToNoiseRatio,
+        capturedAt: timestamp,
+      );
+
   @override
-  List<Object?> get props => [distanceMeters, peakToNoiseRatio];
+  List<Object?> get props => [distanceMeters, peakToNoiseRatio, capturedAt];
 }
 
 /// Converts a [CrossCorrelationService] correlation array into a
