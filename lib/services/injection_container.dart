@@ -35,13 +35,17 @@ final getIt = GetIt.instance;
 Future<void> configureDependencies() async {
   // --- Local persistence ---
   final prefs = await SharedPreferences.getInstance(); // settings/onboarding
-  await Hive.openBox(repoCacheBoxName); // backs RepositoryMixin persisted queries
+  await Hive.openBox(
+    repoCacheBoxName,
+  ); // backs RepositoryMixin persisted queries
   // Mock auth keeps its session in a Hive box; only needed without Supabase.
-  final mockAuthBox =
-      AppConfig.hasSupabase ? null : await Hive.openBox(MockAuthRepository.boxName);
+  final mockAuthBox = AppConfig.hasSupabase
+      ? null
+      : await Hive.openBox(MockAuthRepository.boxName);
   // Sonar's clutter profile: an array, so hive_ce rather than prefs.
-  final sonarCalibrationBox =
-      await Hive.openBox(SonarAudioService.calibrationBoxName);
+  final sonarCalibrationBox = await Hive.openBox(
+    SonarAudioService.calibrationBoxName,
+  );
 
   // --- Repositories (mock impls behind abstract interfaces; Supabase
   //     versions swap in per-line here in Phase 2 without touching UI) ---
@@ -87,22 +91,16 @@ Future<void> configureDependencies() async {
   getIt.registerFactory<AssistBloc>(
     () => AssistBloc(getIt<DetectionService>(), getIt<SpeechService>()),
   );
-  getIt.registerFactory<HomeBloc>(
-    () => HomeBloc(getIt<BuildingRepository>()),
-  );
+  getIt.registerFactory<HomeBloc>(() => HomeBloc(getIt<BuildingRepository>()));
   getIt.registerFactory<ExploreBloc>(
     () => ExploreBloc(getIt<BuildingRepository>()),
   );
   getIt.registerFactory<BuildingDetailBloc>(
     () => BuildingDetailBloc(getIt<BuildingRepository>()),
   );
-  getIt.registerFactory<MapsBloc>(
-    () => MapsBloc(getIt<BuildingRepository>()),
-  );
+  getIt.registerFactory<MapsBloc>(() => MapsBloc(getIt<BuildingRepository>()));
   getIt.registerFactory<ProfileBloc>(
     () => ProfileBloc(getIt<ProfileRepository>()),
   );
-  getIt.registerFactory<SonarBloc>(
-    () => SonarBloc(getIt<SonarAudioService>()),
-  );
+  getIt.registerFactory<SonarBloc>(() => SonarBloc(getIt<SonarAudioService>()));
 }
