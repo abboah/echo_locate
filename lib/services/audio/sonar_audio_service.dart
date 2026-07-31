@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -13,6 +12,7 @@ import '../dsp/chirp_generator.dart';
 import '../dsp/chirp_params.dart';
 import '../dsp/cross_correlation_service.dart';
 import '../dsp/tof_calculator.dart';
+import 'sonar_latency_profile.dart';
 import 'wav_encoder.dart';
 
 /// Owns the sonar's hardware I/O: speaker playback (flutter_soloud) and mic
@@ -26,6 +26,13 @@ class SonarAudioService {
     ChirpGenerator generator = const ChirpGenerator(),
     CrossCorrelationService correlator = const CrossCorrelationService(),
     ToFCalculator calculator = const ToFCalculator(),
+    // FALLBACK timings only — used for the first sweep of a fresh install,
+    // and whenever a measured [SonarLatencyProfile] is unavailable or
+    // implausible. Both are sized for the worst case rather than this
+    // device's actual behaviour, which is why they are slow; after one sweep
+    // the service measures the real latencies and schedules itself from
+    // those instead (see [_latency]).
+    //
     // Spectral analysis of a dumped recording (tool/analyze_wav.dart) showed
     // SoLoud.play() itself has ~560ms of latency between the call resolving
     // and audio actually starting — a genuine 2-6kHz upward sweep showed up
@@ -33,12 +40,12 @@ class SonarAudioService {
     // old 500ms window was ending capture before the chirp ever sounded.
     // 1000ms clears the observed latency with margin for an echo after it.
     this.captureWindow = const Duration(milliseconds: 1000),
-    // On-device measurement (Infinix X657C, Android 10): AudioRecord takes
-    // meaningfully longer than a naive 30ms to actually start delivering
-    // stream data. SONAR-PING timing logs showed firstByteAt landing ~450ms
-    // after startStream() resolved — well after playAt at 250ms warmup, so
-    // the chirp played before the recorder was actually capturing anything.
-    // 600ms clears that with margin.
+    // No longer a delay that is always waited out — it is the TIMEOUT on
+    // waiting for the recorder's first chunk. The capture now waits for that
+    // chunk to actually arrive (see [_emitAndCorrelate]), so this only comes
+    // into play when the recorder never delivers at all, and the sweep is
+    // going to fail either way. Kept generous for that reason: on-device
+    // startup was seen anywhere from 358ms to 652ms.
     this.recorderWarmup = const Duration(milliseconds: 600),
     // Transmit at full scale: echo SNR is the binding constraint, and every
     // dB of transmit power is a dB at the receiver.
@@ -61,7 +68,20 @@ class SonarAudioService {
     // Silence between pulses inside the train. Must exceed the full round
     // trip at ToFCalculator.maxRangeMeters (10m ≈ 58ms) so one pulse's
     // echoes have died out before the next pulse's breakthrough.
-    this.pulseGap = const Duration(milliseconds: 150),
+    //
+    // 80ms rather than the original 150ms: the constraint is 58ms, so 150ms
+    // was carrying ~92ms of unused slack on every gap — 276ms per train, and
+    // three times that per measurement. 80ms keeps a 22ms margin over the
+    // constraint. (The true limit is looser still, since the 120ms chirp is
+    // itself longer than the 58ms echo window, but the gap is what the
+    // envelope-overlap argument is stated in terms of, so it is what is kept
+    // honest.)
+    //
+    // Changing this invalidates any stored clutter profile — the fingerprint
+    // in [_paramsFingerprint] includes the pulse layout, so a profile
+    // captured under the old gap is discarded rather than misapplied, and
+    // devices need recalibrating once.
+    this.pulseGap = const Duration(milliseconds: 80),
     Box<dynamic>? calibrationBox,
   })  : _calibrationBox = calibrationBox,
         _params = params,
@@ -86,6 +106,30 @@ class SonarAudioService {
   /// Breakthrough-to-breakthrough spacing inside the emitted train.
   int get _pulseSpacingSamples => _params.sampleCount + _pulseGapSamples;
 
+  /// This device's measured audio latencies. Null until the first successful
+  /// sweep (or a restore from storage), while the conservative constructor
+  /// fallbacks are used instead.
+  SonarLatencyProfile? _latency;
+
+  SonarLatencyProfile? get latencyProfile => _latency;
+
+  /// Round-trip flight time of the furthest echo still worth recording.
+  Duration get _maxEchoDelay => Duration(
+        microseconds: (2 *
+                _calculator.maxRangeMeters /
+                _calculator.speedOfSoundMps *
+                Duration.microsecondsPerSecond)
+            .round(),
+      );
+
+  /// Settle time after the recorder's first chunk arrives, before the chirp
+  /// fires. One chunk is ~80ms on this hardware; this keeps the chirp off the
+  /// boundary of the very first buffer handed over.
+  static const Duration _captureSettle = Duration(milliseconds: 80);
+
+  Duration get _effectiveWindow =>
+      _latency?.captureWindow(maxEchoDelay: _maxEchoDelay) ?? captureWindow;
+
   final AudioRecorder _recorder = AudioRecorder();
   bool _ready = false;
   bool _busy = false;
@@ -101,6 +145,8 @@ class SonarAudioService {
   static const String calibrationBoxName = 'sonar_calibration';
   static const String _profileKey = 'clutter_profile';
   static const String _fingerprintKey = 'clutter_profile_params';
+  static const String _latencyKey = 'latency_profile';
+  static const String _latencyRateKey = 'latency_profile_sample_rate';
 
   /// Identifies the signal parameters a stored profile was captured under.
   ///
@@ -143,6 +189,38 @@ class SonarAudioService {
     }
   }
 
+  /// Restores a stored latency profile.
+  ///
+  /// Keyed on sample rate alone, not the full chirp fingerprint: how long the
+  /// recorder takes to start and the playback engine takes to sound are
+  /// properties of the device and the audio stack, not of the waveform being
+  /// played. Retuning the chirp invalidates the clutter profile but leaves
+  /// these measurements perfectly valid.
+  void _restoreLatencyProfile() {
+    final box = _calibrationBox;
+    if (box == null) return;
+    try {
+      if (box.get(_latencyRateKey) != _params.sampleRate) return;
+      final profile = SonarLatencyProfile.fromJson(box.get(_latencyKey));
+      if (profile == null) return;
+      _latency = profile;
+      AppLogger.info('SONAR-LATENCY restored :: $profile');
+    } catch (e) {
+      AppLogger.warn('SONAR-LATENCY restore failed: $e');
+    }
+  }
+
+  Future<void> _persistLatencyProfile(SonarLatencyProfile profile) async {
+    final box = _calibrationBox;
+    if (box == null) return;
+    try {
+      await box.put(_latencyKey, profile.toJson());
+      await box.put(_latencyRateKey, _params.sampleRate);
+    } catch (e) {
+      AppLogger.warn('SONAR-LATENCY persist failed: $e');
+    }
+  }
+
   Future<void> _persistClutterProfile(Float64List profile) async {
     final box = _calibrationBox;
     if (box == null) return;
@@ -171,6 +249,7 @@ class SonarAudioService {
         await SoLoud.instance.init();
       }
       _restoreClutterProfile();
+      _restoreLatencyProfile();
       _ready = true;
       return true;
     } catch (e) {
@@ -203,9 +282,10 @@ class SonarAudioService {
   /// "no reading" now means the scene genuinely had nothing, not that one
   /// sweep was unlucky.
   Future<ToFResult?> measure({int sweeps = 3}) async {
+    final captures = await _captureSweeps(sweeps: sweeps);
     final results = <ToFResult>[];
-    for (var i = 0; i < sweeps; i++) {
-      final result = await ping();
+    for (final capture in captures) {
+      final result = _resolve(capture);
       if (result != null) results.add(result);
     }
     if (results.length * 2 < sweeps) {
@@ -234,8 +314,15 @@ class SonarAudioService {
   /// confident echo is found, or any hardware call fails — this never
   /// throws, and never returns a clamped/guessed distance.
   Future<ToFResult?> ping() async {
-    final correlation = await _emitAndCorrelate();
-    if (correlation == null) return null;
+    final captures = await _captureSweeps(sweeps: 1);
+    if (captures.isEmpty) return null;
+    return _resolve(captures.first);
+  }
+
+  /// Turns one captured sweep into a distance, or null when no confident echo
+  /// stands out of it.
+  ToFResult? _resolve(({Float64List correlation, DateTime playedAt}) capture) {
+    final correlation = capture.correlation;
 
     final raw = _calculator.calculate(
       correlation: correlation,
@@ -252,7 +339,7 @@ class SonarAudioService {
         pulseSpacingSamples: _pulseSpacingSamples,
         clutterProfile: _clutterProfile,
       );
-      AppLogger.info(
+      AppLogger.debug(
         debug == null
             ? 'SONAR-PING no echo :: no in-range peak at all'
             : 'SONAR-PING no echo :: best candidate '
@@ -267,12 +354,16 @@ class SonarAudioService {
     // No latency compensation needed: ToFCalculator anchors t=0 on the
     // direct speaker-to-mic breakthrough peak, which physically cancels
     // playback/recording scheduling latency.
-    AppLogger.info(
+    //
+    // Per-sweep detail is debug-level: one user-facing measurement is several
+    // sweeps, and only the median it resolves to (logged by [measure]) is
+    // worth a line at info during joint camera/sonar runs.
+    AppLogger.debug(
       'SONAR-PING distance=${raw.distanceMeters.toStringAsFixed(3)}m '
       'peakToNoiseRatio=${raw.peakToNoiseRatio.toStringAsFixed(2)} '
       'clutter=${_clutterProfile == null ? "none" : "applied"}',
     );
-    return raw;
+    return raw.at(capture.playedAt);
   }
 
   /// Records this device's fixed acoustic signature — speaker ringing and
@@ -295,12 +386,9 @@ class SonarAudioService {
   /// is then left untouched.
   Future<bool> calibrateClutter({int captures = 3}) async {
     final profiles = <Float64List>[];
-    for (var i = 0; i < captures; i++) {
-      final correlation = await _emitAndCorrelate();
-      if (correlation == null) continue;
-
+    for (final capture in await _captureSweeps(sweeps: captures)) {
       final profile = _calculator.buildClutterProfile(
-        correlation: correlation,
+        correlation: capture.correlation,
         sampleRate: _params.sampleRate,
         pulseCount: pulseCount,
         pulseSpacingSamples: _pulseSpacingSamples,
@@ -349,11 +437,24 @@ class SonarAudioService {
     return profile[index];
   }
 
-  /// Emits the pulse train, records it, and matched-filters the recording
+  /// Emits [sweeps] pulse trains inside ONE recording and matched-filters each
   /// against a single chirp. Shared by [ping] and [calibrateClutter] so both
   /// measure through exactly the same signal path.
-  Future<Float64List?> _emitAndCorrelate() async {
-    if (!_ready || _busy) return null;
+  ///
+  /// One recorder session, not one per sweep. Bringing `AudioRecord` up costs
+  /// 322-739ms on the Infinix X657C and is pure overhead repeated per sweep —
+  /// for a 3-sweep measurement that was up to 1.5s spent starting a recorder
+  /// that had just been stopped. The trains are fired back to back into a
+  /// single continuous capture and the recording is sliced afterwards, which
+  /// pays that cost once. Sweeps stay independent: each slice is correlated
+  /// and gated on its own, so [measure]'s median still discards a bad one.
+  ///
+  /// Each entry carries the wall-clock instant its chirp was emitted, so
+  /// [ping] can stamp the result for later fusion with camera depth frames.
+  Future<List<({Float64List correlation, DateTime playedAt})>> _captureSweeps({
+    required int sweeps,
+  }) async {
+    if (!_ready || _busy || sweeps < 1) return const [];
     _busy = true;
 
     StreamSubscription<Uint8List>? subscription;
@@ -388,21 +489,60 @@ class SonarAudioService {
         ),
       );
       final startStreamAt = stopwatch.elapsed;
+      final capturing = Completer<void>();
       subscription = stream.listen((chunk) {
-        firstByteAt ??= stopwatch.elapsed;
+        if (firstByteAt == null) {
+          firstByteAt = stopwatch.elapsed;
+          if (!capturing.isCompleted) capturing.complete();
+        }
         recordedBytes.addAll(chunk);
       });
 
-      // Let mic capture spin up before the chirp fires, so its onset isn't
-      // clipped by recorder startup latency (see [recorderWarmup] doc).
-      await Future<void>.delayed(recorderWarmup);
-      final playAt = stopwatch.elapsed;
-      await SoLoud.instance.play(_chirpSource!, volume: playbackVolume);
+      // Wait for the recorder to actually deliver audio, rather than guessing
+      // how long it will take.
+      //
+      // This used to be a fixed delay sized to the worst startup ever
+      // observed, and then briefly a delay derived from a measured average.
+      // Both were wrong for the same reason: on-device, `firstByteAt` swings
+      // between 358ms and 652ms from run to run, because the recorder hands
+      // over ~80ms chunks and where the first one lands is mostly scheduling
+      // jitter. Any single number is therefore either too short (the chirp
+      // fires into a dead mic and the sweep returns nothing) or needlessly
+      // long — and a schedule derived from the last sample chases the noise,
+      // which on device drove it from 816ms up to 1111ms instead of down.
+      //
+      // The first chunk arriving IS the event being waited for, so waiting on
+      // it directly is exact every time and needs no calibration at all. The
+      // fallback timeout only matters if the recorder never delivers, in
+      // which case the sweep was going to fail regardless.
+      final window = _effectiveWindow;
+      await capturing.future
+          .timeout(recorderWarmup, onTimeout: () {})
+          .catchError((Object _) {});
+      // One chunk's worth of settle, so the chirp cannot land on the boundary
+      // of the very first buffer the recorder hands over.
+      await Future<void>.delayed(_captureSettle);
+
       final trainDuration = Duration(
         microseconds: (_params.duration.inMicroseconds * pulseCount) +
             (pulseGap.inMicroseconds * (pulseCount - 1)),
       );
-      await Future<void>.delayed(trainDuration + captureWindow);
+      // One sweep owns this much of the timeline: long enough for its train to
+      // sound (late by the playback latency the window covers) and for the
+      // furthest echo to return, before the next train starts.
+      final sweepSpan = trainDuration + window;
+
+      final playAts = <Duration>[];
+      // Wall clock alongside the stopwatch readings: the stopwatch measures
+      // this capture's internal timing, while these are what a depth frame
+      // from the camera can be lined up against.
+      final playedAts = <DateTime>[];
+      for (var i = 0; i < sweeps; i++) {
+        playAts.add(stopwatch.elapsed);
+        playedAts.add(DateTime.now());
+        await SoLoud.instance.play(_chirpSource!, volume: playbackVolume);
+        await Future<void>.delayed(sweepSpan);
+      }
 
       // Cancel and stop before reading the buffer, so every chunk emitted
       // during the capture window is flushed to [recordedBytes] first.
@@ -411,37 +551,72 @@ class SonarAudioService {
       await _recorder.stop();
       stopwatch.stop();
 
+      final captureStart = firstByteAt;
       final expectedSamples =
           _params.sampleRate * stopwatch.elapsedMilliseconds ~/ 1000;
-      AppLogger.info(
+      AppLogger.debug(
         'SONAR-PING timing :: startStreamAt=${startStreamAt.inMilliseconds}ms '
-        'firstByteAt=${firstByteAt?.inMilliseconds}ms '
-        'playAt=${playAt.inMilliseconds}ms '
+        'firstByteAt=${captureStart?.inMilliseconds}ms '
+        'playAts=${playAts.map((p) => p.inMilliseconds).join(",")}ms '
         'totalElapsed=${stopwatch.elapsedMilliseconds}ms '
         'samples=${recordedBytes.length ~/ 2}/$expectedSamples',
       );
+      if (captureStart == null) return const [];
 
       final received = _pcm16BytesToFloat64(Uint8List.fromList(recordedBytes));
-      AppLogger.info(
+      AppLogger.debug(
         'SONAR-PING rawSignal :: ${_signalStats(received)} '
         'chirpPeak=${chirpSamples.reduce((a, b) => a.abs() > b.abs() ? a : b).toStringAsFixed(3)}',
       );
-      await _debugDumpWav(received, chirpSamples);
-      final correlation = _correlator.correlate(received, chirpSamples);
-      final anchors = _calculator.debugAnchors(
-        correlation: correlation,
-        pulseCount: pulseCount,
-        pulseSpacingSamples: _pulseSpacingSamples,
-      );
-      AppLogger.info(
-        'SONAR-PING anchors :: spacing=$_pulseSpacingSamples '
-        'at=${anchors.join(",")} '
-        'peaks=${anchors.map((i) => correlation[i].abs().toStringAsFixed(1)).join(",")}',
-      );
-      return correlation;
+
+      final results = <({Float64List correlation, DateTime playedAt})>[];
+      for (var i = 0; i < sweeps; i++) {
+        // Slice on the schedule the trains were fired to. Segment i runs from
+        // the instant its train was scheduled to the instant the next one was,
+        // which is exactly [sweepSpan] and therefore contains that train plus
+        // its echoes and nothing of its neighbour's.
+        final from = _samplesSince(playAts[i] - captureStart);
+        final to = i + 1 < sweeps
+            ? _samplesSince(playAts[i + 1] - captureStart)
+            : received.length;
+        if (from < 0 || from >= received.length || to <= from) continue;
+
+        final segment = Float64List.sublistView(
+          received,
+          from,
+          to > received.length ? received.length : to,
+        );
+        final correlation = _correlator.correlate(segment, chirpSamples);
+        final anchors = _calculator.debugAnchors(
+          correlation: correlation,
+          pulseCount: pulseCount,
+          pulseSpacingSamples: _pulseSpacingSamples,
+        );
+        AppLogger.debug(
+          'SONAR-PING sweep$i :: samples=$from..$to '
+          'spacing=$_pulseSpacingSamples at=${anchors.join(",")} '
+          'peaks=${anchors.map((j) => correlation[j].abs().toStringAsFixed(1)).join(",")}',
+        );
+
+        if (i == 0) {
+          // Measured once per capture, from the first sweep. Because the
+          // segment starts exactly when `play()` was called, the breakthrough's
+          // offset INSIDE the segment is the playback latency directly — no
+          // arithmetic against the recording's own start needed.
+          await _updateLatencyProfile(
+            recorderStartup: captureStart,
+            firstAnchor: anchors.isEmpty ? null : anchors.first,
+            chirpLength: chirpSamples.length,
+            usedWindow: window,
+          );
+        }
+
+        results.add((correlation: correlation, playedAt: playedAts[i]));
+      }
+      return results;
     } catch (e, stack) {
       AppLogger.error('Sonar capture failed: $e', e, stack);
-      return null;
+      return const [];
     } finally {
       await subscription?.cancel();
       try {
@@ -449,6 +624,82 @@ class SonarAudioService {
       } catch (_) {}
       _busy = false;
     }
+  }
+
+  /// Samples of audio spanned by [elapsed].
+  int _samplesSince(Duration elapsed) =>
+      elapsed.inMicroseconds * _params.sampleRate ~/
+      Duration.microsecondsPerSecond;
+
+  /// Derives this device's audio latencies from a capture that just happened,
+  /// and adopts them if they look sane.
+  ///
+  /// Playback latency is read off the recording itself. The direct
+  /// speaker-to-mic breakthrough is the chirp arriving over ~0m, so the sample
+  /// it starts at IS the moment the speaker sounded. Since each sweep's
+  /// segment is sliced to begin exactly when `play()` was called, the
+  /// breakthrough's offset within that segment is the playback lag directly —
+  /// no test tone or special calibration pass needed, just the sweep that was
+  /// already being taken.
+  ///
+  /// [recorderStartup] is when the recorder's first *chunk* arrived, which is
+  /// at or after the moment its first sample was captured — recorded for
+  /// diagnostics only, since the capture now waits on that chunk rather than
+  /// predicting it.
+  Future<void> _updateLatencyProfile({
+    required Duration recorderStartup,
+    required int? firstAnchor,
+    required int chirpLength,
+    required Duration usedWindow,
+  }) async {
+    if (firstAnchor == null) return;
+
+    // Correlation index -> offset into the segment: a match starting at
+    // sample d peaks at d + template.length - 1 (see CrossCorrelationService).
+    final breakthroughSample = firstAnchor - (chirpLength - 1);
+    if (breakthroughSample < 0) return;
+
+    final observed = SonarLatencyProfile(
+      recorderStartup: recorderStartup,
+      playbackLatency: Duration(
+        microseconds: breakthroughSample *
+            Duration.microsecondsPerSecond ~/
+            _params.sampleRate,
+      ),
+    );
+    if (!observed.isPlausible) {
+      AppLogger.debug('SONAR-LATENCY rejected implausible :: $observed');
+      return;
+    }
+
+    // Keep the WORST playback latency seen, not the latest.
+    //
+    // On device this measurement varies widely between otherwise identical
+    // sweeps (400ms and 569ms on consecutive pings). Adopting the latest
+    // sample makes the window track that noise, and a window sized from a
+    // low sample will cut off the chirp on the next sweep that runs long —
+    // which costs the whole reading. A running maximum converges upward to a
+    // window that covers every sweep and then stops moving.
+    final merged = _latency == null
+        ? observed
+        : SonarLatencyProfile(
+            recorderStartup: observed.recorderStartup,
+            playbackLatency:
+                observed.playbackLatency > _latency!.playbackLatency
+                    ? observed.playbackLatency
+                    : _latency!.playbackLatency,
+          );
+
+    final changed = merged.playbackLatency != _latency?.playbackLatency;
+    _latency = merged;
+    if (!changed) return;
+
+    AppLogger.info(
+      'SONAR-LATENCY measured :: observed $observed — window '
+      '${usedWindow.inMilliseconds}ms -> '
+      '${merged.captureWindow(maxEchoDelay: _maxEchoDelay).inMilliseconds}ms',
+    );
+    await _persistLatencyProfile(merged);
   }
 
   Float64List _pcm16BytesToFloat64(Uint8List bytes) {
@@ -478,29 +729,4 @@ class SonarAudioService {
     return 'peak=${peak.toStringAsFixed(3)} rms=${rms.toStringAsFixed(4)}';
   }
 
-  /// TEMPORARY calibration aid: dumps the captured recording and the
-  /// reference chirp as WAV files to this app's private cache dir (always
-  /// writable, no external-storage permission needed), so they can be
-  /// pulled with `adb shell run-as <pkg> cat <path>` and inspected directly
-  /// instead of guessing from summary stats. Remove once calibration is done.
-  Future<void> _debugDumpWav(Float64List received, Float64List chirp) async {
-    try {
-      final dir = Directory.systemTemp.path;
-      await File('$dir/sonar_received.wav').writeAsBytes(
-        wrapPcm16AsWav(
-          _generator.toPcm16Bytes(received),
-          sampleRate: _params.sampleRate,
-        ),
-      );
-      await File('$dir/sonar_chirp.wav').writeAsBytes(
-        wrapPcm16AsWav(
-          _generator.toPcm16Bytes(chirp),
-          sampleRate: _params.sampleRate,
-        ),
-      );
-      AppLogger.info('SONAR-PING debug WAVs written to $dir');
-    } catch (e) {
-      AppLogger.warn('SONAR-PING debug WAV dump failed: $e');
-    }
-  }
 }
