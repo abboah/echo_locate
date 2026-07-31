@@ -34,7 +34,14 @@ class SonarBloc extends Bloc<SonarEvent, SonarState> {
       emit(state.copyWith(status: SonarStatus.unavailable));
       return;
     }
-    emit(state.copyWith(status: SonarStatus.idle));
+    // A clutter profile persists across sessions, and [SonarAudioService.start]
+    // has just restored it if one was stored. Without asking, the UI reported
+    // "Calibration needed" on every fresh launch — telling the user to redo
+    // work that was already done and already being applied to every ping.
+    emit(state.copyWith(
+      status: SonarStatus.idle,
+      isCalibrated: _audio.hasClutterProfile,
+    ));
 
     await _headingSubscription?.cancel();
     _headingSubscription = magnetometerEventStream().listen(
