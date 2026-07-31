@@ -117,14 +117,28 @@ class _DepthProbePageState extends State<DepthProbePage> {
           const Divider(height: AppDimens.space32),
           if (availability != null && !availability.isReady)
             Text(
-              availability.isUserFixable
-                  ? 'This device can run ARCore, but the ARCore app is missing '
+              switch (availability) {
+                ArCoreAvailability.supportedNotInstalled ||
+                ArCoreAvailability.supportedApkTooOld =>
+                  'This device can run ARCore, but the ARCore app is missing '
                       'or out of date. Install or update "Google Play Services '
-                      'for AR" from the Play Store, then reopen this screen.'
-                  : 'Google has not certified this device for ARCore, so '
+                      'for AR" from the Play Store, then reopen this screen.',
+                ArCoreAvailability.unsupported =>
+                  'Google has not certified this device for ARCore, so '
                       'camera scanning cannot run on it. Everything else in '
                       'the app — sonar, browsing and navigation — works '
                       'normally. Scanning needs a certified device.',
+                // Distinct from `unsupported`: ARCore did not rule the device
+                // out, it failed to answer. Saying "not certified" here would
+                // assert more than was measured — and this is the state an
+                // uncertified device actually lands in, because ARCore's
+                // install service cannot resolve it at all.
+                _ => 'ARCore could not determine whether this device supports '
+                    'scanning — it is either uncertified or unable to reach '
+                    'Google Play Services for AR. Scanning stays unavailable '
+                    'until it answers. Sonar, browsing and navigation are '
+                    'unaffected.',
+              },
               style: theme.textTheme.bodyMedium,
             ),
           if (availability != null && availability.isReady) ...[

@@ -13,6 +13,7 @@ import '../../../services/injection_container.dart';
 import '../../widgets/app_search_field.dart';
 import '../../widgets/building_glyph.dart';
 import '../../widgets/percent_badge.dart';
+import '../../widgets/scan_capability_gate.dart';
 import '../../widgets/section_label.dart';
 import '../scan/camera_flow.dart';
 
@@ -78,7 +79,7 @@ class _HomeView extends StatelessWidget {
             const _AssistBanner(),
             const SizedBox(height: AppDimens.space12),
 
-            const _ScanCard(),
+            const ScanCapabilityGate(child: _ScanCard()),
             const SizedBox(height: AppDimens.space24),
             SectionLabel(
               'Recently mapped',

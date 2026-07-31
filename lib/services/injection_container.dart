@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:get_it/get_it.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -18,6 +20,7 @@ import '../features/home/bloc/home_bloc.dart';
 import '../features/maps/bloc/maps_bloc.dart';
 import '../features/profile/bloc/profile_bloc.dart';
 import '../features/profile/profile_repository.dart';
+import '../features/scan/bloc/scan_capability_cubit.dart';
 import '../features/sonar/bloc/sonar_bloc.dart';
 import 'audio/sonar_audio_service.dart';
 import 'sensing/detection_service.dart';
@@ -72,6 +75,13 @@ Future<void> configureDependencies() async {
   getIt.registerLazySingleton<AuthBloc>(
     () => AuthBloc(getIt<AuthRepository>()),
   );
+  getIt.registerLazySingleton<ScanCapabilityCubit>(
+    () => ScanCapabilityCubit(getIt<ArCoreDepthService>()),
+  );
+  // Kicked off, not awaited: the ARCore query can take a moment on first call
+  // and nothing should hold up first paint for it. The cubit starts in
+  // `checking`, which hides scan entry points until the answer lands.
+  unawaited(getIt<ScanCapabilityCubit>().resolve());
 
   // --- Feature blocs (one fresh instance per screen visit) ---
   getIt.registerFactory<AssistBloc>(
