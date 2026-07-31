@@ -151,6 +151,40 @@ class _ProfileView extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: AppDimens.space24),
+                // TEMPORARY dev entry point for the sonar feature — there's
+                // no Figma spot for it yet. Move/remove once one exists.
+                const SectionLabel('Developer'),
+                const SizedBox(height: AppDimens.space8),
+                Card(
+                  child: ListTile(
+                    title: Text('Sonar (dev)',
+                        style: theme.textTheme.titleMedium),
+                    subtitle: Text('Acoustic distance ping + radar',
+                        style: theme.textTheme.bodyMedium),
+                    trailing: Icon(
+                      PhosphorIconsRegular.caretRight,
+                      size: 18,
+                      color: theme.textTheme.bodyMedium?.color,
+                    ),
+                    onTap: () => context.pushNamed(RouteNames.sonar),
+                  ),
+                ),
+                const SizedBox(height: AppDimens.space8),
+                Card(
+                  child: ListTile(
+                    title: Text('Depth probe (dev)',
+                        style: theme.textTheme.titleMedium),
+                    subtitle: Text('ARCore availability + live depth readout',
+                        style: theme.textTheme.bodyMedium),
+                    trailing: Icon(
+                      PhosphorIconsRegular.caretRight,
+                      size: 18,
+                      color: theme.textTheme.bodyMedium?.color,
+                    ),
+                    onTap: () => context.pushNamed(RouteNames.depthProbe),
+                  ),
+                ),
+                const SizedBox(height: AppDimens.space24),
                 OutlinedButton.icon(
                   onPressed: () => context
                       .read<AuthBloc>()

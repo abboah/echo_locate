@@ -18,8 +18,11 @@ import '../features/home/bloc/home_bloc.dart';
 import '../features/maps/bloc/maps_bloc.dart';
 import '../features/profile/bloc/profile_bloc.dart';
 import '../features/profile/profile_repository.dart';
+import '../features/sonar/bloc/sonar_bloc.dart';
+import 'audio/sonar_audio_service.dart';
 import 'sensing/detection_service.dart';
 import 'speech/speech_service.dart';
+import 'vision/arcore_depth_service.dart';
 
 /// Global service locator. Repositories, blocs/cubits, and stream controllers
 /// are registered here. See CLAUDE.md for the per-feature registration recipe.
@@ -33,6 +36,9 @@ Future<void> configureDependencies() async {
   // Mock auth keeps its session in a Hive box; only needed without Supabase.
   final mockAuthBox =
       AppConfig.hasSupabase ? null : await Hive.openBox(MockAuthRepository.boxName);
+  // Sonar's clutter profile: an array, so hive_ce rather than prefs.
+  final sonarCalibrationBox =
+      await Hive.openBox(SonarAudioService.calibrationBoxName);
 
   // --- Repositories (mock impls behind abstract interfaces; Supabase
   //     versions swap in per-line here in Phase 2 without touching UI) ---
@@ -54,6 +60,10 @@ Future<void> configureDependencies() async {
   // --- Sensing / speech engines (hardware owners; Blocs subscribe) ---
   getIt.registerLazySingleton<DetectionService>(() => DetectionService());
   getIt.registerLazySingleton<SpeechService>(() => SpeechService());
+  getIt.registerLazySingleton<SonarAudioService>(
+    () => SonarAudioService(calibrationBox: sonarCalibrationBox),
+  );
+  getIt.registerLazySingleton<ArCoreDepthService>(() => ArCoreDepthService());
 
   // --- App-wide cubits/blocs (singletons) ---
   getIt.registerLazySingleton<ThemeCubit>(
@@ -81,5 +91,8 @@ Future<void> configureDependencies() async {
   );
   getIt.registerFactory<ProfileBloc>(
     () => ProfileBloc(getIt<ProfileRepository>()),
+  );
+  getIt.registerFactory<SonarBloc>(
+    () => SonarBloc(getIt<SonarAudioService>()),
   );
 }

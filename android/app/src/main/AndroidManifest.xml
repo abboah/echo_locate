@@ -8,7 +8,15 @@
     <uses-permission android:name="android.permission.VIBRATE"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
-    
+
+    <!-- M0: ARCore depth scanning. Declared OPTIONAL on purpose.
+         "required" would make the app un-installable from Play on every
+         uncertified device, which for an accessibility app aimed partly at
+         users on budget hardware would lock them out of sonar, browsing and
+         navigation too — none of which need ARCore. Scanning is instead
+         gated at runtime (ArCoreDepthHandler.checkAvailability). -->
+    <uses-feature android:name="android.hardware.camera.ar" android:required="false"/>
+
     <application
         android:label="echo_locate"
         android:name="${applicationName}"
@@ -40,6 +48,10 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- "optional" pairs with the uses-feature above: Play may install
+             ARCore where supported, but its absence is not an install
+             blocker. "required" here would defeat the point. -->
+        <meta-data android:name="com.google.ar.core" android:value="optional" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
