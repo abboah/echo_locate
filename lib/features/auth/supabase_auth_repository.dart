@@ -1,6 +1,8 @@
+import 'package:google_sign_in/google_sign_in.dart';
 // Supabase also exports an `AuthUser`; ours (the app model) wins.
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthUser;
 
+import '../../core/config/app_config.dart';
 import '../../core/models/auth_user.dart';
 import '../../data/repository_mixin.dart';
 import 'auth_repository.dart';
@@ -9,13 +11,15 @@ import 'auth_repository.dart';
 /// `AppConfig.hasSupabase` is true — the Blocs/pages never know the
 /// difference. Sessions persist across restarts via supabase_flutter.
 ///
-/// Google/Apple stay "coming soon" for now: native OAuth needs per-platform
-/// console setup that isn't worth the deadline budget; email covers the
-/// thesis.
+/// Email and Google are both live. Apple stays "coming soon": it needs a
+/// paid Apple Developer account, and the thesis is demoed on Android.
 class SupabaseAuthRepository with RepositoryMixin implements AuthRepository {
-  SupabaseAuthRepository(this._client);
+  SupabaseAuthRepository(this._client, {GoogleSignIn? googleSignIn})
+      : _google = googleSignIn ?? GoogleSignIn.instance;
 
   final SupabaseClient _client;
+  final GoogleSignIn _google;
+  bool _googleReady = false;
 
   AuthUser? _map(User? user) {
     if (user == null) return null;
@@ -81,12 +85,62 @@ class SupabaseAuthRepository with RepositoryMixin implements AuthRepository {
     });
   }
 
+  /// Native Google sign-in: the Android Credential Manager sheet returns an
+  /// ID token, which Supabase verifies (signature, expiry, and audience
+  /// against the client IDs configured on the Google provider) and exchanges
+  /// for a session. No browser redirect, so no deep-link setup.
+  ///
+  /// No nonce is requested, so Google omits the claim and Supabase skips that
+  /// check — leave "Skip nonce checks" OFF in the dashboard regardless.
   @override
-  Future<AuthUser> signInWithGoogle() async {
-    throw const OperationFailure(
-      'Google sign-in is coming soon — use email for now',
-    );
+  Future<AuthUser> signInWithGoogle() {
+    return runOperation('sign_in_google', () async {
+      if (!AppConfig.hasGoogleSignIn) {
+        throw const OperationFailure(
+          'Google sign-in is not configured on this build',
+        );
+      }
+
+      final GoogleSignInAccount account;
+      try {
+        if (!_googleReady) {
+          await _google.initialize(
+            serverClientId: AppConfig.googleWebClientId,
+          );
+          _googleReady = true;
+        }
+        account = await _google.authenticate();
+      } on GoogleSignInException catch (e) {
+        throw OperationFailure(_friendlyGoogle(e));
+      }
+
+      final idToken = account.authentication.idToken;
+      if (idToken == null) {
+        throw const OperationFailure(
+          'Google did not return a sign-in token. Please try again.',
+        );
+      }
+
+      try {
+        final res = await _client.auth.signInWithIdToken(
+          provider: OAuthProvider.google,
+          idToken: idToken,
+        );
+        return _map(res.user)!;
+      } on AuthException catch (e) {
+        throw OperationFailure(_friendly(e));
+      }
+    });
   }
+
+  String _friendlyGoogle(GoogleSignInException e) => switch (e.code) {
+        GoogleSignInExceptionCode.canceled ||
+        GoogleSignInExceptionCode.interrupted =>
+          'Google sign-in cancelled',
+        GoogleSignInExceptionCode.providerConfigurationError =>
+          'Google sign-in is not set up correctly for this app',
+        _ => 'Could not sign in with Google. Please try again.',
+      };
 
   @override
   Future<AuthUser> signInWithApple() async {
