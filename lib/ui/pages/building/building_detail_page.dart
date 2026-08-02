@@ -333,6 +333,8 @@ class _BottomActions extends StatelessWidget {
               ),
             ),
             const SizedBox(width: AppDimens.space12),
+            const _SaveButton(),
+            const SizedBox(width: AppDimens.space12),
             Expanded(
               child: ElevatedButton.icon(
                 onPressed: () => context.pushNamed(
@@ -347,6 +349,44 @@ class _BottomActions extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Bookmark toggle — writes a `saved_maps` row so the building appears on the
+/// Maps tab and stays available offline.
+class _SaveButton extends StatelessWidget {
+  const _SaveButton();
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<BuildingDetailBloc, BuildingDetailState>(
+      buildWhen: (a, b) => a.saved != b.saved,
+      builder: (context, state) {
+        final saved = state.saved;
+        return SizedBox(
+          width: 56,
+          child: OutlinedButton(
+            onPressed: () => context
+                .read<BuildingDetailBloc>()
+                .add(const BuildingDetailSaveToggled()),
+            style: OutlinedButton.styleFrom(
+              padding: EdgeInsets.zero,
+              foregroundColor: saved ? AppColors.coral : null,
+            ),
+            child: Semantics(
+              button: true,
+              label: saved ? 'Saved for offline. Tap to remove.' : 'Save for offline',
+              child: Icon(
+                saved
+                    ? PhosphorIconsFill.bookmarkSimple
+                    : PhosphorIconsRegular.bookmarkSimple,
+                size: 20,
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

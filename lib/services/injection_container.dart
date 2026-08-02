@@ -13,11 +13,13 @@ import '../features/auth/bloc/auth_bloc.dart';
 import '../features/auth/supabase_auth_repository.dart';
 import '../features/building_detail/bloc/building_detail_bloc.dart';
 import '../features/buildings/building_repository.dart';
+import '../features/buildings/supabase_building_repository.dart';
 import '../features/explore/bloc/explore_bloc.dart';
 import '../features/home/bloc/home_bloc.dart';
 import '../features/maps/bloc/maps_bloc.dart';
 import '../features/profile/bloc/profile_bloc.dart';
 import '../features/profile/profile_repository.dart';
+import '../features/profile/supabase_profile_repository.dart';
 import 'sensing/detection_service.dart';
 import 'speech/speech_service.dart';
 
@@ -45,10 +47,14 @@ Future<void> configureDependencies() async {
         : MockAuthRepository(mockAuthBox!),
   );
   getIt.registerLazySingleton<BuildingRepository>(
-    () => MockBuildingRepository(),
+    () => AppConfig.hasSupabase
+        ? SupabaseBuildingRepository(Supabase.instance.client)
+        : MockBuildingRepository(),
   );
   getIt.registerLazySingleton<ProfileRepository>(
-    () => MockProfileRepository(getIt<AuthRepository>()),
+    () => AppConfig.hasSupabase
+        ? SupabaseProfileRepository(Supabase.instance.client)
+        : MockProfileRepository(getIt<AuthRepository>()),
   );
 
   // --- Sensing / speech engines (hardware owners; Blocs subscribe) ---
