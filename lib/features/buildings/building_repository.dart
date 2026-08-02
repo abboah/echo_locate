@@ -18,6 +18,12 @@ abstract class BuildingRepository {
 
   /// Buildings saved for offline use (Maps tab).
   Future<List<Building>> savedMaps();
+
+  /// Whether the signed-in user has saved this building for offline use.
+  Future<bool> isSaved(String buildingId);
+
+  /// Save/unsave a building for offline use; returns the new saved state.
+  Future<bool> setSaved(String buildingId, bool saved);
 }
 
 class MockBuildingRepository with RepositoryMixin implements BuildingRepository {
@@ -170,12 +176,26 @@ class MockBuildingRepository with RepositoryMixin implements BuildingRepository 
     });
   }
 
+  /// Session-scoped stand-in for the `saved_maps` table.
+  final Set<String> _saved = {'knust-library', 'great-hall'};
+
   @override
-  Future<List<Building>> savedMaps() {
-    return runEphemeralQuery('buildings:saved', () async {
-      await Future<void>.delayed(_latency);
-      return _buildings.where((b) => b.mappedPercent >= 80).toList();
-    });
+  Future<List<Building>> savedMaps() async {
+    await Future<void>.delayed(_latency);
+    return _buildings.where((b) => _saved.contains(b.id)).toList();
+  }
+
+  @override
+  Future<bool> isSaved(String buildingId) async => _saved.contains(buildingId);
+
+  @override
+  Future<bool> setSaved(String buildingId, bool saved) async {
+    if (saved) {
+      _saved.add(buildingId);
+    } else {
+      _saved.remove(buildingId);
+    }
+    return saved;
   }
 
   List<Room> _roomsFor(String buildingId, int floorIndex) {

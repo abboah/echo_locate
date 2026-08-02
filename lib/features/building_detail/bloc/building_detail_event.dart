@@ -17,6 +17,11 @@ final class BuildingDetailStarted extends BuildingDetailEvent {
   List<Object?> get props => [buildingId, building];
 }
 
+/// Save/unsave this building for offline use (the bookmark button).
+final class BuildingDetailSaveToggled extends BuildingDetailEvent {
+  const BuildingDetailSaveToggled();
+}
+
 final class BuildingDetailFloorSelected extends BuildingDetailEvent {
   const BuildingDetailFloorSelected(this.index);
 

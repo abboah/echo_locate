@@ -59,6 +59,37 @@ mixin RepositoryMixin {
     return value;
   }
 
+  /// Network-first with a Hive fallback: fetches fresh data and caches it, but
+  /// returns the last cached value when the fetch fails.
+  ///
+  /// This is what "works offline" means for the crowdsourced map — the index
+  /// changes as people contribute, so a cache-first read ([runPersistedQuery])
+  /// would pin the user to whatever they saw first. If there is no cache and
+  /// the network is down, the original failure surfaces.
+  Future<T> runOfflineFirstQuery<T>(
+    String key,
+    Future<T> Function() fetch, {
+    required Object? Function(T value) encode,
+    required T Function(Object? cached) decode,
+  }) async {
+    final box = Hive.box(repoCacheBoxName);
+    try {
+      final value = await fetch();
+      await box.put(key, encode(value));
+      return value;
+    } catch (_) {
+      final cached = box.get(key);
+      if (cached != null) {
+        try {
+          return decode(cached);
+        } catch (_) {
+          // Stale/incompatible cache — surface the original failure instead.
+        }
+      }
+      rethrow;
+    }
+  }
+
   Future<T> runEphemeralQuery<T>(
     String key,
     Future<T> Function() fetch, {
