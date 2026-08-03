@@ -8,6 +8,7 @@ final class BuildingDetailState extends Equatable {
     this.building,
     this.floors = const [],
     this.selectedFloor = 0,
+    this.saved = false,
     this.error,
   });
 
@@ -15,6 +16,9 @@ final class BuildingDetailState extends Equatable {
   final Building? building;
   final List<BuildingFloor> floors;
   final int selectedFloor;
+
+  /// Kept for offline use (a row in `saved_maps`); shown on the Maps tab.
+  final bool saved;
   final String? error;
 
   List<Room> get roomsOnSelectedFloor =>
@@ -25,6 +29,7 @@ final class BuildingDetailState extends Equatable {
     Building? building,
     List<BuildingFloor>? floors,
     int? selectedFloor,
+    bool? saved,
     String? error,
   }) {
     return BuildingDetailState(
@@ -32,10 +37,12 @@ final class BuildingDetailState extends Equatable {
       building: building ?? this.building,
       floors: floors ?? this.floors,
       selectedFloor: selectedFloor ?? this.selectedFloor,
+      saved: saved ?? this.saved,
       error: error ?? this.error,
     );
   }
 
   @override
-  List<Object?> get props => [status, building, floors, selectedFloor, error];
+  List<Object?> get props =>
+      [status, building, floors, selectedFloor, saved, error];
 }

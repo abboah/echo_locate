@@ -16,4 +16,11 @@ class AppConfig {
 
   static bool get hasSupabase =>
       supabaseUrl.isNotEmpty && supabaseKey.isNotEmpty;
+
+  /// Web OAuth client ID, used on Android as `serverClientId` so Google
+  /// issues an ID token addressed to the client Supabase verifies against.
+  static String get googleWebClientId =>
+      dotenv.maybeGet('GOOGLE_WEB_CLIENT_ID') ?? '';
+
+  static bool get hasGoogleSignIn => googleWebClientId.isNotEmpty;
 }

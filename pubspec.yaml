@@ -34,6 +34,9 @@ dependencies:
 
   # --- Cloud / crowdsource ---
   supabase_flutter: ^2.6.0
+  # Native Google sign-in (Android Credential Manager); yields an ID token
+  # that Supabase exchanges for a session via signInWithIdToken.
+  google_sign_in: ^7.2.0
 
   # --- Models ---
   freezed_annotation: ^2.4.4
