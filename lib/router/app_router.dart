@@ -24,6 +24,7 @@ import '../ui/pages/primers/location_primer_page.dart';
 import '../ui/pages/profile/profile_page.dart';
 import '../ui/pages/scan/scan_page.dart';
 import '../ui/pages/shell/app_shell.dart';
+import '../ui/pages/acoustic/acoustic_page.dart';
 import '../ui/pages/sonar/sonar_page.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -119,6 +120,12 @@ final GoRouter appRouter = GoRouter(
       name: RouteNames.sonar,
       parentNavigatorKey: _rootNavigatorKey,
       builder: (context, state) => const SonarPage(),
+    ),
+    GoRoute(
+      path: AppRoutes.acoustic,
+      name: RouteNames.acoustic,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const AcousticPage(),
     ),
     GoRoute(
       path: AppRoutes.depthProbe,

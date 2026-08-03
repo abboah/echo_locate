@@ -172,6 +172,21 @@ class _ProfileView extends StatelessWidget {
                 const SizedBox(height: AppDimens.space8),
                 Card(
                   child: ListTile(
+                    title: Text('Room acoustics (dev)',
+                        style: theme.textTheme.titleMedium),
+                    subtitle: Text('Reverberation → room type',
+                        style: theme.textTheme.bodyMedium),
+                    trailing: Icon(
+                      PhosphorIconsRegular.caretRight,
+                      size: 18,
+                      color: theme.textTheme.bodyMedium?.color,
+                    ),
+                    onTap: () => context.pushNamed(RouteNames.acoustic),
+                  ),
+                ),
+                const SizedBox(height: AppDimens.space8),
+                Card(
+                  child: ListTile(
                     title: Text('Depth probe (dev)',
                         style: theme.textTheme.titleMedium),
                     subtitle: Text('ARCore availability + live depth readout',

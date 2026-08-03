@@ -30,6 +30,7 @@ void main() {
   Float64List syntheticCapture({
     required int breakthroughOffset,
     int? echoDelaySamples,
+    double breakthroughGain = 0.95,
     double echoGain = 0.3,
     double noiseAmplitude = 0.02,
     int trailingSamples = 2000,
@@ -45,7 +46,7 @@ void main() {
       received[i] = (random.nextDouble() * 2 - 1) * noiseAmplitude;
     }
     for (var i = 0; i < chirp.length; i++) {
-      received[breakthroughOffset + i] += chirp[i] * 0.95;
+      received[breakthroughOffset + i] += chirp[i] * breakthroughGain;
     }
     if (echoDelaySamples != null) {
       for (var i = 0; i < chirp.length; i++) {
@@ -449,6 +450,50 @@ void main() {
         reason: 'shortfall should be baseline/2 at $trueDistance m',
       );
     }
+  });
+
+  test('refuses to build a clutter profile from a noise-only sweep', () {
+    // A sweep that never heard its chirp must not become a profile. Every
+    // bin is a fraction of the breakthrough, so when the breakthrough is
+    // itself noise the result is large, flat and wrong — and subtracting it
+    // corrupts every later reading rather than cleaning it. Observed on an
+    // Infinix X6855: a peak=0.034 sweep yielded a "signature" reading 0.28
+    // at 0.15m and 0.43 at 1.0m, i.e. rising with distance.
+    final random = math.Random(77);
+    final noise = Float64List(
+      5000 + delaySamplesFor(calculator.maxRangeMeters) + 3000,
+    );
+    for (var i = 0; i < noise.length; i++) {
+      noise[i] = (random.nextDouble() * 2 - 1) * 0.01;
+    }
+
+    expect(
+      calculator.buildClutterProfile(
+        correlation: correlator.correlate(noise, chirp),
+        sampleRate: params.sampleRate,
+      ),
+      isNull,
+    );
+  });
+
+  test('still builds a profile from a sweep that heard its chirp', () {
+    // The guard above must not reject good sweeps: a quiet-but-real capture
+    // is exactly what calibration is for.
+    final received = syntheticCapture(
+      breakthroughOffset: 5000,
+      echoDelaySamples: delaySamplesFor(1.0),
+      breakthroughGain: 0.05, // quiet, but genuinely present
+      echoGain: 0.01,
+    );
+
+    final profile = calculator.buildClutterProfile(
+      correlation: correlator.correlate(received, chirp),
+      sampleRate: params.sampleRate,
+    );
+
+    expect(profile, isNotNull);
+    // Normalised to the breakthrough by construction.
+    expect(profile!.first, closeTo(1.0, 1e-9));
   });
 
   test('empty correlation returns null instead of throwing', () {

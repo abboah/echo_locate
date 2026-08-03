@@ -260,12 +260,46 @@ class ToFCalculator {
     if (envelope == null || envelope[0] == 0) return null;
 
     final breakthrough = envelope[0];
+
+    // Refuse to build a profile from a sweep that never really heard its own
+    // chirp. Everything here is expressed as a fraction of the breakthrough,
+    // so if the breakthrough is itself near the noise floor the result is
+    // not a quiet signature — it is noise divided by noise, which comes out
+    // large, flat, and completely wrong. Subtracting that from later pings
+    // corrupts every reading, and silently.
+    //
+    // A real signature falls away with delay; noise does not. Seen on an
+    // Infinix X6855 when a sweep came back at peak=0.034: the captured
+    // "ringing" read 0.28 at 0.15m and 0.43 at 1.0m — rising with distance,
+    // which no physical ringing does.
+    if (!_isBreakthroughDistinct(envelope)) return null;
     final profile = Float64List(envelope.length);
     for (var d = 0; d < envelope.length; d++) {
       profile[d] = envelope[d] / breakthrough;
     }
     return profile;
   }
+
+  /// Whether this sweep actually heard its own chirp.
+  ///
+  /// Compares the breakthrough against the median of the far half of the
+  /// envelope — a region no plausible indoor echo dominates, so it reads the
+  /// noise floor. A sweep that heard its chirp clears it by orders of
+  /// magnitude (measured in the hundreds to thousands); a sweep that heard
+  /// only noise sits within single digits of it.
+  bool _isBreakthroughDistinct(Float64List envelope) {
+    if (envelope.length < 4) return false;
+    final far = envelope.sublist(envelope.length ~/ 2)..sort();
+    final floor = far[far.length ~/ 2];
+    if (floor <= 0) return true; // nothing to compare against; don't block
+    return envelope[0] >= _minBreakthroughToFloor * floor;
+  }
+
+  /// How far the breakthrough must stand above the noise floor for a sweep
+  /// to be usable as a clutter profile. Deliberately far below what a good
+  /// sweep achieves — this rejects noise-only captures, it does not grade
+  /// signal quality.
+  static const double _minBreakthroughToFloor = 20.0;
 
   /// Pulse-averaged |correlation| envelope, aligned at each pulse's own
   /// breakthrough. Index = delay in samples after t=0, so `envelope[0]` is

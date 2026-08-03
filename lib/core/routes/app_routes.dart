@@ -21,6 +21,7 @@ class AppRoutes {
   static const String assist = '/assist';
   static const String scan = '/scan';
   static const String sonar = '/sonar';
+  static const String acoustic = '/acoustic';
   static const String depthProbe = '/depth-probe';
   static const String cameraPrimer = '/camera-primer';
   static const String locationPrimer = '/location-primer';
@@ -45,6 +46,7 @@ class RouteNames {
   static const String assist = 'assist';
   static const String scan = 'scan';
   static const String sonar = 'sonar';
+  static const String acoustic = 'acoustic';
   static const String depthProbe = 'depthProbe';
   static const String cameraPrimer = 'cameraPrimer';
   static const String locationPrimer = 'locationPrimer';

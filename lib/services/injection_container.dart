@@ -21,11 +21,15 @@ import '../features/maps/bloc/maps_bloc.dart';
 import '../features/profile/bloc/profile_bloc.dart';
 import '../features/profile/profile_repository.dart';
 import '../features/scan/bloc/scan_capability_cubit.dart';
+import '../features/acoustic/bloc/acoustic_bloc.dart';
 import '../features/sonar/bloc/sonar_bloc.dart';
+import 'acoustic/acoustic_fallback_service.dart';
+import 'audio/audio_arbiter.dart';
 import 'audio/sonar_audio_service.dart';
 import 'sensing/detection_service.dart';
 import 'speech/speech_service.dart';
 import 'vision/arcore_depth_service.dart';
+import 'vision/depth_reliability.dart';
 
 /// Global service locator. Repositories, blocs/cubits, and stream controllers
 /// are registered here. See CLAUDE.md for the per-feature registration recipe.
@@ -66,11 +70,28 @@ Future<void> configureDependencies() async {
 
   // --- Sensing / speech engines (hardware owners; Blocs subscribe) ---
   getIt.registerLazySingleton<DetectionService>(() => DetectionService());
-  getIt.registerLazySingleton<SpeechService>(() => SpeechService());
+  // Single arbiter shared by everything that drives the mic or speaker; it is
+  // the thing that makes "shared" safe, so it must be a singleton.
+  getIt.registerLazySingleton<AudioArbiter>(() => AudioArbiter());
+  getIt.registerLazySingleton<SpeechService>(
+    () => SpeechService(arbiter: getIt<AudioArbiter>()),
+  );
   getIt.registerLazySingleton<SonarAudioService>(
-    () => SonarAudioService(calibrationBox: sonarCalibrationBox),
+    () => SonarAudioService(
+      calibrationBox: sonarCalibrationBox,
+      arbiter: getIt<AudioArbiter>(),
+    ),
   );
   getIt.registerLazySingleton<ArCoreDepthService>(() => ArCoreDepthService());
+
+  // The camera↔sound hand-off (M5). Registered as a pair: DepthReliability
+  // decides when camera depth has failed, AcousticFallbackService answers
+  // with sound. Singletons because the fallback carries the measurement
+  // throttle — a per-screen copy would let two screens chirp over each other.
+  getIt.registerLazySingleton<DepthReliability>(() => const DepthReliability());
+  getIt.registerLazySingleton<AcousticFallbackService>(
+    () => AcousticFallbackService(getIt<SonarAudioService>()),
+  );
 
   // --- App-wide cubits/blocs (singletons) ---
   getIt.registerLazySingleton<ThemeCubit>(
@@ -103,4 +124,9 @@ Future<void> configureDependencies() async {
     () => ProfileBloc(getIt<ProfileRepository>()),
   );
   getIt.registerFactory<SonarBloc>(() => SonarBloc(getIt<SonarAudioService>()));
+  // Shares the sonar's audio service: same speaker, mic and chirp, captured
+  // differently (one pulse plus a long decay, rather than a train).
+  getIt.registerFactory<AcousticBloc>(
+    () => AcousticBloc(getIt<SonarAudioService>()),
+  );
 }
