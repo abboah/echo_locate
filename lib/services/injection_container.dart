@@ -21,6 +21,8 @@ import '../features/home/bloc/home_bloc.dart';
 import '../features/maps/bloc/maps_bloc.dart';
 import '../features/profile/bloc/profile_bloc.dart';
 import '../features/profile/profile_repository.dart';
+import '../features/routing/route_repository.dart';
+import '../features/routing/supabase_route_repository.dart';
 import '../features/scan/bloc/scan_capability_cubit.dart';
 import '../features/acoustic/bloc/acoustic_bloc.dart';
 import '../features/sonar/bloc/sonar_bloc.dart';
@@ -62,6 +64,14 @@ Future<void> configureDependencies() async {
     () => AppConfig.hasSupabase
         ? SupabaseAuthRepository(Supabase.instance.client)
         : MockAuthRepository(mockAuthBox!),
+  );
+  // Landmarks + recorded routes. Shared by both work streams: Stream A reads
+  // it to lay out the 2D schematic and build the A* graph, Stream B to guide
+  // and to upload captures. See docs/landmark-navigation-spec.md.
+  getIt.registerLazySingleton<RouteRepository>(
+    () => AppConfig.hasSupabase
+        ? SupabaseRouteRepository(Supabase.instance.client)
+        : MockRouteRepository(),
   );
   getIt.registerLazySingleton<BuildingRepository>(
     () => AppConfig.hasSupabase
