@@ -53,10 +53,11 @@ dependencies:
   # --- Acoustics (DSP ported from v1) ---
   fftea: ^1.5.0
   flutter_soloud: ^2.1.0
-  # record: deferred — v5.1.2 pulls an incompatible record_linux 0.7.2
-  #   (missing startStream from record_platform_interface 1.6.0, breaks the
-  #   Android kernel snapshot). Re-add a verified version (or a record_linux
-  #   dependency_override) when building the acoustic mic-capture feature.
+  # record 6.2.1: last 6.x release, needs only Dart >=3.5 (we're on 3.11).
+  # The previously-tried 5.1.2 pulled a record_linux/record_platform_interface
+  # mismatch that broke the Android build; 7.x fixes that but needs Dart 3.12+,
+  # which we don't have yet. Revisit the 7.x jump when the SDK is bumped.
+  record: ^6.2.1
 
   # --- Sensors / permissions / voice / utils ---
   sensors_plus: ^6.0.1

@@ -19,10 +19,13 @@ import '../ui/pages/maps/maps_page.dart';
 import '../ui/pages/navigate/navigation_page.dart';
 import '../ui/pages/onboarding/onboarding_page.dart';
 import '../ui/pages/primers/camera_primer_page.dart';
+import '../ui/pages/depth/depth_probe_page.dart';
 import '../ui/pages/primers/location_primer_page.dart';
 import '../ui/pages/profile/profile_page.dart';
 import '../ui/pages/scan/scan_page.dart';
 import '../ui/pages/shell/app_shell.dart';
+import '../ui/pages/acoustic/acoustic_page.dart';
+import '../ui/pages/sonar/sonar_page.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -111,6 +114,24 @@ final GoRouter appRouter = GoRouter(
       name: RouteNames.scan,
       parentNavigatorKey: _rootNavigatorKey,
       builder: (context, state) => const ScanPage(),
+    ),
+    GoRoute(
+      path: AppRoutes.sonar,
+      name: RouteNames.sonar,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const SonarPage(),
+    ),
+    GoRoute(
+      path: AppRoutes.acoustic,
+      name: RouteNames.acoustic,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const AcousticPage(),
+    ),
+    GoRoute(
+      path: AppRoutes.depthProbe,
+      name: RouteNames.depthProbe,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const DepthProbePage(),
     ),
     GoRoute(
       path: AppRoutes.cameraPrimer,

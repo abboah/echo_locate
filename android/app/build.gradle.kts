@@ -24,7 +24,9 @@ android {
         applicationId = "com.example.echo_locate"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // ARCore requires API 24+. Flutter's default floor is lower, so this
+        // is pinned rather than inherited — see the arcore dependency below.
+        minSdk = maxOf(24, flutter.minSdkVersion)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -43,4 +45,16 @@ android {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // M0 spike: ARCore depth + pose over a platform channel.
+    //
+    // The manifest marks ARCore as OPTIONAL, not required, so the app still
+    // installs and runs on devices Google has not certified — the Infinix
+    // X657C used for sonar testing is one of them, and budget hardware is
+    // common among this app's target users. Scanning is gated at runtime by
+    // ArCoreDepthHandler's availability check; everything else (sonar,
+    // browse, navigate) keeps working.
+    implementation("com.google.ar:core:1.42.0")
 }

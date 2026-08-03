@@ -11,6 +11,7 @@ import '../../../features/explore/bloc/explore_bloc.dart';
 import '../../../services/injection_container.dart';
 import '../../widgets/app_search_field.dart';
 import '../../widgets/building_list_tile.dart';
+import '../../widgets/scan_capability_gate.dart';
 import '../scan/camera_flow.dart';
 
 /// Explore tab (Figma 7:372): search, category chips, nearby buildings,
@@ -131,15 +132,19 @@ class _ExploreView extends StatelessWidget {
                   },
                 ),
               ),
-              SafeArea(
-                top: false,
-                child: Padding(
-                  padding:
-                      const EdgeInsets.only(bottom: AppDimens.space12),
-                  child: ElevatedButton.icon(
-                    onPressed: () => openScanFlow(context),
-                    icon: const Icon(PhosphorIconsBold.plus, size: 18),
-                    label: const Text('Scan a new building'),
+              // Gates the SafeArea, not just the button, so a device that
+              // can't scan doesn't reserve empty padding where the CTA was.
+              ScanCapabilityGate(
+                child: SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.only(bottom: AppDimens.space12),
+                    child: ElevatedButton.icon(
+                      onPressed: () => openScanFlow(context),
+                      icon: const Icon(PhosphorIconsBold.plus, size: 18),
+                      label: const Text('Scan a new building'),
+                    ),
                   ),
                 ),
               ),
