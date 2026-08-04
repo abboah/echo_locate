@@ -5,7 +5,7 @@ part 'user_profile.g.dart';
 
 /// Contributor profile shown on the Profile tab: identity + mapping stats.
 @freezed
-class UserProfile with _$UserProfile {
+abstract class UserProfile with _$UserProfile {
   const factory UserProfile({
     required String id,
     required String fullName,

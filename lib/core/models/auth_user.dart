@@ -6,7 +6,7 @@ part 'auth_user.g.dart';
 /// The signed-in user (auth identity only; contributor stats live in
 /// [UserProfile]).
 @freezed
-class AuthUser with _$AuthUser {
+abstract class AuthUser with _$AuthUser {
   const AuthUser._();
 
   const factory AuthUser({

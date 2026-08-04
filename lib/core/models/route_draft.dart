@@ -15,7 +15,7 @@ part 'route_draft.g.dart';
 ///
 /// Serialises directly to the `save_route(p_route jsonb)` payload.
 @freezed
-class DraftLandmark with _$DraftLandmark {
+abstract class DraftLandmark with _$DraftLandmark {
   const factory DraftLandmark({
     /// Client-side label, unique within this draft.
     required String ref,
@@ -32,7 +32,7 @@ class DraftLandmark with _$DraftLandmark {
 }
 
 @freezed
-class DraftStep with _$DraftStep {
+abstract class DraftStep with _$DraftStep {
   const factory DraftStep({
     required int seq,
     @JsonKey(name: 'from') required String fromRef,
@@ -48,7 +48,7 @@ class DraftStep with _$DraftStep {
 }
 
 @freezed
-class RouteDraft with _$RouteDraft {
+abstract class RouteDraft with _$RouteDraft {
   const factory RouteDraft({
     required String buildingId,
     required String destinationRoomId,

@@ -8,7 +8,7 @@ part 'walk_route.g.dart';
 /// Named [RouteStep] rather than `Step` to avoid Flutter's `Step` widget, and
 /// the parent is [WalkRoute] rather than `Route` for the same reason.
 @freezed
-class RouteStep with _$RouteStep {
+abstract class RouteStep with _$RouteStep {
   const factory RouteStep({
     required int seq,
     required String fromLandmarkId,
@@ -51,7 +51,7 @@ class RouteStep with _$RouteStep {
 /// [RouteStep.distanceM]) and the graph A* runs over, whose nodes are
 /// landmarks and whose edge weights are leg distances.
 @freezed
-class WalkRoute with _$WalkRoute {
+abstract class WalkRoute with _$WalkRoute {
   const factory WalkRoute({
     required String id,
     required String buildingId,

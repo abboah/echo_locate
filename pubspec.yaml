@@ -39,7 +39,10 @@ dependencies:
   google_sign_in: ^7.2.0
 
   # --- Models ---
-  freezed_annotation: ^2.4.4
+  # freezed_annotation 3.x pairs with freezed 3.x (see dev_dependencies): the
+  # 2.x codegen chain pinned analyzer <8, whose parser can't serialize Dart
+  # 3.12 ASTs and crashed build_runner with visitDotShorthandInvocation.
+  freezed_annotation: ^3.0.0
   json_annotation: ^4.9.0
   equatable: ^2.0.5
 
@@ -72,9 +75,12 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
-  build_runner: ^2.4.12
-  freezed: ^2.5.7
-  json_serializable: ^6.8.0
+  # Codegen chain must track the SDK: Dart 3.12 needs analyzer >=8. Holding
+  # freezed at 2.x pinned analyzer 7.7.1 (language 3.9), which crashed while
+  # writing the summary bundle and left every *.freezed.dart ungenerated.
+  build_runner: ^2.9.0
+  freezed: ^3.0.0
+  json_serializable: ^6.11.0
   hive_ce_generator: ^1.7.0
   mocktail: ^1.0.4
   # bloc_test: re-add a freezed-compatible version when writing Bloc tests

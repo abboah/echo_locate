@@ -31,7 +31,7 @@ enum LandmarkKind {
 /// phone is, guidance waits until OCR reads [labelText] and treats that as
 /// arrival — which is why step-count error never accumulates across a route.
 @freezed
-class Landmark with _$Landmark {
+abstract class Landmark with _$Landmark {
   const factory Landmark({
     required String id,
     required String buildingId,

@@ -9,7 +9,7 @@ part 'building.g.dart';
 /// 'home', 'hall', 'book'); `category` drives the Explore filter chips
 /// ('campus', 'hospital', 'mall').
 @freezed
-class Building with _$Building {
+abstract class Building with _$Building {
   const factory Building({
     required String id,
     required String name,
@@ -29,7 +29,7 @@ class Building with _$Building {
 
 /// One floor of a building, with its navigable rooms/POIs.
 @freezed
-class BuildingFloor with _$BuildingFloor {
+abstract class BuildingFloor with _$BuildingFloor {
   const factory BuildingFloor({
     required String label,
     required List<Room> rooms,
@@ -42,7 +42,7 @@ class BuildingFloor with _$BuildingFloor {
 /// A room / point of interest on a floor. `kind` picks the tile icon
 /// ('room', 'hall', 'desk').
 @freezed
-class Room with _$Room {
+abstract class Room with _$Room {
   const factory Room({
     required String id,
     required String name,
