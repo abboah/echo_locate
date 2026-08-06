@@ -171,7 +171,13 @@ class MockBuildingRepository with RepositoryMixin implements BuildingRepository 
       final building = await byId(buildingId);
       return List.generate(building.floorsCount, (i) {
         final label = i == 0 ? 'G' : '$i';
-        return BuildingFloor(label: label, rooms: _roomsFor(buildingId, i));
+        // Mirrors the ids the seeded landmarks reference, so the floor plan's
+        // switcher can name its planes offline exactly as it does online.
+        return BuildingFloor(
+          id: i == 0 ? 'floor-g' : 'floor-$i',
+          label: label,
+          rooms: _roomsFor(buildingId, i),
+        );
       });
     });
   }

@@ -20,6 +20,7 @@ declare
   v_desk       uuid;
   v_stairs_g   uuid;
   v_landing_2  uuid;
+  v_corridor_2 uuid;
   v_door       uuid;
   v_route      uuid;
 begin
@@ -45,6 +46,7 @@ begin
     (v_building, v_floor_g, 'junction', 'HELP DESK',     '{"HELPDESK"}', 'Help desk',         null),
     (v_building, v_floor_g, 'stairs',   'STAIRS',        '{"STAIRWAY"}', 'Ground floor stairwell', null),
     (v_building, v_floor_2, 'stairs',   '2',             '{"FLOOR 2","2ND"}', 'Floor 2 landing', null),
+    (v_building, v_floor_2, 'sign',     'ROOMS 201-210', '{"ROOMS 201 - 210","201-210"}', 'Floor 2 directory board', null),
     (v_building, v_floor_2, 'door',     'READING HALL',  '{"READINGHALL"}', 'Reading Hall door', v_room)
   on conflict (building_id, floor_id, display_name) do update
     set label_text = excluded.label_text,
@@ -60,6 +62,8 @@ begin
    where building_id = v_building and display_name = 'Ground floor stairwell';
   select id into v_landing_2 from public.landmarks
    where building_id = v_building and display_name = 'Floor 2 landing';
+  select id into v_corridor_2 from public.landmarks
+   where building_id = v_building and display_name = 'Floor 2 directory board';
   select id into v_door      from public.landmarks
    where building_id = v_building and display_name = 'Reading Hall door';
 
@@ -81,5 +85,6 @@ begin
     (v_route, 1, v_entrance,  v_desk,      'Straight ahead, past the entrance desk',              12, 16, 0),
     (v_route, 2, v_desk,      v_stairs_g,  'Turn right; the stairwell is at the end of the corridor', 18, 24, 90),
     (v_route, 3, v_stairs_g,  v_landing_2, 'Take the stairs up two flights to floor 2',            8, 11, 0),
-    (v_route, 4, v_landing_2, v_door,      'Turn left; the Reading Hall is the third door on your right', 15, 20, -90);
+    (v_route, 4, v_landing_2, v_corridor_2,'Turn left along the main corridor to the directory board', 9, 12, -90),
+    (v_route, 5, v_corridor_2,v_door,      'Straight on; the Reading Hall is the second door on your right', 6,  8, 0);
 end $$;

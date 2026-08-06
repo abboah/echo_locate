@@ -45,7 +45,7 @@ Map<String, dynamic> _$WalkRouteToJson(_WalkRoute instance) =>
       'buildingId': instance.buildingId,
       'startLandmarkId': instance.startLandmarkId,
       'destinationRoomId': instance.destinationRoomId,
-      'steps': instance.steps,
+      'steps': instance.steps.map((e) => e.toJson()).toList(),
       'totalDistanceM': instance.totalDistanceM,
       'verifiedCount': instance.verifiedCount,
     };

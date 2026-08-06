@@ -110,18 +110,14 @@ class SupabaseRouteRepository with RepositoryMixin implements RouteRepository {
   Future<WalkRoute?> routeTo(String buildingId, String roomId) async {
     // Served from the same cache as routesOf, so picking a destination works
     // offline once the building has been opened.
-    final routes = await routesOf(buildingId);
-    final matches =
-        routes.where((r) => r.destinationRoomId == roomId).toList()
-          ..sort((a, b) => b.verifiedCount.compareTo(a.verifiedCount));
-    return matches.isEmpty ? null : matches.first;
+    return bestRouteTo(await routesOf(buildingId), roomId);
   }
 
   @override
   Future<String> saveRoute(RouteDraft draft) {
     return runOperation('save_route', () async {
       if (draft.steps.isEmpty) {
-        throw const OperationFailure('Record at least one leg before saving');
+        throw const OperationFailure(emptyDraftMessage);
       }
       // One RPC, one transaction: landmarks and their legs are written
       // together or not at all. A half-written route would draw a broken map.

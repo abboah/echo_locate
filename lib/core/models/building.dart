@@ -33,6 +33,11 @@ abstract class BuildingFloor with _$BuildingFloor {
   const factory BuildingFloor({
     required String label,
     required List<Room> rooms,
+
+    /// Matches `Landmark.floorId`. Without it the floor plan can only label its
+    /// planes with the raw uuid the landmarks carry, so the switcher on the
+    /// navigation screen would read "b3f1c2…" instead of "Floor 2".
+    @Default('') String id,
   }) = _BuildingFloor;
 
   factory BuildingFloor.fromJson(Map<String, dynamic> json) =>

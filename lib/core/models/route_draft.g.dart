@@ -77,6 +77,6 @@ Map<String, dynamic> _$RouteDraftToJson(_RouteDraft instance) =>
     <String, dynamic>{
       'buildingId': instance.buildingId,
       'destinationRoomId': instance.destinationRoomId,
-      'landmarks': instance.landmarks,
-      'steps': instance.steps,
+      'landmarks': instance.landmarks.map((e) => e.toJson()).toList(),
+      'steps': instance.steps.map((e) => e.toJson()).toList(),
     };

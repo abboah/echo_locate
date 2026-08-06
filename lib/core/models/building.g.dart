@@ -38,10 +38,15 @@ _BuildingFloor _$BuildingFloorFromJson(Map<String, dynamic> json) =>
       rooms: (json['rooms'] as List<dynamic>)
           .map((e) => Room.fromJson(e as Map<String, dynamic>))
           .toList(),
+      id: json['id'] as String? ?? '',
     );
 
 Map<String, dynamic> _$BuildingFloorToJson(_BuildingFloor instance) =>
-    <String, dynamic>{'label': instance.label, 'rooms': instance.rooms};
+    <String, dynamic>{
+      'label': instance.label,
+      'rooms': instance.rooms.map((e) => e.toJson()).toList(),
+      'id': instance.id,
+    };
 
 _Room _$RoomFromJson(Map<String, dynamic> json) => _Room(
   id: json['id'] as String,

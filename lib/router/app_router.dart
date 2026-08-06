@@ -162,6 +162,7 @@ final GoRouter appRouter = GoRouter(
       parentNavigatorKey: _rootNavigatorKey,
       builder: (context, state) => NavigationPage(
         building: state.extra as Building?,
+        destinationRoomId: state.uri.queryParameters['room'],
       ),
     ),
   ],

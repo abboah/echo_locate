@@ -21,6 +21,7 @@ import '../features/home/bloc/home_bloc.dart';
 import '../features/maps/bloc/maps_bloc.dart';
 import '../features/profile/bloc/profile_bloc.dart';
 import '../features/profile/profile_repository.dart';
+import '../features/routing/bloc/floor_plan_bloc.dart';
 import '../features/routing/route_repository.dart';
 import '../features/routing/supabase_route_repository.dart';
 import '../features/scan/bloc/scan_capability_cubit.dart';
@@ -136,6 +137,9 @@ Future<void> configureDependencies() async {
     () => BuildingDetailBloc(getIt<BuildingRepository>()),
   );
   getIt.registerFactory<MapsBloc>(() => MapsBloc(getIt<BuildingRepository>()));
+  getIt.registerFactory<FloorPlanBloc>(
+    () => FloorPlanBloc(getIt<RouteRepository>(), getIt<BuildingRepository>()),
+  );
   getIt.registerFactory<ProfileBloc>(
     () => ProfileBloc(getIt<ProfileRepository>()),
   );

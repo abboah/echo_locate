@@ -261,6 +261,9 @@ class _RoomTile extends StatelessWidget {
       onTap: () => context.pushNamed(
         RouteNames.navigate,
         pathParameters: {'id': building.id},
+        // The room travels in the query string rather than `extra` so a
+        // deep link to a specific door survives a cold start.
+        queryParameters: {'room': room.id},
         extra: building,
       ),
       child: Padding(

@@ -305,7 +305,10 @@ as String,
 /// @nodoc
 mixin _$BuildingFloor {
 
- String get label; List<Room> get rooms;
+ String get label; List<Room> get rooms;/// Matches `Landmark.floorId`. Without it the floor plan can only label its
+/// planes with the raw uuid the landmarks carry, so the switcher on the
+/// navigation screen would read "b3f1c2…" instead of "Floor 2".
+ String get id;
 /// Create a copy of BuildingFloor
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -318,16 +321,16 @@ $BuildingFloorCopyWith<BuildingFloor> get copyWith => _$BuildingFloorCopyWithImp
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is BuildingFloor&&(identical(other.label, label) || other.label == label)&&const DeepCollectionEquality().equals(other.rooms, rooms));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is BuildingFloor&&(identical(other.label, label) || other.label == label)&&const DeepCollectionEquality().equals(other.rooms, rooms)&&(identical(other.id, id) || other.id == id));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,label,const DeepCollectionEquality().hash(rooms));
+int get hashCode => Object.hash(runtimeType,label,const DeepCollectionEquality().hash(rooms),id);
 
 @override
 String toString() {
-  return 'BuildingFloor(label: $label, rooms: $rooms)';
+  return 'BuildingFloor(label: $label, rooms: $rooms, id: $id)';
 }
 
 
@@ -338,7 +341,7 @@ abstract mixin class $BuildingFloorCopyWith<$Res>  {
   factory $BuildingFloorCopyWith(BuildingFloor value, $Res Function(BuildingFloor) _then) = _$BuildingFloorCopyWithImpl;
 @useResult
 $Res call({
- String label, List<Room> rooms
+ String label, List<Room> rooms, String id
 });
 
 
@@ -355,11 +358,12 @@ class _$BuildingFloorCopyWithImpl<$Res>
 
 /// Create a copy of BuildingFloor
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? label = null,Object? rooms = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? label = null,Object? rooms = null,Object? id = null,}) {
   return _then(_self.copyWith(
 label: null == label ? _self.label : label // ignore: cast_nullable_to_non_nullable
 as String,rooms: null == rooms ? _self.rooms : rooms // ignore: cast_nullable_to_non_nullable
-as List<Room>,
+as List<Room>,id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as String,
   ));
 }
 
@@ -444,10 +448,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String label,  List<Room> rooms)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String label,  List<Room> rooms,  String id)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _BuildingFloor() when $default != null:
-return $default(_that.label,_that.rooms);case _:
+return $default(_that.label,_that.rooms,_that.id);case _:
   return orElse();
 
 }
@@ -465,10 +469,10 @@ return $default(_that.label,_that.rooms);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String label,  List<Room> rooms)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String label,  List<Room> rooms,  String id)  $default,) {final _that = this;
 switch (_that) {
 case _BuildingFloor():
-return $default(_that.label,_that.rooms);case _:
+return $default(_that.label,_that.rooms,_that.id);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -485,10 +489,10 @@ return $default(_that.label,_that.rooms);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String label,  List<Room> rooms)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String label,  List<Room> rooms,  String id)?  $default,) {final _that = this;
 switch (_that) {
 case _BuildingFloor() when $default != null:
-return $default(_that.label,_that.rooms);case _:
+return $default(_that.label,_that.rooms,_that.id);case _:
   return null;
 
 }
@@ -500,7 +504,7 @@ return $default(_that.label,_that.rooms);case _:
 @JsonSerializable()
 
 class _BuildingFloor implements BuildingFloor {
-  const _BuildingFloor({required this.label, required final  List<Room> rooms}): _rooms = rooms;
+  const _BuildingFloor({required this.label, required final  List<Room> rooms, this.id = ''}): _rooms = rooms;
   factory _BuildingFloor.fromJson(Map<String, dynamic> json) => _$BuildingFloorFromJson(json);
 
 @override final  String label;
@@ -511,6 +515,10 @@ class _BuildingFloor implements BuildingFloor {
   return EqualUnmodifiableListView(_rooms);
 }
 
+/// Matches `Landmark.floorId`. Without it the floor plan can only label its
+/// planes with the raw uuid the landmarks carry, so the switcher on the
+/// navigation screen would read "b3f1c2…" instead of "Floor 2".
+@override@JsonKey() final  String id;
 
 /// Create a copy of BuildingFloor
 /// with the given fields replaced by the non-null parameter values.
@@ -525,16 +533,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _BuildingFloor&&(identical(other.label, label) || other.label == label)&&const DeepCollectionEquality().equals(other._rooms, _rooms));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _BuildingFloor&&(identical(other.label, label) || other.label == label)&&const DeepCollectionEquality().equals(other._rooms, _rooms)&&(identical(other.id, id) || other.id == id));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,label,const DeepCollectionEquality().hash(_rooms));
+int get hashCode => Object.hash(runtimeType,label,const DeepCollectionEquality().hash(_rooms),id);
 
 @override
 String toString() {
-  return 'BuildingFloor(label: $label, rooms: $rooms)';
+  return 'BuildingFloor(label: $label, rooms: $rooms, id: $id)';
 }
 
 
@@ -545,7 +553,7 @@ abstract mixin class _$BuildingFloorCopyWith<$Res> implements $BuildingFloorCopy
   factory _$BuildingFloorCopyWith(_BuildingFloor value, $Res Function(_BuildingFloor) _then) = __$BuildingFloorCopyWithImpl;
 @override @useResult
 $Res call({
- String label, List<Room> rooms
+ String label, List<Room> rooms, String id
 });
 
 
@@ -562,11 +570,12 @@ class __$BuildingFloorCopyWithImpl<$Res>
 
 /// Create a copy of BuildingFloor
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? label = null,Object? rooms = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? label = null,Object? rooms = null,Object? id = null,}) {
   return _then(_BuildingFloor(
 label: null == label ? _self.label : label // ignore: cast_nullable_to_non_nullable
 as String,rooms: null == rooms ? _self._rooms : rooms // ignore: cast_nullable_to_non_nullable
-as List<Room>,
+as List<Room>,id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as String,
   ));
 }
 

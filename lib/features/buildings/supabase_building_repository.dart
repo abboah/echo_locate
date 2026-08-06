@@ -124,7 +124,7 @@ class SupabaseBuildingRepository
       () async {
         final rows = await _client
             .from('floors')
-            .select('label, ordinal, rooms(id, name, kind, distance_m)')
+            .select('id, label, ordinal, rooms(id, name, kind, distance_m)')
             .eq('building_id', buildingId)
             .order('ordinal');
 
@@ -139,7 +139,11 @@ class SupabaseBuildingRepository
                   ))
               .toList()
             ..sort((a, b) => a.distanceM.compareTo(b.distanceM));
-          return BuildingFloor(label: row['label'] as String, rooms: rooms);
+          return BuildingFloor(
+            id: row['id'] as String,
+            label: row['label'] as String,
+            rooms: rooms,
+          );
         }).toList();
       },
       encode: (floors) => floors.map((f) => f.toJson()).toList(),

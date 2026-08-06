@@ -1,0 +1,17 @@
+targets:
+  $default:
+    builders:
+      json_serializable:
+        options:
+          # Nested models must serialise to maps, not be left as objects.
+          #
+          # Without this, `WalkRoute.toJson()` emits its `steps` as live
+          # RouteStep instances and `Floor.toJson()` does the same with its
+          # rooms. That is invisible over the wire — PostgREST only ever
+          # receives generated JSON — but the offline cache writes the result
+          # straight into Hive, which cannot encode an arbitrary Dart object
+          # and throws. Because the cache write happens inside
+          # `runOfflineFirstQuery`'s try block, the throw is caught, the
+          # (never written) cache misses, and a perfectly successful network
+          # read surfaces as a failure.
+          explicit_to_json: true
