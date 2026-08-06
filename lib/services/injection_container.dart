@@ -138,7 +138,11 @@ Future<void> configureDependencies() async {
   );
   getIt.registerFactory<MapsBloc>(() => MapsBloc(getIt<BuildingRepository>()));
   getIt.registerFactory<FloorPlanBloc>(
-    () => FloorPlanBloc(getIt<RouteRepository>(), getIt<BuildingRepository>()),
+    () => FloorPlanBloc(
+      getIt<RouteRepository>(),
+      getIt<BuildingRepository>(),
+      getIt<SpeechService>(),
+    ),
   );
   getIt.registerFactory<ProfileBloc>(
     () => ProfileBloc(getIt<ProfileRepository>()),

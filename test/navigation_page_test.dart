@@ -216,4 +216,58 @@ void main() {
     expect(find.textContaining('Nobody has walked'), findsOneWidget);
     expect(find.byType(FloorPlanView), findsNothing);
   });
+
+  group('voice', () {
+    testWidgets('is on by default and mutes in one tap', (tester) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(page(AppTheme.light, room: 'reading-hall'));
+      await settle(tester);
+
+      // On by default: most of this app's audience cannot find a control they
+      // have to look for, so guidance starts talking.
+      expect(find.semantics.byLabel('Mute spoken directions'), findsOne);
+
+      // Driven through the semantics tree rather than by coordinate, which is
+      // the only route a screen-reader user has to it.
+      tester.semantics.tap(find.semantics.byLabel('Mute spoken directions'));
+      await tester.pump();
+
+      expect(find.semantics.byLabel('Speak directions aloud'), findsOne);
+      handle.dispose();
+    });
+
+    testWidgets('the instruction card reads as one labelled sentence',
+        (tester) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(page(AppTheme.light, room: 'reading-hall'));
+      await settle(tester);
+
+      // Same words the voice says, so the two can never drift apart — and one
+      // node, not four fragments to swipe through.
+      expect(
+        find.semantics.byLabel(
+          'Straight ahead, past the entrance desk. 12 metres.',
+        ),
+        findsOne,
+      );
+
+      handle.dispose();
+    });
+  });
+
+  testWidgets('every control on the screen clears the 48dp target minimum',
+      (tester) async {
+    final handle = tester.ensureSemantics();
+    await tester.pumpWidget(page(AppTheme.light, room: 'reading-hall'));
+    await settle(tester);
+
+    // WCAG 2.5.5 and Material both put the floor at 48. An app whose users
+    // aim by touch alone has the least room of anyone to be under it.
+    await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+    await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+    // And the labels have to be legible against what is behind them.
+    await expectLater(tester, meetsGuideline(textContrastGuideline));
+
+    handle.dispose();
+  });
 }

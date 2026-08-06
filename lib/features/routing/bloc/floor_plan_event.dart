@@ -59,3 +59,16 @@ final class FloorPlanPositionChanged extends FloorPlanEvent {
 final class FloorPlanRouteCleared extends FloorPlanEvent {
   const FloorPlanRouteCleared();
 }
+
+/// Mutes or unmutes spoken guidance.
+///
+/// Unmuting re-speaks the leg the user is on rather than waiting for the next
+/// one: somebody who turns the voice on wants to hear where they are now.
+final class FloorPlanVoiceToggled extends FloorPlanEvent {
+  const FloorPlanVoiceToggled(this.on);
+
+  final bool on;
+
+  @override
+  List<Object?> get props => [on];
+}

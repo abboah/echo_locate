@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
 
@@ -8,6 +10,7 @@ import '../../../data/repository_mixin.dart';
 import '../../../services/mapping/floor_graph.dart';
 import '../../../services/mapping/map_node.dart';
 import '../../../services/mapping/route_planner.dart';
+import '../../../services/speech/speech_service.dart';
 import '../../buildings/building_repository.dart';
 import '../route_repository.dart';
 
@@ -21,19 +24,62 @@ part 'floor_plan_state.dart';
 /// the graph does not change while the screen is open, and rebuilding it on
 /// every floor tap would be work for nothing.
 class FloorPlanBloc extends Bloc<FloorPlanEvent, FloorPlanState> {
-  FloorPlanBloc(this._routes, this._buildings)
+  FloorPlanBloc(this._routes, this._buildings, [this._speech])
       : super(const FloorPlanState()) {
     on<FloorPlanStarted>(_onStarted);
     on<FloorPlanFloorSelected>(_onFloorSelected);
     on<FloorPlanDestinationSelected>(_onDestinationSelected);
     on<FloorPlanPositionChanged>(_onPositionChanged);
     on<FloorPlanRouteCleared>(_onRouteCleared);
+    on<FloorPlanVoiceToggled>(_onVoiceToggled);
   }
 
   final RouteRepository _routes;
   final BuildingRepository _buildings;
 
+  /// Optional so widget tests and the layout code can build a bloc without a
+  /// TTS engine; on a device it is always present.
+  final SpeechService? _speech;
+
   RoutePlanner? _planner;
+
+  /// The utterance already spoken, so a rebuild does not repeat it.
+  String? _spokenKey;
+
+  /// Speaks each leg as it becomes current.
+  ///
+  /// Driven from [onChange] rather than from the handlers because every one of
+  /// them can move the user onto a different leg — arriving, replanning,
+  /// choosing a new destination — and guidance that only some of those
+  /// triggered would go quiet exactly when the route changed under the user.
+  @override
+  void onChange(Change<FloorPlanState> change) {
+    super.onChange(change);
+
+    final next = change.nextState;
+    if (!next.voiceOn) {
+      // Cleared rather than remembered, so unmuting re-speaks the current leg
+      // instead of silently waiting for the next one.
+      _spokenKey = null;
+      return;
+    }
+
+    final key = next.guidanceKey;
+    if (key == null || key == _spokenKey) return;
+    _spokenKey = key;
+
+    final line = next.spokenGuidance;
+    if (line == null) return;
+    // Interrupts: the previous sentence describes a leg the user has left, and
+    // waiting for it to finish delays the one that is true now.
+    unawaited(_speech?.speak(line, interrupt: true));
+  }
+
+  @override
+  Future<void> close() {
+    unawaited(_speech?.stop());
+    return super.close();
+  }
 
   Future<void> _onStarted(
     FloorPlanStarted event,
@@ -190,12 +236,24 @@ class FloorPlanBloc extends Bloc<FloorPlanEvent, FloorPlanState> {
     FloorPlanRouteCleared event,
     Emitter<FloorPlanState> emit,
   ) {
+    // Cut the sentence off mid-word if need be: the user has just said they
+    // are not going there, and hearing the rest of the directions is noise.
+    unawaited(_speech?.stop());
+    _spokenKey = null;
     emit(
       state.copyWith(
         clearRoute: true,
         emptyReason: FloorPlanEmptyReason.none,
       ),
     );
+  }
+
+  void _onVoiceToggled(
+    FloorPlanVoiceToggled event,
+    Emitter<FloorPlanState> emit,
+  ) {
+    if (!event.on) unawaited(_speech?.stop());
+    emit(state.copyWith(voiceOn: event.on));
   }
 
   /// Routes from wherever the user is, falling back to the building entrance —

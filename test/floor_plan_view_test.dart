@@ -60,7 +60,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
-      expect(find.byType(FloorPlanView), findsOneWidget);
+      expect(find.byType(FloorPlanView), findsOne);
     }
   });
 
@@ -189,5 +189,95 @@ void main() {
 
     expect(state.route!.landmarkIds.length, greaterThan(state.visibleNodes.length));
     expect(tester.takeException(), isNull);
+  });
+
+  group('semantics', () {
+    testWidgets('publishes every landmark, named and placed', (tester) async {
+      final handle = tester.ensureSemantics();
+      final state = routed;
+
+      await tester.pumpWidget(
+        wrap(
+          FloorPlanView(
+            nodes: state.visibleNodes,
+            edges: state.visibleEdges,
+            landmarks: state.landmarks,
+            route: state.route,
+            currentLandmarkId: state.currentLandmarkId,
+            onLandmarkTap: (_) {},
+          ),
+          AppTheme.light,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // A CustomPaint is one opaque box to a screen reader unless the painter
+      // says otherwise. Each landmark has to be findable on its own.
+      expect(
+        find.semantics.byLabel('Main entrance, entrance, you are here'),
+        findsOne,
+      );
+      expect(find.semantics.byLabel('Help desk, junction, on your route'), findsOne);
+      expect(
+        find.semantics
+            .byLabel('Ground floor stairwell, stairs, on your route'),
+        findsOne,
+      );
+
+      handle.dispose();
+    });
+
+    testWidgets('a landmark can be activated without sight', (tester) async {
+      final handle = tester.ensureSemantics();
+      final state = routed;
+      String? tapped;
+
+      await tester.pumpWidget(
+        wrap(
+          FloorPlanView(
+            nodes: state.visibleNodes,
+            edges: state.visibleEdges,
+            landmarks: state.landmarks,
+            route: state.route,
+            currentLandmarkId: state.currentLandmarkId,
+            onLandmarkTap: (id) => tapped = id,
+          ),
+          AppTheme.light,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // "I am here" is the only input this screen has. If it needs a sighted
+      // aim at a 6px dot, the app's own audience cannot give it.
+      tester.semantics.tap(
+        find.semantics.byLabel('Help desk, junction, on your route'),
+      );
+      await tester.pump();
+
+      expect(tapped, 'lm-desk');
+      handle.dispose();
+    });
+
+    testWidgets('an unreachable plan is still legible', (tester) async {
+      final handle = tester.ensureSemantics();
+      final state = groundFloor;
+
+      await tester.pumpWidget(
+        wrap(
+          FloorPlanView(
+            nodes: state.visibleNodes,
+            edges: state.visibleEdges,
+            landmarks: state.landmarks,
+          ),
+          AppTheme.dark,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // No route, no tap handler — the landmarks are still announced, just not
+      // as buttons.
+      expect(find.semantics.byLabel('Help desk, junction'), findsOne);
+      handle.dispose();
+    });
   });
 }

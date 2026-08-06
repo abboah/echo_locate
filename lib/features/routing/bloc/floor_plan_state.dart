@@ -18,6 +18,7 @@ final class FloorPlanState extends Equatable {
     this.currentLandmarkId,
     this.emptyReason = FloorPlanEmptyReason.none,
     this.worstSpreadM = 0,
+    this.voiceOn = true,
     this.error,
   });
 
@@ -40,6 +41,11 @@ final class FloorPlanState extends Equatable {
   /// metres. Surfaced so a contributor can see their capture is drifting
   /// rather than wondering why the plan looks bent.
   final double worstSpreadM;
+
+  /// Whether the app speaks each leg aloud. On by default — this is a
+  /// navigation aid for people who cannot read the plan, so guidance the user
+  /// has to go and find is guidance most of its audience never gets.
+  final bool voiceOn;
 
   final String? error;
 
@@ -81,6 +87,36 @@ final class FloorPlanState extends Equatable {
 
   bool get hasRoute => (route?.steps.isNotEmpty ?? false);
 
+  /// What the app should be saying right now, or null when there is nothing to
+  /// say. Also the screen-reader label for the instruction card, so the spoken
+  /// and the read version can never drift apart.
+  String? get spokenGuidance {
+    final step = currentStep;
+    if (step == null) return null;
+
+    if (hasArrived) {
+      final where = landmarks[step.toLandmarkId]?.displayName;
+      return where == null ? 'You have arrived.' : 'You have arrived at $where.';
+    }
+
+    final metres = step.distanceM.round();
+    // Synthesised instructions already carry their distance ("Continue
+    // straight for about 6 metres to..."); recorded ones are the
+    // contributor's own words and usually do not. Saying it twice sounds
+    // broken, so the sentence is only completed when it needs completing.
+    final says = step.instruction.toLowerCase().contains('metre');
+    return says ? step.instruction : '${step.instruction}. $metres metres.';
+  }
+
+  /// Identity of the current utterance. Changes exactly when there is
+  /// something new to say — not when the floor is switched, the theme flips,
+  /// or the plan is merely rebuilt.
+  String? get guidanceKey {
+    final step = currentStep;
+    if (step == null) return null;
+    return '${route?.id}:${step.seq}:$hasArrived';
+  }
+
   FloorPlanState copyWith({
     FloorPlanStatus? status,
     FloorGraph? graph,
@@ -92,6 +128,7 @@ final class FloorPlanState extends Equatable {
     String? currentLandmarkId,
     FloorPlanEmptyReason? emptyReason,
     double? worstSpreadM,
+    bool? voiceOn,
     String? error,
     bool clearError = false,
   }) {
@@ -105,6 +142,7 @@ final class FloorPlanState extends Equatable {
       currentLandmarkId: currentLandmarkId ?? this.currentLandmarkId,
       emptyReason: emptyReason ?? this.emptyReason,
       worstSpreadM: worstSpreadM ?? this.worstSpreadM,
+      voiceOn: voiceOn ?? this.voiceOn,
       error: clearError ? null : (error ?? this.error),
     );
   }
@@ -120,6 +158,7 @@ final class FloorPlanState extends Equatable {
         currentLandmarkId,
         emptyReason,
         worstSpreadM,
+        voiceOn,
         error,
       ];
 }

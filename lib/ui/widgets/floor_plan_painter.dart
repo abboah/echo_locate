@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 
 import '../../core/models/landmark.dart';
 import '../../core/models/walk_route.dart';
@@ -14,9 +15,11 @@ import '../../services/mapping/plan_viewport.dart';
 /// and a loop will not close. Drawing it any more precisely than that would
 /// claim an accuracy the data does not have.
 ///
-/// It is also not the accessible path. A blind user never sees this; they are
-/// served by the same graph through voice. The map exists for sighted
-/// contributors verifying their own captures, and for examiners.
+/// It is not the *primary* accessible path — a blind user is served by the
+/// same graph through voice, which says more and says it in order. But the
+/// plan is not left silent either: every landmark is published as a semantics
+/// node the screen reader can find and activate, so "I am here" is reachable
+/// without sight. See [_FloorPlanPainter.semanticsBuilder].
 class FloorPlanView extends StatelessWidget {
   const FloorPlanView({
     super.key,
@@ -69,24 +72,44 @@ class FloorPlanView extends StatelessWidget {
           height: constraints.maxHeight,
         );
 
-        final painter = CustomPaint(
-          size: Size.infinite,
-          painter: _FloorPlanPainter(
-            nodes: nodes,
-            edges: edges,
-            landmarks: landmarks,
-            viewport: viewport,
-            routeLandmarkIds: route?.landmarkIds ?? const [],
-            destinationId: route?.steps.isEmpty ?? true
-                ? null
-                : route!.steps.last.toLandmarkId,
-            currentLandmarkId: currentLandmarkId,
-            brightness: theme.brightness,
-            hairline: theme.dividerColor,
-            onSurface: theme.colorScheme.onSurface,
-            muted: theme.textTheme.bodyMedium?.color ?? AppColors.inkMuted,
-          ),
-        );
+        // One-shot, not a loop: the halo swells and settles when the user
+        // moves, which confirms the move. A permanent heartbeat would repaint
+        // the whole plan forever for no information.
+        final animate = !MediaQuery.of(context).disableAnimations;
+
+        Widget build(double pulse) => CustomPaint(
+              size: Size.infinite,
+              painter: _FloorPlanPainter(
+                nodes: nodes,
+                edges: edges,
+                landmarks: landmarks,
+                viewport: viewport,
+                routeLandmarkIds: route?.landmarkIds ?? const [],
+                destinationId: route?.steps.isEmpty ?? true
+                    ? null
+                    : route!.steps.last.toLandmarkId,
+                currentLandmarkId: currentLandmarkId,
+                brightness: theme.brightness,
+                hairline: theme.dividerColor,
+                onSurface: theme.colorScheme.onSurface,
+                muted: theme.textTheme.bodyMedium?.color ?? AppColors.inkMuted,
+                textDirection: Directionality.of(context),
+                pulse: pulse,
+                onLandmarkTap: onLandmarkTap,
+              ),
+            );
+
+        final painter = animate
+            ? TweenAnimationBuilder<double>(
+                // Restarting on the id is the whole trick: the tween only
+                // replays when the user actually stands somewhere new.
+                key: ValueKey(currentLandmarkId),
+                tween: Tween(begin: 0, end: 1),
+                duration: const Duration(milliseconds: 420),
+                curve: Curves.easeOutCubic,
+                builder: (_, value, __) => build(value),
+              )
+            : build(1);
 
         final onTap = onLandmarkTap;
         if (onTap == null) return painter;
@@ -140,6 +163,9 @@ class _FloorPlanPainter extends CustomPainter {
     required this.hairline,
     required this.onSurface,
     required this.muted,
+    required this.textDirection,
+    this.pulse = 1,
+    this.onLandmarkTap,
   });
 
   final List<MapNode> nodes;
@@ -153,6 +179,15 @@ class _FloorPlanPainter extends CustomPainter {
   final Color hairline;
   final Color onSurface;
   final Color muted;
+
+  /// Ambient direction, for both the drawn labels and the semantics nodes —
+  /// which assert on its absence rather than guessing.
+  final TextDirection textDirection;
+
+  /// 0 → 1 as the "you are here" halo settles after a move.
+  final double pulse;
+
+  final ValueChanged<String>? onLandmarkTap;
 
   bool get _dark => brightness == Brightness.dark;
 
@@ -301,10 +336,14 @@ class _FloorPlanPainter extends CustomPainter {
     final current = currentLandmarkId;
     if (current != null && placed[current] != null) {
       final centre = placed[current]!;
+      // Swells to 22px and settles to 11, fading as it goes — the shape of a
+      // ripple, which is what "you moved" looks like without any text.
+      final radius = 11 + 11 * (1 - pulse);
       canvas.drawCircle(
         centre,
-        11,
-        Paint()..color = AppColors.coral.withValues(alpha: 0.25),
+        radius,
+        Paint()
+          ..color = AppColors.coral.withValues(alpha: 0.25 * (0.4 + 0.6 * pulse)),
       );
       canvas.drawCircle(centre, 6, Paint()..color = AppColors.coral);
     }
@@ -346,7 +385,7 @@ class _FloorPlanPainter extends CustomPainter {
           fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
         ),
       ),
-      textDirection: TextDirection.ltr,
+      textDirection: textDirection,
       maxLines: 1,
       ellipsis: '…',
     )..layout(maxWidth: 110);
@@ -364,12 +403,93 @@ class _FloorPlanPainter extends CustomPainter {
     painter.paint(canvas, Offset(left, topCentre.dy));
   }
 
+  /// Publishes every landmark as a semantics node.
+  ///
+  /// Without this the plan is a single unlabelled box: a `CustomPaint` draws
+  /// pixels, and pixels carry no meaning to a screen reader. That matters more
+  /// here than in most apps, because tapping a landmark is how the user says
+  /// "I am here" — the one input the whole screen depends on. Publishing the
+  /// nodes puts that input, and the shape of the floor, within reach of
+  /// somebody who cannot see either.
+  ///
+  /// Labels name the landmark, its kind, and its role in the current journey,
+  /// because "Help desk" alone does not say whether it is on the way.
+  @override
+  SemanticsBuilderCallback get semanticsBuilder => (size) {
+        final onRoute = routeLandmarkIds.toSet();
+        final tappable = onLandmarkTap != null;
+
+        return [
+          for (final node in nodes)
+            if (landmarks[node.landmarkId] case final landmark?)
+              CustomPainterSemantics(
+                // The drawn dot is 6px across. The semantics node matches the
+                // touch target instead, because a screen reader's explore-by-
+                // touch has to find it the same way a finger does.
+                rect: Rect.fromCenter(
+                  center: Offset(
+                    viewport.toCanvasX(node.x),
+                    viewport.toCanvasY(node.y),
+                  ),
+                  width: FloorPlanView.tapRadius * 2,
+                  height: FloorPlanView.tapRadius * 2,
+                ),
+                properties: SemanticsProperties(
+                  label: _describe(landmark, onRoute),
+                  textDirection: textDirection,
+                  button: tappable,
+                  enabled: tappable,
+                  onTap: tappable
+                      ? () => onLandmarkTap!(node.landmarkId)
+                      : null,
+                ),
+              ),
+        ];
+      };
+
+  String _describe(Landmark landmark, Set<String> onRoute) {
+    final role = switch (landmark.id) {
+      final id when id == currentLandmarkId => 'you are here',
+      final id when id == destinationId => 'your destination',
+      final id when onRoute.contains(id) => 'on your route',
+      _ => null,
+    };
+
+    return [
+      landmark.displayName,
+      _kindWord(landmark.kind),
+      if (role != null) role,
+    ].join(', ');
+  }
+
+  static String _kindWord(LandmarkKind kind) => switch (kind) {
+        LandmarkKind.entrance => 'entrance',
+        LandmarkKind.junction => 'junction',
+        LandmarkKind.stairs => 'stairs',
+        LandmarkKind.lift => 'lift',
+        LandmarkKind.door => 'door',
+        LandmarkKind.sign => 'sign',
+      };
+
   @override
   bool shouldRepaint(covariant _FloorPlanPainter old) =>
       old.brightness != brightness ||
       old.viewport != viewport ||
       old.nodes != nodes ||
       old.edges != edges ||
+      old.routeLandmarkIds != routeLandmarkIds ||
+      old.currentLandmarkId != currentLandmarkId ||
+      old.destinationId != destinationId ||
+      old.textDirection != textDirection ||
+      old.pulse != pulse;
+
+  /// Geometry and labels only — the pulse changes every frame of the ripple
+  /// and rebuilding the semantics tree with it would be pure waste.
+  @override
+  bool shouldRebuildSemantics(covariant _FloorPlanPainter old) =>
+      old.viewport != viewport ||
+      old.nodes != nodes ||
+      old.landmarks != landmarks ||
       old.routeLandmarkIds != routeLandmarkIds ||
       old.currentLandmarkId != currentLandmarkId ||
       old.destinationId != destinationId;

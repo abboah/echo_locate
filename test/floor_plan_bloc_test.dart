@@ -8,6 +8,7 @@ import 'package:echo_locate/features/buildings/building_repository.dart';
 import 'package:echo_locate/features/routing/bloc/floor_plan_bloc.dart';
 import 'package:echo_locate/features/routing/route_repository.dart';
 import 'package:echo_locate/services/mapping/route_planner.dart';
+import 'package:echo_locate/services/speech/speech_service.dart';
 
 /// A route repository that fails, to exercise the offline path.
 class _FailingRouteRepository implements RouteRepository {
@@ -41,10 +42,29 @@ class _UnmappedRouteRepository implements RouteRepository {
   Future<String> saveRoute(RouteDraft draft) async => '';
 }
 
-FloorPlanBloc blocWith(RouteRepository routes) =>
-    FloorPlanBloc(routes, MockBuildingRepository());
+/// Records what the app would say instead of saying it.
+class _RecordingSpeech extends SpeechService {
+  final spoken = <String>[];
+  var stops = 0;
+
+  @override
+  Future<void> speak(String text, {bool interrupt = false}) async {
+    spoken.add(text);
+  }
+
+  @override
+  Future<void> stop() async {
+    stops++;
+  }
+}
+
+FloorPlanBloc blocWith(RouteRepository routes, [SpeechService? speech]) =>
+    FloorPlanBloc(routes, MockBuildingRepository(), speech);
 
 void main() {
+  // SpeechService builds a FlutterTts, which needs the platform channels.
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('FloorPlanStarted', () {
     test('merges the seeded routes into a plan', () async {
       final bloc = blocWith(MockRouteRepository())
@@ -356,6 +376,169 @@ void main() {
 
       expect(state.route, isNull);
       expect(state.graph.isEmpty, isFalse);
+      await bloc.close();
+    });
+  });
+
+  group('spoken guidance', () {
+    test('speaks the leg the user is on, once', () async {
+      final speech = _RecordingSpeech();
+      final bloc = blocWith(MockRouteRepository(), speech)
+        ..add(
+          const FloorPlanStarted(
+            'knust-library',
+            destinationRoomId: 'reading-hall',
+          ),
+        );
+      await bloc.stream.firstWhere((s) => s.hasRoute);
+
+      expect(speech.spoken.single, contains('entrance desk'));
+
+      // Switching floors is not new information. Re-speaking the same leg
+      // every time the plan is rebuilt would talk over the user constantly.
+      bloc.add(const FloorPlanFloorSelected('floor-2'));
+      await bloc.stream.firstWhere((s) => s.activeFloorId == 'floor-2');
+
+      expect(speech.spoken, hasLength(1));
+      await bloc.close();
+    });
+
+    test('speaks each new leg as the user reaches it', () async {
+      final speech = _RecordingSpeech();
+      final bloc = blocWith(MockRouteRepository(), speech)
+        ..add(
+          const FloorPlanStarted(
+            'knust-library',
+            destinationRoomId: 'reading-hall',
+          ),
+        );
+      await bloc.stream.firstWhere((s) => s.hasRoute);
+
+      bloc.add(const FloorPlanPositionChanged('lm-landing-2'));
+      await bloc.stream.firstWhere(
+        (s) => s.currentLandmarkId == 'lm-landing-2',
+      );
+
+      expect(speech.spoken, hasLength(2));
+      await bloc.close();
+    });
+
+    test('announces arrival rather than another leg', () async {
+      final speech = _RecordingSpeech();
+      final bloc = blocWith(MockRouteRepository(), speech)
+        ..add(
+          const FloorPlanStarted(
+            'knust-library',
+            destinationRoomId: 'reading-hall',
+          ),
+        );
+      await bloc.stream.firstWhere((s) => s.hasRoute);
+
+      bloc.add(const FloorPlanPositionChanged('lm-reading-hall'));
+      await bloc.stream.firstWhere((s) => s.hasArrived);
+
+      expect(speech.spoken.last, 'You have arrived at Reading Hall door.');
+      await bloc.close();
+    });
+
+    test('a recorded instruction gets its distance, a synthesised one does not',
+        () async {
+      final bloc = blocWith(MockRouteRepository())
+        ..add(
+          const FloorPlanStarted(
+            'knust-library',
+            destinationRoomId: 'reading-hall',
+          ),
+        );
+      final state = await bloc.stream.firstWhere((s) => s.hasRoute);
+
+      // The contributor wrote "Straight ahead, past the entrance desk", which
+      // never says how far.
+      expect(state.spokenGuidance, endsWith('12 metres.'));
+
+      // A synthesised leg already carries the distance in its sentence, and
+      // saying it twice sounds broken.
+      bloc.add(const FloorPlanPositionChanged('lm-reading-hall'));
+      await bloc.stream.firstWhere((s) => s.hasArrived);
+      bloc.add(const FloorPlanDestinationSelected('study-2b'));
+      final planned = await bloc.stream.firstWhere(
+        (s) => s.route?.isPlanned ?? false,
+      );
+
+      expect(planned.spokenGuidance, contains('metres'));
+      expect(planned.spokenGuidance, isNot(endsWith('metres.')));
+      await bloc.close();
+    });
+
+    test('muting stops mid-sentence and says nothing further', () async {
+      final speech = _RecordingSpeech();
+      final bloc = blocWith(MockRouteRepository(), speech)
+        ..add(
+          const FloorPlanStarted(
+            'knust-library',
+            destinationRoomId: 'reading-hall',
+          ),
+        );
+      await bloc.stream.firstWhere((s) => s.hasRoute);
+      expect(speech.spoken, hasLength(1));
+
+      bloc.add(const FloorPlanVoiceToggled(false));
+      await bloc.stream.firstWhere((s) => !s.voiceOn);
+      expect(speech.stops, 1);
+
+      bloc.add(const FloorPlanPositionChanged('lm-landing-2'));
+      await bloc.stream.firstWhere(
+        (s) => s.currentLandmarkId == 'lm-landing-2',
+      );
+
+      expect(speech.spoken, hasLength(1));
+      await bloc.close();
+    });
+
+    test('unmuting speaks where the user is now, not where they were',
+        () async {
+      final speech = _RecordingSpeech();
+      final bloc = blocWith(MockRouteRepository(), speech)
+        ..add(
+          const FloorPlanStarted(
+            'knust-library',
+            destinationRoomId: 'reading-hall',
+          ),
+        );
+      await bloc.stream.firstWhere((s) => s.hasRoute);
+
+      bloc.add(const FloorPlanVoiceToggled(false));
+      await bloc.stream.firstWhere((s) => !s.voiceOn);
+      bloc.add(const FloorPlanPositionChanged('lm-landing-2'));
+      await bloc.stream.firstWhere(
+        (s) => s.currentLandmarkId == 'lm-landing-2',
+      );
+
+      bloc.add(const FloorPlanVoiceToggled(true));
+      await bloc.stream.firstWhere((s) => s.voiceOn);
+
+      // Somebody who turns the voice back on wants the leg they are on, not
+      // silence until the next landmark.
+      expect(speech.spoken, hasLength(2));
+      expect(speech.spoken.last, contains('directory board'));
+      await bloc.close();
+    });
+
+    test('clearing the route silences it', () async {
+      final speech = _RecordingSpeech();
+      final bloc = blocWith(MockRouteRepository(), speech)
+        ..add(
+          const FloorPlanStarted(
+            'knust-library',
+            destinationRoomId: 'reading-hall',
+          ),
+        );
+      await bloc.stream.firstWhere((s) => s.hasRoute);
+
+      bloc.add(const FloorPlanRouteCleared());
+      await bloc.stream.firstWhere((s) => !s.hasRoute);
+
+      expect(speech.stops, 1);
       await bloc.close();
     });
   });

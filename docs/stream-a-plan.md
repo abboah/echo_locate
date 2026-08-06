@@ -482,6 +482,10 @@ near zero if the DI registration is committed by itself.
 | Legs beat the stored `total_distance_m` | The column is denormalised and can drift from the legs written beside it |
 | Landmark shape carries kind, not colour alone | Readable in greyscale and without colour discrimination |
 | A position change on the route advances it; off the route replans | Progress and deviation are different events; conflating them narrates a walk the user has left |
+| Voice lives in the Bloc, driven by `onChange` | Every handler can move the user onto a new leg; wiring speech to some of them goes quiet exactly when the route changes |
+| The spoken line and the card's semantics label are one getter | Two sources for the same sentence drift, and the screen reader gets the stale one |
+| Card is a `liveRegion` only while the voice is muted | With both on, TalkBack and the TTS engine read the same instruction over each other |
+| Landmarks published via `semanticsBuilder` | A `CustomPaint` is one opaque box otherwise, and tapping a landmark is the screen's only input |
 
 ---
 
@@ -489,8 +493,11 @@ near zero if the DI registration is committed by itself.
 
 | Check | State |
 |---|---|
-| `flutter test` | 274 passing |
+| `flutter test` | 287 passing |
 | `flutter analyze lib test` | clean |
+| Tap targets (`androidTapTargetGuideline`, iOS) | pass — asserted in test |
+| Text contrast (`textContrastGuideline`) | pass — asserted in test |
+| Accessibility pass on device | **pending** — phone is PIN-locked |
 | Android debug build + install | done — Infinix X657C, API 29 |
 | Map screen on device, light theme | done |
 | Map screen on device, dark theme | done |
@@ -530,6 +537,49 @@ begins somewhere the user is not.
 With that fixed the spec's demo moment works end to end on live data: tapping the Reading
 Hall door replans to "Estimated route · 13 m", "Leg 1 of 2 · Continue straight for about
 6 metres to Floor 2 directory board", over legs taken from two different recorded walks.
+
+---
+
+## Accessibility and interaction pass
+
+An audit of the UI found the visual system in good shape — token discipline held (seven
+hardcoded colours and one hardcoded spacing across 27 files), light and dark genuinely
+built rather than bolted on. The gap was behavioural, and specific to what this app claims
+to be: thirteen `Semantics` usages in the whole codebase, no haptics anywhere, and the
+navigation screen rendering an instruction it never spoke while `SpeechService` sat wired
+up and idle. A wayfinding aid for blind users that only writes its directions down is not
+finished, however well it draws.
+
+**Voice.** `FloorPlanBloc` now speaks each leg as it becomes current, driven from
+`onChange` — every handler can move the user onto a different leg, so guidance hung off
+individual handlers would go silent exactly when the route changed under them. It speaks
+once per leg, not per rebuild: switching floors or redrawing the plan says nothing. Muting
+stops mid-sentence; unmuting re-speaks the leg the user is on rather than leaving them in
+silence until the next landmark. Arrival is announced as arrival, not as another leg.
+
+Instructions are completed rather than padded: a contributor's recorded sentence ("Straight
+ahead, past the entrance desk") gains "12 metres", while a synthesised one already carrying
+its distance does not have it read out twice.
+
+**The plan is no longer silent.** `_FloorPlanPainter` publishes every landmark through
+`semanticsBuilder`, labelled with its name, kind and role in the journey — "Help desk,
+junction, on your route". Each node is activatable, so "I am here", the only input this
+screen has, no longer requires a sighted aim at a 6px dot. Semantics rebuild on geometry
+and labels only, never on the animation frame.
+
+**Touch targets.** Every control is 48dp. The floor switcher was 44 and the header buttons
+42; both are now asserted by `meetsGuideline(androidTapTargetGuideline)` rather than
+eyeballed, alongside iOS targets and text contrast.
+
+**Haptics.** Landmark taps, floor changes and toggles click; choosing a destination is a
+medium impact; arrival is a heavy one. A 6px target needs to confirm itself — without it a
+miss and a hit feel identical until the plan redraws.
+
+**Motion.** Legs cross-fade and slide, the turn arrow scales between directions, the
+progress bar tweens rather than jumping, the floor pill animates its selection, and the
+"you are here" halo ripples out and settles when the user moves. All of it is finite and
+one-shot; the halo respects `MediaQuery.disableAnimations`, and nothing loops, so no
+repaint runs forever and no `pumpAndSettle` can hang on it.
 
 ### On-device run — Infinix X657C, API 29
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
@@ -53,16 +54,88 @@ class _NavigationView extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: BlocBuilder<FloorPlanBloc, FloorPlanState>(
-          builder: (context, state) {
-            return Column(
-              children: [
-                _Header(buildingName: buildingName, state: state),
-                Expanded(child: _PlanArea(state: state)),
-                if (state.hasRoute) _InstructionCard(state: state),
-              ],
-            );
-          },
+        // Arrival is the one moment guidance has to land without being looked
+        // at or listened for, so it is also felt.
+        child: BlocListener<FloorPlanBloc, FloorPlanState>(
+          listenWhen: (before, after) => !before.hasArrived && after.hasArrived,
+          listener: (_, __) => HapticFeedback.heavyImpact(),
+          child: BlocBuilder<FloorPlanBloc, FloorPlanState>(
+            builder: (context, state) {
+              return Column(
+                children: [
+                  _Header(buildingName: buildingName, state: state),
+                  Expanded(child: _PlanArea(state: state)),
+                  // Slides up when a route appears rather than shoving the map
+                  // aside in one frame.
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOutCubic,
+                    alignment: Alignment.topCenter,
+                    child: state.hasRoute
+                        ? _InstructionCard(state: state)
+                        : const SizedBox(width: double.infinity),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The circular control used across this screen's chrome.
+///
+/// Sized to 48dp, which is the smallest target Material and WCAG 2.5.5 accept
+/// — and this app's users are the ones least able to spend a tap correcting an
+/// aim. The icon inside stays small; it is the touch area that grows.
+class _CircleButton extends StatelessWidget {
+  const _CircleButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    // Merged, because the label and the tap action live on different widgets:
+    // left unmerged a screen reader reads "Back" and then finds a separate,
+    // nameless button to press.
+    return MergeSemantics(
+      child: Semantics(
+        button: true,
+        label: label,
+        child: Material(
+          color: theme.brightness == Brightness.dark
+              ? AppColors.darkElevated
+              : AppColors.white,
+          shape: const CircleBorder(),
+          elevation: 1,
+          child: InkWell(
+            onTap: () {
+              HapticFeedback.selectionClick();
+              onTap();
+            },
+            customBorder: const CircleBorder(),
+            child: SizedBox(
+              width: 48,
+              height: 48,
+              child: Icon(
+                icon,
+                size: 20,
+                color: color ?? theme.colorScheme.onSurface,
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -99,43 +172,33 @@ class _Header extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Material(
-            color: theme.brightness == Brightness.dark
-                ? AppColors.darkElevated
-                : AppColors.white,
-            shape: const CircleBorder(),
-            elevation: 1,
-            child: InkWell(
-              onTap: () => context.pop(),
-              customBorder: const CircleBorder(),
-              child: SizedBox(
-                width: 42,
-                height: 42,
-                child: Icon(
-                  PhosphorIconsRegular.caretLeft,
-                  size: 20,
-                  color: theme.colorScheme.onSurface,
-                ),
-              ),
-            ),
+          _CircleButton(
+            icon: PhosphorIconsRegular.caretLeft,
+            label: 'Back',
+            onTap: () => context.pop(),
           ),
           const SizedBox(width: AppDimens.space12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  buildingName,
-                  style: theme.textTheme.titleMedium,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if (subtitle.isNotEmpty)
+            // One node, one sentence: a screen reader should say "KNUST
+            // Library, Floor 2, heading to Study Room 2B" rather than making
+            // the user swipe through three fragments.
+            child: MergeSemantics(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
-                    subtitle,
-                    style: theme.textTheme.labelSmall,
+                    buildingName,
+                    style: theme.textTheme.titleMedium,
                     overflow: TextOverflow.ellipsis,
                   ),
-              ],
+                  if (subtitle.isNotEmpty)
+                    Text(
+                      subtitle,
+                      style: theme.textTheme.labelSmall,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
+              ),
             ),
           ),
           // Lives in the header rather than floating over the plan: an overlay
@@ -161,7 +224,13 @@ class _PlanArea extends StatelessWidget {
     switch (state.status) {
       case FloorPlanStatus.initial:
       case FloorPlanStatus.loading:
-        return const Center(child: CircularProgressIndicator());
+        // A bare spinner is silent to a screen reader, which then reports an
+        // empty screen while the map is on its way.
+        return Semantics(
+          liveRegion: true,
+          label: 'Loading the floor plan',
+          child: const Center(child: CircularProgressIndicator()),
+        );
 
       case FloorPlanStatus.failure:
         return _Message(
@@ -191,9 +260,15 @@ class _PlanArea extends StatelessWidget {
                 // In the field this claim comes from OCR reading the sign.
                 // Tapping is how a contributor at a desk, or anyone whose
                 // camera cannot see the sign, says the same thing.
-                onLandmarkTap: (id) => context
-                    .read<FloorPlanBloc>()
-                    .add(FloorPlanPositionChanged(id)),
+                onLandmarkTap: (id) {
+                  // The dot is 6px and the finger is not, so the tap needs to
+                  // confirm itself: without this, a miss and a hit feel the
+                  // same until the plan redraws.
+                  HapticFeedback.selectionClick();
+                  context
+                      .read<FloorPlanBloc>()
+                      .add(FloorPlanPositionChanged(id));
+                },
               ),
             ),
             if (state.floors.length > 1)
@@ -242,44 +317,17 @@ class _DestinationButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     final bloc = context.read<FloorPlanBloc>();
 
     // Icon-only. A labelled pill crowded the building name down to "KNU…" on a
     // 360dp screen, and the destination is already named in the subtitle
     // beneath it. Semantics carries the label for screen readers, which is the
     // audience that matters most here.
-    Widget circle({
-      required IconData icon,
-      required String label,
-      required VoidCallback onTap,
-      Color? color,
-    }) {
-      return Semantics(
-        button: true,
-        label: label,
-        child: Material(
-          color: isDark ? AppColors.darkElevated : AppColors.white,
-          shape: const CircleBorder(),
-          elevation: 1,
-          child: InkWell(
-            onTap: onTap,
-            customBorder: const CircleBorder(),
-            child: SizedBox(
-              width: 42,
-              height: 42,
-              child: Icon(icon, size: 18, color: color),
-            ),
-          ),
-        ),
-      );
-    }
-
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         if (state.hasRoute) ...[
-          circle(
+          _CircleButton(
             icon: PhosphorIconsRegular.x,
             label: 'Clear route',
             color: theme.textTheme.labelSmall?.color,
@@ -287,7 +335,7 @@ class _DestinationButton extends StatelessWidget {
           ),
           const SizedBox(width: AppDimens.space8),
         ],
-        circle(
+        _CircleButton(
           icon: PhosphorIconsRegular.magnifyingGlass,
           label: state.hasRoute ? 'Change destination' : 'Choose a destination',
           color: AppColors.coral,
@@ -312,7 +360,10 @@ class _DestinationButton extends StatelessWidget {
       ),
       builder: (_) => _DestinationSheet(state: state),
     );
-    if (roomId != null) bloc.add(FloorPlanDestinationSelected(roomId));
+    if (roomId != null) {
+      HapticFeedback.mediumImpact();
+      bloc.add(FloorPlanDestinationSelected(roomId));
+    }
   }
 }
 
@@ -358,19 +409,37 @@ class _DestinationSheet extends StatelessWidget {
               ),
             ),
             for (final room in floor.rooms)
-              ListTile(
-                title: Text(room.name),
-                // A room nobody has recorded a landmark at cannot be routed
-                // to. Greying it out is more honest than accepting the tap and
-                // then explaining why nothing happened.
-                enabled: state.landmarks.values.any(
-                  (l) => l.roomId == room.id,
-                ),
-                trailing: const Icon(
-                  PhosphorIconsRegular.caretRight,
-                  size: 16,
-                ),
-                onTap: () => Navigator.of(context).pop(room.id),
+              Builder(
+                builder: (context) {
+                  // A room nobody has recorded a landmark at cannot be routed
+                  // to. Greying it out is more honest than accepting the tap
+                  // and then explaining why nothing happened.
+                  final reachable = state.landmarks.values.any(
+                    (l) => l.roomId == room.id,
+                  );
+
+                  return Semantics(
+                    button: reachable,
+                    enabled: reachable,
+                    // Grey is invisible to a screen reader, so the reason has
+                    // to be in words or the room just looks broken.
+                    label: reachable
+                        ? room.name
+                        : '${room.name}, no recorded walk reaches this room '
+                            'yet',
+                    child: ExcludeSemantics(
+                      child: ListTile(
+                        title: Text(room.name),
+                        enabled: reachable,
+                        trailing: const Icon(
+                          PhosphorIconsRegular.caretRight,
+                          size: 16,
+                        ),
+                        onTap: () => Navigator.of(context).pop(room.id),
+                      ),
+                    ),
+                  );
+                },
               ),
           ],
         ],
@@ -399,37 +468,51 @@ class _FloorSwitcher extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             for (final floor in state.floors)
-              Semantics(
-                selected: floor.id == state.activeFloorId,
-                button: true,
-                label: floor.label == 'G'
-                    ? 'Ground floor'
-                    : 'Floor ${floor.label}',
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(AppDimens.radiusPill),
-                  onTap: () => context
-                      .read<FloorPlanBloc>()
-                      .add(FloorPlanFloorSelected(floor.id)),
-                  child: Container(
-                    width: 36,
-                    height: 36,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: floor.id == state.activeFloorId
-                          ? AppColors.coral
-                          : Colors.transparent,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Text(
-                      floor.label,
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        color: floor.id == state.activeFloorId
-                            ? Colors.white
-                            : theme.colorScheme.onSurface,
+              Builder(
+                builder: (context) {
+                  final selected = floor.id == state.activeFloorId;
+                  final name = floor.label == 'G'
+                      ? 'Ground floor'
+                      : 'Floor ${floor.label}';
+
+                  return Semantics(
+                    selected: selected,
+                    button: true,
+                    label: name,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(AppDimens.radiusPill),
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        context
+                            .read<FloorPlanBloc>()
+                            .add(FloorPlanFloorSelected(floor.id));
+                      },
+                      // The fill crossfades instead of snapping, so the eye
+                      // can follow which floor it moved to.
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        curve: Curves.easeOut,
+                        width: 48,
+                        height: 48,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color:
+                              selected ? AppColors.coral : Colors.transparent,
+                          shape: BoxShape.circle,
+                        ),
+                        child: AnimatedDefaultTextStyle(
+                          duration: const Duration(milliseconds: 180),
+                          style: theme.textTheme.labelLarge!.copyWith(
+                            color: selected
+                                ? Colors.white
+                                : theme.colorScheme.onSurface,
+                          ),
+                          child: Text(floor.label),
+                        ),
                       ),
                     ),
-                  ),
-                ),
+                  );
+                },
               ),
           ],
         ),
@@ -470,87 +553,204 @@ class _InstructionCard extends StatelessWidget {
       ),
       child: Column(
         children: [
+          // Read as one sentence, and announced only when the app's own voice
+          // is muted — with both on, TalkBack and the TTS engine talk over
+          // each other saying the same thing.
+          MergeSemantics(
+            child: Semantics(
+              liveRegion: !state.voiceOn,
+              label: state.spokenGuidance,
+              child: ExcludeSemantics(
+                child: Row(
+                  children: [
+                    _TurnBadge(
+                      icon: arrived
+                          ? PhosphorIconsBold.checkCircle
+                          : _turnIcon(step.turnDeg),
+                    ),
+                    const SizedBox(width: AppDimens.space12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            arrived
+                                ? 'Arrived'
+                                : 'Leg ${index + 1} of ${route.steps.length}',
+                            style: theme.textTheme.labelSmall,
+                          ),
+                          // Legs cross-fade into each other; the text changing
+                          // under the eye is how the user notices the route
+                          // moved on without being told twice.
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 240),
+                            switchInCurve: Curves.easeOut,
+                            transitionBuilder: (child, animation) =>
+                                FadeTransition(
+                              opacity: animation,
+                              child: SlideTransition(
+                                position: Tween<Offset>(
+                                  begin: const Offset(0, 0.25),
+                                  end: Offset.zero,
+                                ).animate(animation),
+                                child: child,
+                              ),
+                            ),
+                            child: Text(
+                              // The contributor's own sentence where it still
+                              // applies, otherwise one rebuilt for the way
+                              // round being walked.
+                              arrived
+                                  ? state.landmarks[step.toLandmarkId]
+                                          ?.displayName ??
+                                      'You have arrived'
+                                  : step.instruction,
+                              key: ValueKey(state.guidanceKey),
+                              style: theme.textTheme.titleMedium,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (!arrived) ...[
+                      const SizedBox(width: AppDimens.space8),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            '${step.distanceM.round()} m',
+                            style: theme.textTheme.titleMedium
+                                ?.copyWith(color: AppColors.coral),
+                          ),
+                          Text(
+                            '${remaining.round()} m to go',
+                            style: theme.textTheme.labelSmall,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: AppDimens.space16),
           Row(
             children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: const BoxDecoration(
-                  color: AppColors.coral,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  arrived
-                      ? PhosphorIconsBold.checkCircle
-                      : _turnIcon(step.turnDeg),
-                  color: Colors.white,
-                  size: 22,
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(AppDimens.radiusPill),
+                  // Animated between values rather than jumping: the bar is
+                  // the only thing on screen showing the journey shortening.
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0, end: progress),
+                    duration: const Duration(milliseconds: 320),
+                    curve: Curves.easeOutCubic,
+                    builder: (_, value, __) => LinearProgressIndicator(
+                      value: value,
+                      minHeight: 5,
+                      backgroundColor: theme.colorScheme.surface,
+                      valueColor:
+                          const AlwaysStoppedAnimation<Color>(AppColors.coral),
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(width: AppDimens.space12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      arrived
-                          ? 'Arrived'
-                          : 'Leg ${index + 1} of ${route.steps.length}',
-                      style: theme.textTheme.labelSmall,
-                    ),
-                    Text(
-                      // The contributor's own sentence where it still applies,
-                      // otherwise one rebuilt for the way round being walked.
-                      arrived
-                          ? state.landmarks[step.toLandmarkId]?.displayName ??
-                              'You have arrived'
-                          : step.instruction,
-                      style: theme.textTheme.titleMedium,
-                    ),
-                  ],
-                ),
-              ),
-              if (!arrived) ...[
-                const SizedBox(width: AppDimens.space8),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      '${step.distanceM.round()} m',
-                      style: theme.textTheme.titleMedium
-                          ?.copyWith(color: AppColors.coral),
-                    ),
-                    Text(
-                      '${remaining.round()} m to go',
-                      style: theme.textTheme.labelSmall,
-                    ),
-                  ],
-                ),
-              ],
+              // Sits with the guidance it silences rather than up in the
+              // header, where it would crowd the building name and be one more
+              // thing between the user and the map.
+              _VoiceButton(on: state.voiceOn),
             ],
-          ),
-          const SizedBox(height: AppDimens.space16),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(AppDimens.radiusPill),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 5,
-              backgroundColor: theme.colorScheme.surface,
-              valueColor:
-                  const AlwaysStoppedAnimation<Color>(AppColors.coral),
-            ),
           ),
         ],
       ),
     );
   }
 
-  IconData _turnIcon(int turnDeg) => switch (turnDeg) {
+  static IconData _turnIcon(int turnDeg) => switch (turnDeg) {
         90 || 135 => PhosphorIconsBold.arrowBendUpRight,
         -90 || -135 => PhosphorIconsBold.arrowBendUpLeft,
         180 => PhosphorIconsBold.arrowUDownLeft,
         _ => PhosphorIconsBold.arrowUp,
       };
+}
+
+/// The coral disc carrying the turn arrow.
+///
+/// The arrow rotates into its new direction rather than being swapped out:
+/// a left turn replaced instantly by a right turn is two unrelated pictures,
+/// where a turning arrow is one instruction changing.
+class _TurnBadge extends StatelessWidget {
+  const _TurnBadge({required this.icon});
+
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: const BoxDecoration(
+        color: AppColors.coral,
+        shape: BoxShape.circle,
+      ),
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 240),
+        transitionBuilder: (child, animation) => ScaleTransition(
+          scale: animation,
+          child: FadeTransition(opacity: animation, child: child),
+        ),
+        child: Icon(
+          icon,
+          key: ValueKey(icon.codePoint),
+          color: Colors.white,
+          size: 22,
+        ),
+      ),
+    );
+  }
+}
+
+/// Mutes and unmutes spoken guidance.
+///
+/// Deliberately not hidden behind a settings screen. The voice is the primary
+/// output for the users this app is built for, and the secondary output for
+/// everyone else walking a corridor without looking down — both need it
+/// reachable in one tap.
+class _VoiceButton extends StatelessWidget {
+  const _VoiceButton({required this.on});
+
+  final bool on;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return MergeSemantics(
+      child: Semantics(
+        button: true,
+        toggled: on,
+        label: on ? 'Mute spoken directions' : 'Speak directions aloud',
+        child: IconButton(
+          onPressed: () {
+            HapticFeedback.selectionClick();
+            context.read<FloorPlanBloc>().add(FloorPlanVoiceToggled(!on));
+          },
+          // The default IconButton target is already 48dp; stated here so a
+          // later density change cannot quietly shrink it.
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+          icon: Icon(
+            on
+                ? PhosphorIconsRegular.speakerHigh
+                : PhosphorIconsRegular.speakerSlash,
+            size: 20,
+            color: on ? AppColors.coral : theme.textTheme.labelSmall?.color,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _Message extends StatelessWidget {
