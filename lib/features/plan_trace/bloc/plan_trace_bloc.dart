@@ -86,6 +86,44 @@ class PlanTraceBloc extends Bloc<PlanTraceEvent, PlanTraceState> {
       AppLogger.error('Floor load failed', error, stack);
     }
 
+    // What the building has already been traced with. Without this every
+    // session started blank and saved over the last one — the plan *was*
+    // stored, it was just never read back, so a second floor replaced the
+    // first and a dropped session meant tracing the whole building again.
+    // Best-effort: a plan that will not load is a reason to trace from
+    // scratch, not to refuse to trace at all.
+    try {
+      final existing = await _routes.tracedPlanOf(event.buildingId);
+      if (isClosed) return;
+      if (existing != null && !existing.isEmpty) {
+        emit(
+          state.copyWith(
+            points: [for (final node in existing.nodes) _pointOf(node)],
+            links: [
+              for (final edge in existing.edges)
+                PlanLink(edge.fromRef, edge.toRef),
+            ],
+          ),
+        );
+      }
+    } catch (error, stack) {
+      AppLogger.warn('Existing plan unavailable: $error');
+      AppLogger.error('Traced plan load failed', error, stack);
+    }
+
+    // The photos those points were tapped onto, if this device took them.
+    final stored = await _photos.storedPhotos(event.buildingId);
+    if (isClosed) return;
+    if (stored.isNotEmpty) emit(state.copyWith(photos: stored));
+
+    // A floor already photographed goes straight to tracing: asking for a
+    // photo that is already on disk is how "continue" would have turned back
+    // into "start again".
+    if (state.photoPath != null) {
+      emit(state.copyWith(stage: PlanTraceStage.trace, cameraReady: false));
+      return;
+    }
+
     // A camera that will not open is not a dead end: the plan photo is a
     // backdrop to tap against, and the graph is the taps. Tracing carries on
     // over a blank grid.
@@ -94,17 +132,41 @@ class PlanTraceBloc extends Bloc<PlanTraceEvent, PlanTraceState> {
     emit(state.copyWith(cameraReady: ready));
   }
 
+  /// A stored node back into a placed point.
+  ///
+  /// The inverse of [toPlan]: screen v grows downwards where map y grows
+  /// north, so the negation applied on the way out is undone on the way back
+  /// in. Without it a reloaded plan would come up mirrored, and every
+  /// correction made to it would be made upside down.
+  static PlanPoint _pointOf(TracedNode node) => PlanPoint(
+        ref: node.ref,
+        u: node.x,
+        v: -node.y,
+        floorId: node.floorId,
+        kind: node.kind,
+        labelText: node.labelText,
+        displayName: node.displayName,
+        roomId: node.roomId,
+      );
+
+  /// Switches which floor is being drawn.
+  ///
+  /// The selection is **kept**, unlike every other view change: joining the
+  /// ground-floor stairwell to the landing above it is what makes a building
+  /// one graph A* can climb, and clearing here made that join impossible to
+  /// draw — the node you wanted to join to stopped existing the moment you
+  /// went looking for its other end.
   void _onFloorChanged(
     PlanFloorChanged event,
     Emitter<PlanTraceState> emit,
   ) =>
-      emit(state.copyWith(floorId: event.floorId, clearSelection: true));
+      emit(state.copyWith(floorId: event.floorId));
 
   Future<void> _onPhotoTaken(
     PlanPhotoTaken event,
     Emitter<PlanTraceState> emit,
   ) async {
-    final path = await _photos.capture();
+    final path = await _photos.capture(state.buildingId, state.floorId);
     if (isClosed) return;
     if (path == null) {
       emit(state.copyWith(error: 'Could not take that photo. Try again.'));
@@ -114,7 +176,7 @@ class PlanTraceBloc extends Bloc<PlanTraceEvent, PlanTraceState> {
     if (isClosed) return;
     emit(
       state.copyWith(
-        photoPath: path,
+        photos: {...state.photos, state.floorId: path},
         cameraReady: false,
         stage: PlanTraceStage.trace,
       ),
@@ -127,7 +189,14 @@ class PlanTraceBloc extends Bloc<PlanTraceEvent, PlanTraceState> {
   ) async {
     // The points are kept: re-shooting is nearly always about a bad angle, and
     // throwing away a half-finished trace to fix a photo would be its own bug.
-    emit(state.copyWith(clearPhoto: true, stage: PlanTraceStage.photo));
+    await _photos.discard(state.buildingId, state.floorId);
+    if (isClosed) return;
+    emit(
+      state.copyWith(
+        photos: _withoutCurrentFloor(),
+        stage: PlanTraceStage.photo,
+      ),
+    );
     final ready = await _photos.start();
     if (isClosed) return;
     emit(state.copyWith(cameraReady: ready));
@@ -141,18 +210,22 @@ class PlanTraceBloc extends Bloc<PlanTraceEvent, PlanTraceState> {
     if (isClosed) return;
     emit(
       state.copyWith(
-        clearPhoto: true,
+        photos: _withoutCurrentFloor(),
         cameraReady: false,
         stage: PlanTraceStage.trace,
       ),
     );
   }
 
+  Map<String, String> _withoutCurrentFloor() =>
+      {...state.photos}..remove(state.floorId);
+
   void _onNodeAdded(PlanNodeAdded event, Emitter<PlanTraceState> emit) {
     final point = PlanPoint(
       ref: 'n${_nextRef++}',
       u: event.u,
       v: event.v,
+      floorId: state.floorId,
       kind: event.kind,
       labelText: event.labelText,
       displayName: event.displayName,
@@ -236,9 +309,21 @@ class PlanTraceBloc extends Bloc<PlanTraceEvent, PlanTraceState> {
 
     emit(state.copyWith(stage: PlanTraceStage.saving));
     try {
-      await _routes.saveTracedPlan(toPlan());
+      final saved = await _routes.saveTracedPlan(toPlan());
       if (isClosed) return;
-      emit(state.copyWith(stage: PlanTraceStage.saved));
+      // Adopt what came back. The server rewrites each 'n1' into the landmark
+      // id it upserted, so taking its answer means a second save in the same
+      // session sends the resolved refs rather than re-minting local ones.
+      emit(
+        state.copyWith(
+          stage: PlanTraceStage.saved,
+          points: [for (final node in saved.nodes) _pointOf(node)],
+          links: [
+            for (final edge in saved.edges) PlanLink(edge.fromRef, edge.toRef),
+          ],
+          clearSelection: true,
+        ),
+      );
     } catch (error, stack) {
       AppLogger.error('Saving traced plan failed: $error', error, stack);
       if (isClosed) return;
@@ -270,7 +355,10 @@ class PlanTraceBloc extends Bloc<PlanTraceEvent, PlanTraceState> {
             ref: point.ref,
             x: point.u,
             y: -point.v,
-            floorId: state.floorId,
+            // The floor the point was placed on, not whichever floor happens
+            // to be on screen when Save is pressed. Reading it from the state
+            // stamped every node in the building with the current floor.
+            floorId: point.floorId,
             kind: point.kind,
             labelText: point.labelText,
             displayName: point.displayName,
@@ -285,10 +373,14 @@ class PlanTraceBloc extends Bloc<PlanTraceEvent, PlanTraceState> {
   }
 
   /// The placed point a tap at ([u], [v]) hits, or null for empty plan.
+  ///
+  /// This floor only. A point directly above one on the floor below shares its
+  /// coordinates — a stairwell usually does — so searching every floor would
+  /// let a tap land on a node that is not on screen.
   PlanPoint? pointAt(double u, double v) {
     PlanPoint? best;
     var bestDistance = tapRadius;
-    for (final point in state.points) {
+    for (final point in state.pointsOnFloor) {
       final du = point.u - u;
       final dv = point.v - v;
       final distance = math.sqrt(du * du + dv * dv);

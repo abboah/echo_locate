@@ -75,6 +75,10 @@ dependencies:
   logger: ^2.4.0
   phosphoricons_flutter: ^1.0.0
   flutter_dotenv: ^6.0.1
+  # Where a traced plan's photo is kept. `camera` writes stills into the cache
+  # directory, which Android evicts under pressure — so a plan re-opened days
+  # later lost the backdrop its landmarks were tapped onto. Documents survive.
+  path_provider: ^2.1.4
 
 dev_dependencies:
   flutter_test:

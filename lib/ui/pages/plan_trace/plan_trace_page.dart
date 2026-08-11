@@ -205,8 +205,11 @@ class _TraceStep extends StatelessWidget {
                       const _BlankGrid(),
                     CustomPaint(
                       painter: PlanTracePainter(
-                        points: state.points,
-                        links: state.links,
+                        // This floor's trace only — the rest of the building
+                        // is still in state.points, waiting to be saved with
+                        // it, but it does not belong on this plan.
+                        points: state.pointsOnFloor,
+                        links: state.linksOnFloor,
                         selectedRef: state.selectedRef,
                         onDark:
                             Theme.of(context).brightness == Brightness.dark,
@@ -232,10 +235,17 @@ class _Instructions extends StatelessWidget {
     final theme = Theme.of(context);
     final state = context.watch<PlanTraceBloc>().state;
 
-    final text = state.selectedRef == null
-        ? 'Tap a doorway or junction to place a landmark.'
-        : 'Tap again to place the next one — it joins to the last. Tap a '
-            'placed landmark to join or unjoin it.';
+    // A selection on another floor is invisible on this one, so the only way
+    // a contributor knows the stairwell join is still armed is being told.
+    final selected = state.pointOf(state.selectedRef);
+    final text = switch (state.selectedRef) {
+      null => 'Tap a doorway or junction to place a landmark.',
+      _ when state.joiningFromAnotherFloor =>
+        'Joining from ${selected!.displayName} on the other floor — tap where '
+            'the stairs come out and the two are linked.',
+      _ => 'Tap again to place the next one — it joins to the last. Tap a '
+          'placed landmark to join or unjoin it.',
+    };
 
     return Padding(
       padding: const EdgeInsets.symmetric(
@@ -266,6 +276,10 @@ class _TraceControls extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
+                  // This floor, then the building, because the second number
+                  // is the reassurance that switching floor did not throw the
+                  // first one away.
+                  '${state.pointsOnFloor.length} on this floor · '
                   '${state.points.length} landmarks · '
                   '${state.links.length} corridors',
                   style: theme.textTheme.bodySmall,

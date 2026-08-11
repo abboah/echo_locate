@@ -24,6 +24,7 @@ class PlanPoint extends Equatable {
     required this.ref,
     required this.u,
     required this.v,
+    required this.floorId,
     required this.kind,
     required this.labelText,
     required this.displayName,
@@ -33,6 +34,15 @@ class PlanPoint extends Equatable {
   final String ref;
   final double u;
   final double v;
+
+  /// Which floor this point was placed on.
+  ///
+  /// Per point rather than read from the state's current floor at save time,
+  /// which is what makes one plan span a building: the screen holds every
+  /// floor's points at once and draws the one being traced, so switching floor
+  /// is a change of view rather than the start of a new, separate plan.
+  final String floorId;
+
   final LandmarkKind kind;
   final String labelText;
   final String displayName;
@@ -45,7 +55,8 @@ class PlanPoint extends Equatable {
   }
 
   @override
-  List<Object?> get props => [ref, u, v, kind, labelText, displayName, roomId];
+  List<Object?> get props =>
+      [ref, u, v, floorId, kind, labelText, displayName, roomId];
 }
 
 /// A join between two placed points, in plan units.
@@ -67,7 +78,7 @@ class PlanTraceState extends Equatable {
     this.stage = PlanTraceStage.photo,
     this.buildingId = '',
     this.floorId = 'floor-g',
-    this.photoPath,
+    this.photos = const {},
     this.cameraReady = false,
     this.floors = const [],
     this.points = const [],
@@ -84,21 +95,60 @@ class PlanTraceState extends Equatable {
   /// floor, place the landing, and join them.
   final String floorId;
 
-  /// Null when tracing on a blank grid — no camera, or the photo was skipped.
-  final String? photoPath;
+  /// Floor id → the photo traced against on that floor.
+  ///
+  /// Per floor, because each floor has its own plan on its own wall. Keyed
+  /// rather than held as one path so switching back to a floor already traced
+  /// brings its own backdrop with it.
+  final Map<String, String> photos;
+
   final bool cameraReady;
 
   /// The building's real floors, so [floorId] is a database id rather than
   /// something the screen made up.
   final List<BuildingFloor> floors;
 
+  /// Every point in the plan, across **all** floors — not just the one on
+  /// screen. Saving sends the lot, which is what stops tracing a second floor
+  /// from replacing the first.
   final List<PlanPoint> points;
   final List<PlanLink> links;
 
   /// The point waiting to be joined to the next one tapped.
+  ///
+  /// Survives a change of floor on purpose: joining the ground-floor stairwell
+  /// to the landing above it is the only way a plan becomes one graph rather
+  /// than a stack of disconnected floors.
   final String? selectedRef;
 
   final String? error;
+
+  /// Null when tracing on a blank grid — no camera, or the photo was skipped.
+  String? get photoPath => photos[floorId];
+
+  /// What is drawn and tapped: this floor only. A corridor on the floor above
+  /// is still in [points], but painting it over this floor's plan would be a
+  /// lie about where it is.
+  List<PlanPoint> get pointsOnFloor =>
+      [for (final point in points) if (point.floorId == floorId) point];
+
+  /// Corridors with both ends on this floor. A stairwell join leaves the floor
+  /// and has nothing sensible to draw here, so it stays in the data and off
+  /// the picture.
+  List<PlanLink> get linksOnFloor {
+    final here = {for (final point in pointsOnFloor) point.ref};
+    return [
+      for (final link in links)
+        if (here.contains(link.fromRef) && here.contains(link.toRef)) link,
+    ];
+  }
+
+  /// True when the selected point sits on another floor — the state a
+  /// stairwell join passes through, and worth saying so on screen.
+  bool get joiningFromAnotherFloor {
+    final selected = pointOf(selectedRef);
+    return selected != null && selected.floorId != floorId;
+  }
 
   /// A single landmark is a map: somewhere the camera can confirm you are.
   bool get canSave => points.isNotEmpty;
@@ -117,8 +167,7 @@ class PlanTraceState extends Equatable {
     PlanTraceStage? stage,
     String? buildingId,
     String? floorId,
-    String? photoPath,
-    bool clearPhoto = false,
+    Map<String, String>? photos,
     bool? cameraReady,
     List<BuildingFloor>? floors,
     List<PlanPoint>? points,
@@ -131,7 +180,7 @@ class PlanTraceState extends Equatable {
         stage: stage ?? this.stage,
         buildingId: buildingId ?? this.buildingId,
         floorId: floorId ?? this.floorId,
-        photoPath: clearPhoto ? null : (photoPath ?? this.photoPath),
+        photos: photos ?? this.photos,
         cameraReady: cameraReady ?? this.cameraReady,
         floors: floors ?? this.floors,
         points: points ?? this.points,
@@ -147,7 +196,7 @@ class PlanTraceState extends Equatable {
         stage,
         buildingId,
         floorId,
-        photoPath,
+        photos,
         cameraReady,
         floors,
         points,

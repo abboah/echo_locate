@@ -37,16 +37,39 @@ void main() {
     );
     when(() => photos.start()).thenAnswer((_) async => true);
     when(() => photos.stop()).thenAnswer((_) async {});
-    when(() => photos.capture()).thenAnswer((_) async => '/tmp/plan.jpg');
+    when(() => photos.capture(any(), any()))
+        .thenAnswer((_) async => '/tmp/plan.jpg');
+    when(() => photos.storedPhotos(any()))
+        .thenAnswer((_) async => const <String, String>{});
+    when(() => photos.discard(any(), any())).thenAnswer((_) async {});
+    // Nothing traced yet unless a test says otherwise.
+    when(() => routes.tracedPlanOf(any())).thenAnswer((_) async => null);
     when(() => routes.saveTracedPlan(any()))
         .thenAnswer((_) async => TracedPlan.empty);
   });
 
   Future<void> pump() async {
-    for (var i = 0; i < 4; i++) {
+    for (var i = 0; i < 8; i++) {
       await Future<void>.delayed(Duration.zero);
     }
   }
+
+  /// A node as the server hands it back: refs already resolved to landmark ids.
+  TracedNode node(
+    String ref,
+    double x,
+    double y, {
+    String floorId = 'floor-uuid-g',
+  }) =>
+      TracedNode(
+        ref: ref,
+        x: x,
+        y: y,
+        floorId: floorId,
+        kind: LandmarkKind.door,
+        labelText: ref.toUpperCase(),
+        displayName: ref,
+      );
 
   /// A bloc past the photo step, tracing on a blank grid.
   Future<PlanTraceBloc> tracing() async {
@@ -305,6 +328,27 @@ void main() {
       await bloc.close();
     });
 
+    test('tracing a second floor does not throw the first floor away', () async {
+      final bloc = await tracing();
+      place(bloc, 'entrance', 0, 0);
+      await pump();
+
+      bloc.add(const PlanFloorChanged('floor-uuid-2'));
+      await pump();
+      place(bloc, 'landing', 0.4, 0.4);
+      await pump();
+
+      // The plan is one document per building, upserted whole. Sending only
+      // the floor on screen is what made tracing floor 2 delete floor 1.
+      final saved = bloc.toPlan();
+      expect(saved.nodes, hasLength(2));
+      expect(
+        saved.nodes.map((n) => n.floorId),
+        containsAll(<String>['floor-uuid-g', 'floor-uuid-2']),
+      );
+      await bloc.close();
+    });
+
     test('a failed save says so and leaves the trace intact', () async {
       when(() => routes.saveTracedPlan(any()))
           .thenThrow(const OperationFailure('Could not connect.'));
@@ -319,6 +363,145 @@ void main() {
       expect(bloc.state.stage, PlanTraceStage.trace);
       expect(bloc.state.error, 'Could not connect.');
       expect(bloc.state.points, hasLength(1));
+      await bloc.close();
+    });
+  });
+
+  group('picking a plan back up', () {
+    test('what the building was traced with before is loaded, not started over',
+        () async {
+      when(() => routes.tracedPlanOf('b1')).thenAnswer(
+        (_) async => TracedPlan(
+          buildingId: 'b1',
+          nodes: [node('entrance', 0, 0), node('204', 0, -0.3)],
+          edges: const [TracedEdge(fromRef: 'entrance', toRef: '204')],
+        ),
+      );
+
+      final bloc = await tracing();
+
+      // The plan was always stored; it was never read back, so every session
+      // began blank and saved over the last one.
+      expect(bloc.state.points, hasLength(2));
+      expect(bloc.state.links, hasLength(1));
+      expect(bloc.state.canSave, isTrue);
+      await bloc.close();
+    });
+
+    test('a reloaded plan comes back the way round it was drawn', () async {
+      when(() => routes.tracedPlanOf('b1')).thenAnswer(
+        (_) async => TracedPlan(
+          buildingId: 'b1',
+          nodes: [node('top', 0, 0), node('below', 0, -0.5)],
+          edges: const [],
+        ),
+      );
+
+      final bloc = await tracing();
+
+      // Screen v grows down, map y grows north. Loading has to undo the flip
+      // saving applied, or a resumed trace is edited upside down.
+      expect(bloc.state.pointOf('below')!.v, closeTo(0.5, 0.001));
+      expect(bloc.toPlan().nodes.last.y, closeTo(-0.5, 0.001));
+      await bloc.close();
+    });
+
+    test('adding to a loaded plan extends it rather than replacing it',
+        () async {
+      when(() => routes.tracedPlanOf('b1')).thenAnswer(
+        (_) async => TracedPlan(
+          buildingId: 'b1',
+          nodes: [node('entrance', 0, 0)],
+          edges: const [],
+        ),
+      );
+
+      final bloc = await tracing();
+      place(bloc, '204', 0.5, 0.5);
+      await pump();
+
+      final saved = bloc.toPlan();
+      expect(saved.nodes.map((n) => n.displayName), ['entrance', '204']);
+      await bloc.close();
+    });
+
+    test('a floor already photographed does not ask for the photo again',
+        () async {
+      when(() => photos.storedPhotos('b1'))
+          .thenAnswer((_) async => const {'floor-uuid-g': '/tmp/stored.jpg'});
+
+      final bloc = PlanTraceBloc(routes, photos, buildings);
+      bloc.add(const PlanTraceStarted('b1'));
+      await pump();
+
+      // Re-shooting a plan already on disk is how "continue" turns back into
+      // "start again".
+      expect(bloc.state.stage, PlanTraceStage.trace);
+      expect(bloc.state.photoPath, '/tmp/stored.jpg');
+      verifyNever(() => photos.start());
+      await bloc.close();
+    });
+
+    test('each floor keeps its own photo', () async {
+      when(() => photos.storedPhotos('b1')).thenAnswer(
+        (_) async => const {
+          'floor-uuid-g': '/tmp/g.jpg',
+          'floor-uuid-2': '/tmp/2.jpg',
+        },
+      );
+
+      final bloc = PlanTraceBloc(routes, photos, buildings);
+      bloc.add(const PlanTraceStarted('b1'));
+      await pump();
+      expect(bloc.state.photoPath, '/tmp/g.jpg');
+
+      bloc.add(const PlanFloorChanged('floor-uuid-2'));
+      await pump();
+
+      // Each floor has its own plan on its own wall.
+      expect(bloc.state.photoPath, '/tmp/2.jpg');
+      await bloc.close();
+    });
+  });
+
+  group('one plan across several floors', () {
+    test('only the floor on screen is drawn and tapped', () async {
+      final bloc = await tracing();
+      place(bloc, 'ground thing', 0.5, 0.5);
+      await pump();
+
+      bloc.add(const PlanFloorChanged('floor-uuid-2'));
+      await pump();
+
+      // A stairwell sits directly above itself, so a tap that searched every
+      // floor would land on a node that is not on screen.
+      expect(bloc.state.points, hasLength(1));
+      expect(bloc.state.pointsOnFloor, isEmpty);
+      expect(bloc.pointAt(0.5, 0.5), isNull);
+      await bloc.close();
+    });
+
+    test('a stairwell can be joined to the landing above it', () async {
+      final bloc = await tracing();
+      place(bloc, 'stairs', 0.5, 0.5);
+      await pump();
+      final stairs = bloc.state.points.single.ref;
+
+      bloc.add(const PlanFloorChanged('floor-uuid-2'));
+      await pump();
+      expect(bloc.state.joiningFromAnotherFloor, isTrue);
+
+      place(bloc, 'landing', 0.5, 0.5);
+      await pump();
+
+      // This join is what makes a building one graph A* can climb rather than
+      // a stack of disconnected floors — so the selection has to survive the
+      // change of floor.
+      final landing = bloc.state.pointsOnFloor.single.ref;
+      expect(bloc.state.linked(stairs, landing), isTrue);
+      // It crosses floors, so there is nothing honest to draw on either one.
+      expect(bloc.state.linksOnFloor, isEmpty);
+      expect(bloc.toPlan().edges, hasLength(1));
       await bloc.close();
     });
   });

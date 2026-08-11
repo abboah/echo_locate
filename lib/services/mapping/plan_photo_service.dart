@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:camera/camera.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/utils/logger.dart';
@@ -54,16 +57,72 @@ class PlanPhotoService {
   }
 
   /// Path of the captured still, or null when the camera could not take one.
-  Future<String?> capture() async {
+  ///
+  /// The still is moved out of the camera's own directory before being
+  /// returned. `takePicture` writes into the **cache**, which Android is free
+  /// to delete whenever it wants space back — so a plan re-opened later came
+  /// up on a blank grid, its landmarks floating over nothing. One photo per
+  /// building and floor, overwritten by a re-shoot.
+  Future<String?> capture(String buildingId, String floorId) async {
     if (!isReady) return null;
     try {
-      final file = await _controller!.takePicture();
-      return file.path;
+      final shot = await _controller!.takePicture();
+      final destination = await _pathFor(buildingId, floorId);
+      await Directory(destination).parent.create(recursive: true);
+      await File(shot.path).copy(destination);
+      // Best-effort: a cache file left behind costs space, not correctness.
+      try {
+        await File(shot.path).delete();
+      } catch (_) {}
+      return destination;
     } catch (e) {
       AppLogger.warn('Plan capture failed: $e');
       return null;
     }
   }
+
+  /// Every floor of [buildingId] that already has a photo, floor id → path.
+  ///
+  /// Read on start so re-opening a part-traced building shows the plan the
+  /// existing landmarks were placed on, rather than asking for it again.
+  Future<Map<String, String>> storedPhotos(String buildingId) async {
+    try {
+      final directory = Directory(await _directoryFor(buildingId));
+      if (!directory.existsSync()) return const {};
+      return {
+        for (final entity in directory.listSync())
+          if (entity is File && entity.path.endsWith('.jpg'))
+            entity.uri.pathSegments.last.replaceAll('.jpg', ''): entity.path,
+      };
+    } catch (e) {
+      AppLogger.warn('Stored plan photos unavailable: $e');
+      return const {};
+    }
+  }
+
+  /// Forgets one floor's photo, so a re-shoot does not leave the old one to be
+  /// restored next time.
+  Future<void> discard(String buildingId, String floorId) async {
+    try {
+      final file = File(await _pathFor(buildingId, floorId));
+      if (file.existsSync()) await file.delete();
+    } catch (e) {
+      AppLogger.warn('Could not discard plan photo: $e');
+    }
+  }
+
+  Future<String> _directoryFor(String buildingId) async {
+    final root = await getApplicationDocumentsDirectory();
+    return '${root.path}/plan_photos/${_safe(buildingId)}';
+  }
+
+  Future<String> _pathFor(String buildingId, String floorId) async =>
+      '${await _directoryFor(buildingId)}/${_safe(floorId)}.jpg';
+
+  /// Building ids are slugs and floor ids are uuids, but neither is ours to
+  /// trust as a path segment.
+  static String _safe(String id) =>
+      id.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
 
   Future<void> stop() async {
     final controller = _controller;

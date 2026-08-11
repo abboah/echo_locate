@@ -55,7 +55,11 @@ language plpgsql
 security invoker
 set search_path = public as $$
 declare
-  v_building text := p_plan ->> 'building_id';
+  -- camelCase, like every other key read below: the payload is
+  -- `TracedPlan.toJson()` straight from the client, not the hand-built
+  -- snake_case map `save_route` is given. Reading 'building_id' here found
+  -- nothing and raised "building_id is required" on every save.
+  v_building text := p_plan ->> 'buildingId';
   v_refs     jsonb := '{}'::jsonb;   -- ref -> landmark uuid
   v_node     jsonb;
   v_edge     jsonb;
