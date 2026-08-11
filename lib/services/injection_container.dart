@@ -16,11 +16,17 @@ import '../features/auth/supabase_auth_repository.dart';
 import '../features/building_detail/bloc/building_detail_bloc.dart';
 import '../features/buildings/building_repository.dart';
 import '../features/buildings/supabase_building_repository.dart';
+import '../features/capture/bloc/capture_bloc.dart';
 import '../features/explore/bloc/explore_bloc.dart';
+import '../features/guidance/bloc/guidance_bloc.dart';
 import '../features/home/bloc/home_bloc.dart';
 import '../features/maps/bloc/maps_bloc.dart';
 import '../features/profile/bloc/profile_bloc.dart';
+import '../features/profile/bloc/stride_calibration_cubit.dart';
 import '../features/profile/profile_repository.dart';
+import '../features/map_building/bloc/map_building_cubit.dart';
+import '../features/plan_trace/bloc/plan_trace_bloc.dart';
+import '../features/routing/bloc/floor_map_bloc.dart';
 import '../features/routing/route_repository.dart';
 import '../features/routing/supabase_route_repository.dart';
 import '../features/scan/bloc/scan_capability_cubit.dart';
@@ -29,8 +35,13 @@ import '../features/sonar/bloc/sonar_bloc.dart';
 import 'acoustic/acoustic_fallback_service.dart';
 import 'audio/audio_arbiter.dart';
 import 'audio/sonar_audio_service.dart';
+import 'haptics/haptic_service.dart';
+import 'mapping/plan_photo_service.dart';
 import '../features/profile/supabase_profile_repository.dart';
+import 'motion/step_service.dart';
 import 'sensing/detection_service.dart';
+import 'sensing/landmark_matcher.dart';
+import 'sensing/text_recognition_service.dart';
 import 'speech/speech_service.dart';
 import 'vision/arcore_depth_service.dart';
 import 'vision/depth_reliability.dart';
@@ -85,10 +96,28 @@ Future<void> configureDependencies() async {
   );
 
   // --- Sensing / speech engines (hardware owners; Blocs subscribe) ---
-  getIt.registerLazySingleton<DetectionService>(() => DetectionService());
+  // Sign reading (Stream B). A singleton because it is fed by the one camera
+  // stream DetectionService owns: a per-screen copy would sit idle while
+  // frames went to the instance nobody was listening to.
+  getIt.registerLazySingleton<TextRecognitionService>(
+    () => TextRecognitionService(),
+  );
+  getIt.registerLazySingleton<DetectionService>(
+    () => DetectionService(textRecognition: getIt<TextRecognitionService>()),
+  );
+  // Pure matching rules, no hardware — see LandmarkMatcher for why the spec's
+  // plain Levenshtein tolerance was tightened.
+  getIt.registerLazySingleton<LandmarkMatcher>(() => const LandmarkMatcher());
+  // Step counting (Stream B). A singleton because the baseline it holds *is*
+  // the leg's progress — a per-screen copy would restart the count every time
+  // the guidance screen rebuilt.
+  getIt.registerLazySingleton<StepService>(() => StepService());
   // Single arbiter shared by everything that drives the mic or speaker; it is
   // the thing that makes "shared" safe, so it must be a singleton.
   getIt.registerLazySingleton<AudioArbiter>(() => AudioArbiter());
+  // Stateless wrapper round the platform channel; a singleton only to save
+  // allocating one per screen.
+  getIt.registerLazySingleton<HapticService>(() => const HapticService());
   getIt.registerLazySingleton<SpeechService>(
     () => SpeechService(arbiter: getIt<AudioArbiter>()),
   );
@@ -140,6 +169,50 @@ Future<void> configureDependencies() async {
     () => ProfileBloc(getIt<ProfileRepository>()),
   );
   getIt.registerFactory<SonarBloc>(() => SonarBloc(getIt<SonarAudioService>()));
+  // Landmark navigation. The map bloc merges recorded walks into one graph;
+  // guidance and capture share the camera, the counter and the voice, which is
+  // why all three take the same singletons rather than opening their own.
+  getIt.registerFactory<FloorMapBloc>(
+    () => FloorMapBloc(
+      getIt<RouteRepository>(),
+      buildings: getIt<BuildingRepository>(),
+    ),
+  );
+  getIt.registerFactory<GuidanceBloc>(
+    () => GuidanceBloc(
+      detection: getIt<DetectionService>(),
+      textRecognition: getIt<TextRecognitionService>(),
+      steps: getIt<StepService>(),
+      speech: getIt<SpeechService>(),
+      haptics: getIt<HapticService>(),
+      matcher: getIt<LandmarkMatcher>(),
+    ),
+  );
+  // Tracing owns its own camera rather than sharing DetectionService's: that
+  // one streams medium-resolution frames for ML Kit, and a floor plan needs one
+  // still at full detail, because the contributor reads room numbers off it.
+  getIt.registerFactory<PlanTraceBloc>(
+    () => PlanTraceBloc(
+      getIt<RouteRepository>(),
+      PlanPhotoService(),
+      getIt<BuildingRepository>(),
+    ),
+  );
+  getIt.registerFactory<MapBuildingCubit>(
+    () => MapBuildingCubit(getIt<BuildingRepository>()),
+  );
+  getIt.registerFactory<CaptureBloc>(
+    () => CaptureBloc(
+      detection: getIt<DetectionService>(),
+      textRecognition: getIt<TextRecognitionService>(),
+      steps: getIt<StepService>(),
+      routes: getIt<RouteRepository>(),
+      matcher: getIt<LandmarkMatcher>(),
+    ),
+  );
+  getIt.registerFactory<StrideCalibrationCubit>(
+    () => StrideCalibrationCubit(getIt<StepService>(), getIt<ProfileRepository>()),
+  );
   // Shares the sonar's audio service: same speaker, mic and chirp, captured
   // differently (one pulse plus a long decay, rather than a train).
   getIt.registerFactory<AcousticBloc>(

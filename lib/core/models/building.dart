@@ -33,6 +33,15 @@ abstract class BuildingFloor with _$BuildingFloor {
   const factory BuildingFloor({
     required String label,
     required List<Room> rooms,
+
+    /// The `floors` row this came from. Every landmark belongs to a floor, so
+    /// recording a route cannot start without one.
+    ///
+    /// Defaulted rather than required so a floor list cached by an older build
+    /// still decodes — an empty id means "cached before floors were
+    /// identified", and capture asks the contributor to reload rather than
+    /// uploading landmarks attached to nothing.
+    @Default('') String id,
   }) = _BuildingFloor;
 
   factory BuildingFloor.fromJson(Map<String, dynamic> json) =>

@@ -8,6 +8,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/utils/logger.dart';
 import 'detected_obstacle.dart';
+import 'text_recognition_service.dart';
 
 /// Live camera → ML Kit object detection → [obstacles] stream.
 ///
@@ -20,10 +21,21 @@ import 'detected_obstacle.dart';
 /// categories. A custom TFLite classifier (Phase 3) upgrades label detail;
 /// the API here doesn't change.
 class DetectionService {
+  DetectionService({TextRecognitionService? textRecognition})
+      : _textRecognition = textRecognition;
+
+  /// Sign reading, when a screen has switched it on. This class owns the only
+  /// camera stream, so OCR cannot open its own — it is handed alternate frames
+  /// instead. Null in tests and on screens that never read signage.
+  final TextRecognitionService? _textRecognition;
+
   CameraController? _cameraController;
   ObjectDetector? _detector;
   bool _busy = false;
   bool _running = false;
+
+  /// Counts analysed frames so object detection and OCR can take turns.
+  int _frameIndex = 0;
 
   final _obstaclesController =
       StreamController<List<DetectedObstacle>>.broadcast();
@@ -100,6 +112,19 @@ class DetectionService {
     try {
       final input = _toInputImage(image);
       if (input == null) return;
+
+      // Alternate: objects on even frames, signage on odd. Both analysers on
+      // every frame would halve the rate of each on the budget hardware this
+      // targets, and an obstacle warning that arrives late is worse than one
+      // that arrives at half the frame rate.
+      final text = _textRecognition;
+      final readsThisFrame = text != null && text.isActive && _frameIndex.isOdd;
+      _frameIndex++;
+      if (readsThisFrame) {
+        await text.analyze(input);
+        return;
+      }
+
       final objects = await _detector!.processImage(input);
       if (!_running) return;
 

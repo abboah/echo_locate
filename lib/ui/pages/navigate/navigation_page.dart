@@ -1,243 +1,224 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 
 import '../../../core/models/building.dart';
+import '../../../core/models/landmark.dart';
+import '../../../core/routes/app_routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimens.dart';
+import '../../../features/guidance/guidance_session.dart';
+import '../../../features/routing/bloc/floor_map_bloc.dart';
+import '../../../services/injection_container.dart';
+import '../../widgets/floor_plan_painter.dart';
 
-/// Turn-by-turn navigation view (Figma 7:265).
+/// The building's map, drawn from the walks contributors recorded.
 ///
-/// Phase 1: static mock — the floor plan, route and instruction card are
-/// hardcoded to match the design. Phase 2 wires the real floor plan +
-/// A* route into this exact layout.
+/// Two jobs. It shows a sighted user — a contributor checking their capture,
+/// an examiner, a friend helping someone find a room — the shape of the
+/// building. And it is where a route is chosen before guidance takes over,
+/// including routes nobody recorded: pick any two landmarks and A* answers
+/// over the merged graph.
 class NavigationPage extends StatelessWidget {
-  const NavigationPage({super.key, this.building});
+  const NavigationPage({super.key, required this.buildingId, this.building});
 
+  final String buildingId;
   final Building? building;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final buildingName = building?.name ?? 'CABS Block';
+    return BlocProvider(
+      create: (_) =>
+          getIt<FloorMapBloc>()..add(FloorMapRequested(buildingId)),
+      child: _NavigationView(
+        buildingId: buildingId,
+        // The name travels with the tap when there is one; opened cold — a
+        // shortcut, a restored stack — the bloc looks it up.
+        buildingName: building?.name,
+      ),
+    );
+  }
+}
 
+class _NavigationView extends StatelessWidget {
+  const _NavigationView({required this.buildingId, this.buildingName});
+
+  final String buildingId;
+  final String? buildingName;
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppDimens.space16,
-                vertical: AppDimens.space8,
-              ),
-              child: Row(
-                children: [
-                  Material(
-                    color: theme.brightness == Brightness.dark
-                        ? AppColors.darkElevated
-                        : AppColors.white,
-                    shape: const CircleBorder(),
-                    elevation: 1,
-                    child: InkWell(
-                      onTap: () => context.pop(),
-                      customBorder: const CircleBorder(),
-                      child: SizedBox(
-                        width: 42,
-                        height: 42,
-                        child: Icon(
-                          PhosphorIconsRegular.caretLeft,
-                          size: 20,
-                          color: theme.colorScheme.onSurface,
+        child: BlocBuilder<FloorMapBloc, FloorMapState>(
+          builder: (context, state) {
+            return Column(
+              children: [
+                _Header(
+                  buildingName:
+                      buildingName ?? state.buildingName ?? 'Building',
+                  subtitle: switch (state.status) {
+                    FloorMapStatus.ready => _walksLine(state),
+                    FloorMapStatus.empty => 'Not mapped yet',
+                    FloorMapStatus.failure => 'Map unavailable',
+                    FloorMapStatus.loading => 'Loading the map…',
+                  },
+                ),
+                Expanded(
+                  child: switch (state.status) {
+                    FloorMapStatus.loading =>
+                      const Center(child: CircularProgressIndicator()),
+                    FloorMapStatus.failure => _Message(
+                        icon: PhosphorIconsRegular.cloudSlash,
+                        title: state.error ?? 'Map unavailable',
+                        detail:
+                            'Open this building once with a connection and '
+                            'its map is kept for offline use.',
+                        action: Padding(
+                          padding:
+                              const EdgeInsets.only(top: AppDimens.space16),
+                          child: OutlinedButton.icon(
+                            onPressed: () => context
+                                .read<FloorMapBloc>()
+                                .add(FloorMapRequested(buildingId)),
+                            icon: const Icon(
+                              PhosphorIconsRegular.arrowClockwise,
+                              size: 18,
+                            ),
+                            label: const Text('Try again'),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: AppDimens.space12),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(buildingName, style: theme.textTheme.titleMedium),
-                      Text(
-                        'Floor 2 · heading to Conference Room',
-                        style: theme.textTheme.labelSmall,
+                    FloorMapStatus.empty => _Message(
+                        icon: PhosphorIconsRegular.mapTrifold,
+                        title: 'Nobody has mapped this building yet',
+                        detail:
+                            'Trace the floor plan posted on its wall, or walk '
+                            'it and record a route. Either becomes this '
+                            'building’s first map — and its first directions.',
+                        action: Column(
+                          children: [
+                            _TraceButton(buildingId: buildingId),
+                            _RecordButton(buildingId: buildingId, compact: true),
+                          ],
+                        ),
                       ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: CustomPaint(
-                size: Size.infinite,
-                painter: _FloorPlanPainter(
-                  brightness: theme.brightness,
-                  hairline: theme.dividerColor,
-                  onSurface: theme.colorScheme.onSurface,
-                  muted: theme.textTheme.bodyMedium?.color ??
-                      AppColors.inkMuted,
+                    FloorMapStatus.ready => _Schematic(state: state),
+                  },
+                ),
+                if (state.status == FloorMapStatus.ready)
+                  _RoutePicker(state: state, buildingId: buildingId),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  String _walksLine(FloorMapState state) {
+    final walks = state.routes.length;
+    final places = state.graph.nodes.length;
+    return '$places landmarks · ${walks == 1 ? '1 recorded walk' : '$walks recorded walks'}';
+  }
+}
+
+class _Header extends StatelessWidget {
+  const _Header({required this.buildingName, required this.subtitle});
+
+  final String buildingName;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppDimens.space16,
+        vertical: AppDimens.space8,
+      ),
+      child: Row(
+        children: [
+          Material(
+            color: theme.brightness == Brightness.dark
+                ? AppColors.darkElevated
+                : AppColors.white,
+            shape: const CircleBorder(),
+            elevation: 1,
+            child: InkWell(
+              onTap: () => context.pop(),
+              customBorder: const CircleBorder(),
+              child: SizedBox(
+                width: 42,
+                height: 42,
+                child: Icon(
+                  PhosphorIconsRegular.caretLeft,
+                  size: 20,
+                  color: theme.colorScheme.onSurface,
                 ),
               ),
             ),
-            const _InstructionCard(),
-          ],
+          ),
+          const SizedBox(width: AppDimens.space12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(buildingName, style: theme.textTheme.titleMedium),
+                Text(subtitle, style: theme.textTheme.labelSmall),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Schematic extends StatelessWidget {
+  const _Schematic({required this.state});
+
+  final FloorMapState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Semantics(
+      // A blind user is served by voice, not by this picture — but they should
+      // still be told what it is rather than meeting an unlabelled rectangle.
+      label: 'Schematic map of the building, drawn from recorded walks. '
+          'Choose a start and a destination below to plan a route.',
+      child: CustomPaint(
+        size: Size.infinite,
+        painter: FloorPlanPainter(
+          graph: state.graph,
+          landmarks: {for (final l in state.landmarks) l.id: l},
+          highlighted: state.highlighted,
+          brightness: theme.brightness,
+          hairline: theme.dividerColor,
+          onSurface: theme.colorScheme.onSurface,
+          muted: theme.textTheme.bodyMedium?.color ?? AppColors.inkMuted,
         ),
       ),
     );
   }
 }
 
-/// Static mock plan: rooms 203–206 along a corridor, dotted route into the
-/// highlighted Conference Room.
-class _FloorPlanPainter extends CustomPainter {
-  _FloorPlanPainter({
-    required this.brightness,
-    required this.hairline,
-    required this.onSurface,
-    required this.muted,
-  });
+class _RoutePicker extends StatelessWidget {
+  const _RoutePicker({required this.state, required this.buildingId});
 
-  final Brightness brightness;
-  final Color hairline;
-  final Color onSurface;
-  final Color muted;
-
-  bool get _dark => brightness == Brightness.dark;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final surface =
-        Paint()..color = _dark ? AppColors.darkSurface : AppColors.surface;
-    final roomFill =
-        Paint()..color = _dark ? AppColors.darkElevated : AppColors.white;
-    final roomBorder = Paint()
-      ..color = hairline
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.4;
-
-    canvas.drawRect(Offset.zero & size, surface);
-
-    // Faint structural grid.
-    final grid = Paint()
-      ..color = hairline.withValues(alpha: 0.5)
-      ..strokeWidth = 1;
-    for (var x = 0.0; x < size.width; x += size.width / 6) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), grid);
-    }
-    for (var y = 0.0; y < size.height; y += size.height / 8) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), grid);
-    }
-
-    final w = size.width;
-    final h = size.height;
-
-    Rect room(double l, double t, double r, double b) =>
-        Rect.fromLTRB(w * l, h * t, w * r, h * b);
-
-    void drawRoom(Rect rect, String label, {bool highlighted = false}) {
-      final rrect =
-          RRect.fromRectAndRadius(rect, const Radius.circular(4));
-      if (highlighted) {
-        canvas.drawRRect(
-          rrect,
-          Paint()
-            ..color = _dark
-                ? AppColors.coral.withValues(alpha: 0.16)
-                : AppColors.coralSoft,
-        );
-        canvas.drawRRect(
-          rrect,
-          Paint()
-            ..color = AppColors.coral
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 1.6,
-        );
-      } else {
-        canvas.drawRRect(rrect, roomFill);
-        canvas.drawRRect(rrect, roomBorder);
-      }
-      _text(
-        canvas,
-        label,
-        rect.center,
-        color: highlighted ? AppColors.coral : muted,
-        bold: highlighted,
-      );
-    }
-
-    // Top row of rooms.
-    drawRoom(room(0.02, 0.06, 0.30, 0.30), '203');
-    drawRoom(room(0.36, 0.06, 0.62, 0.30), '204');
-    drawRoom(room(0.68, 0.06, 0.98, 0.30), '205');
-
-    // Corridor label.
-    _text(canvas, 'Corridor', Offset(w * 0.5, h * 0.415), color: muted);
-
-    // Bottom rooms.
-    drawRoom(room(0.02, 0.52, 0.30, 0.78), '206');
-    drawRoom(room(0.38, 0.52, 0.98, 0.78), 'Conference Rm',
-        highlighted: true);
-
-    // Dotted route: along the corridor, then down into the room.
-    const routeColor = AppColors.coral;
-    final start = Offset(w * 0.10, h * 0.43);
-    final corner = Offset(w * 0.70, h * 0.43);
-    final end = Offset(w * 0.70, h * 0.58);
-    _dottedLine(canvas, start, corner, routeColor);
-    _dottedLine(canvas, corner, end, routeColor);
-
-    // Current position: coral dot with soft halo.
-    canvas.drawCircle(
-        start, 10, Paint()..color = routeColor.withValues(alpha: 0.25));
-    canvas.drawCircle(start, 5.5, Paint()..color = routeColor);
-
-    // Destination dot.
-    canvas.drawCircle(end, 5, Paint()..color = onSurface);
-  }
-
-  void _dottedLine(Canvas canvas, Offset from, Offset to, Color color) {
-    const dotSpacing = 14.0;
-    final paint = Paint()..color = color;
-    final delta = to - from;
-    final count = (delta.distance / dotSpacing).floor();
-    for (var i = 1; i <= count; i++) {
-      final t = i / (count + 1);
-      canvas.drawCircle(from + delta * t, 2.4, paint);
-    }
-  }
-
-  void _text(
-    Canvas canvas,
-    String text,
-    Offset center, {
-    required Color color,
-    bool bold = false,
-  }) {
-    final painter = TextPainter(
-      text: TextSpan(
-        text: text,
-        style: TextStyle(
-          color: color,
-          fontSize: 13,
-          fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    painter.paint(canvas, center - Offset(painter.width / 2, painter.height / 2));
-  }
-
-  @override
-  bool shouldRepaint(covariant _FloorPlanPainter old) =>
-      old.brightness != brightness;
-}
-
-class _InstructionCard extends StatelessWidget {
-  const _InstructionCard();
+  final FloorMapState state;
+  final String buildingId;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final plan = state.plan;
+    final bothPicked = state.fromId != null && state.toId != null;
 
     return Container(
       margin: const EdgeInsets.all(AppDimens.space12),
@@ -248,58 +229,229 @@ class _InstructionCard extends StatelessWidget {
         border: Border.all(color: theme.dividerColor),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: const BoxDecoration(
-                  color: AppColors.coral,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(PhosphorIconsBold.arrowUp,
-                    color: Colors.white, size: 22),
-              ),
-              const SizedBox(width: AppDimens.space12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Continue 80 m',
-                        style: theme.textTheme.titleMedium),
-                    Text(
-                      'Then turn right into Conference Room',
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                  ],
-                ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    '2 min',
-                    style: theme.textTheme.titleMedium
-                        ?.copyWith(color: AppColors.coral),
+          _LandmarkPicker(
+            label: 'From',
+            value: state.fromId,
+            landmarks: state.mappedLandmarks,
+            onChanged: (id) =>
+                context.read<FloorMapBloc>().add(FloorMapFromSelected(id)),
+          ),
+          const SizedBox(height: AppDimens.space8),
+          _LandmarkPicker(
+            label: 'To',
+            value: state.toId,
+            landmarks: state.mappedLandmarks,
+            onChanged: (id) =>
+                context.read<FloorMapBloc>().add(FloorMapToSelected(id)),
+          ),
+          const SizedBox(height: AppDimens.space12),
+          if (plan != null)
+            Row(
+              children: [
+                const Icon(PhosphorIconsFill.path,
+                    size: 18, color: AppColors.coral),
+                const SizedBox(width: AppDimens.space8),
+                Expanded(
+                  child: Text(
+                    '${plan.legs.length} '
+                    '${plan.legs.length == 1 ? 'leg' : 'legs'} · '
+                    '${plan.totalDistanceM.round()} m'
+                    '${plan.synthesised ? ' · joined from separate walks' : ''}',
+                    style: theme.textTheme.bodySmall,
                   ),
-                  Text('120 m', style: theme.textTheme.labelSmall),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: AppDimens.space16),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(AppDimens.radiusPill),
-            child: LinearProgressIndicator(
-              value: 0.33,
-              minHeight: 5,
-              backgroundColor: theme.colorScheme.surface,
-              valueColor:
-                  const AlwaysStoppedAnimation<Color>(AppColors.coral),
+                ),
+              ],
+            )
+          else if (bothPicked)
+            Text(
+              'No recorded walk connects these two yet.',
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: AppColors.warning),
+            )
+          else
+            Text(
+              'Pick where you are and where you are going.',
+              style: theme.textTheme.bodySmall,
             ),
+          const SizedBox(height: AppDimens.space12),
+          ElevatedButton.icon(
+            onPressed: plan == null
+                ? null
+                : () => _startGuidance(context, plan.landmarkIds.last),
+            icon: const Icon(PhosphorIconsFill.eye, size: 18),
+            label: const Text('Start guidance'),
           ),
+          const SizedBox(height: AppDimens.space8),
+          _TraceButton(buildingId: buildingId, compact: true),
+          const SizedBox(height: AppDimens.space8),
+          _RecordButton(buildingId: buildingId, compact: true),
         ],
+      ),
+    );
+  }
+
+  void _startGuidance(BuildContext context, String destinationId) {
+    final plan = state.plan;
+    if (plan == null) return;
+
+    context.pushNamed(
+      RouteNames.guidance,
+      extra: GuidanceSession(
+        plan: plan,
+        landmarks: state.landmarks,
+        destinationName: state.landmarkOf(destinationId)?.displayName ??
+            'your destination',
+        // The whole building, so a lost user can be relocated against any sign
+        // in it, not just the ones on this route.
+        graph: state.graph,
+        // A traced plan nobody measured routes correctly but cannot be spoken
+        // in steps; guidance leans on landmark confirmation instead.
+        metric: state.graph.metric,
+      ),
+    );
+  }
+}
+
+class _LandmarkPicker extends StatelessWidget {
+  const _LandmarkPicker({
+    required this.label,
+    required this.value,
+    required this.landmarks,
+    required this.onChanged,
+  });
+
+  final String label;
+  final String? value;
+  final List<Landmark> landmarks;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return DropdownButtonFormField<String>(
+      initialValue: value,
+      isExpanded: true,
+      decoration: InputDecoration(
+        labelText: label,
+        isDense: true,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppDimens.radiusMd),
+        ),
+      ),
+      items: [
+        for (final landmark in landmarks)
+          DropdownMenuItem(
+            value: landmark.id,
+            child: Text(landmark.displayName, overflow: TextOverflow.ellipsis),
+          ),
+      ],
+      onChanged: (id) {
+        if (id != null) onChanged(id);
+      },
+    );
+  }
+}
+
+/// Tracing the plan posted on the wall — the faster way to map a building, and
+/// the accurate one: traced coordinates are absolute, where a recorded walk's
+/// are chained from step counts and drift.
+class _TraceButton extends StatelessWidget {
+  const _TraceButton({required this.buildingId, this.compact = false});
+
+  final String buildingId;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final button = ElevatedButton.icon(
+      onPressed: () async {
+        final bloc = context.read<FloorMapBloc>();
+        await context.pushNamed(
+          RouteNames.planTrace,
+          pathParameters: {'id': buildingId},
+        );
+        if (!bloc.isClosed) bloc.add(FloorMapRequested(buildingId));
+      },
+      icon: const Icon(PhosphorIconsRegular.mapTrifold, size: 18),
+      label: const Text('Trace the floor plan'),
+    );
+    return compact
+        ? button
+        : Padding(
+            padding: const EdgeInsets.only(top: AppDimens.space16),
+            child: button,
+          );
+  }
+}
+
+class _RecordButton extends StatelessWidget {
+  const _RecordButton({required this.buildingId, this.compact = false});
+
+  final String buildingId;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final button = OutlinedButton.icon(
+      onPressed: () async {
+        final bloc = context.read<FloorMapBloc>();
+        await context.pushNamed(
+          RouteNames.capture,
+          pathParameters: {'id': buildingId},
+        );
+        // Reload on the way back: a contributor who has just walked the
+        // building expects to see their walk on the map, and without this
+        // they return to the "nobody has walked this yet" screen they left.
+        if (!bloc.isClosed) bloc.add(FloorMapRequested(buildingId));
+      },
+      icon: const Icon(PhosphorIconsRegular.footprints, size: 18),
+      label: const Text('Record a route'),
+    );
+    return compact
+        ? button
+        : Padding(
+            padding: const EdgeInsets.only(top: AppDimens.space16),
+            child: button,
+          );
+  }
+}
+
+class _Message extends StatelessWidget {
+  const _Message({
+    required this.icon,
+    required this.title,
+    required this.detail,
+    this.action,
+  });
+
+  final IconData icon;
+  final String title;
+  final String detail;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppDimens.space32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 40, color: theme.textTheme.labelSmall?.color),
+            const SizedBox(height: AppDimens.space16),
+            Text(title, textAlign: TextAlign.center, style: theme.textTheme.titleMedium),
+            const SizedBox(height: AppDimens.space8),
+            Text(
+              detail,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall,
+            ),
+            if (action != null) action!,
+          ],
+        ),
       ),
     );
   }

@@ -1,0 +1,19 @@
+# Codegen options.
+#
+# `explicit_to_json` makes a model's `toJson` call `toJson` on nested models
+# rather than leaving them as objects. Without it, `BuildingFloor.toJson`
+# returns live `Room` instances inside the map, which `jsonEncode` happens to
+# tolerate but Hive does not:
+#
+#   HiveError: Cannot write, unknown type: _Room
+#
+# Every offline-first repository writes `toJson` output straight into the Hive
+# cache box, so any model with a nested model — BuildingFloor.rooms,
+# WalkRoute.steps, RouteDraft.landmarks — crashes the first time its query is
+# cached. Turned on globally so a new nested model cannot reintroduce it.
+targets:
+  $default:
+    builders:
+      json_serializable:
+        options:
+          explicit_to_json: true

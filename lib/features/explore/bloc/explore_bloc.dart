@@ -45,8 +45,14 @@ class ExploreBloc extends Bloc<ExploreEvent, ExploreState> {
     try {
       final results = await _buildings.nearby(category: category, query: query);
       emit(state.copyWith(status: ExploreStatus.success, buildings: results));
-    } on OperationFailure catch (f) {
-      emit(state.copyWith(status: ExploreStatus.failure, error: f.message));
+    } catch (error) {
+      // Broad on purpose: a narrow catch let Supabase, socket and
+      // Hive errors escape, and a Bloc that never emits leaves the
+      // screen spinning forever.
+      emit(state.copyWith(
+        status: ExploreStatus.failure,
+        error: OperationFailure.from(error).message,
+      ));
     }
   }
 }

@@ -23,8 +23,14 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
     try {
       final profile = await _profiles.currentProfile();
       emit(state.copyWith(status: ProfileStatus.success, profile: profile));
-    } on OperationFailure catch (f) {
-      emit(state.copyWith(status: ProfileStatus.failure, error: f.message));
+    } catch (error) {
+      // Broad on purpose: a narrow catch let Supabase, socket and
+      // Hive errors escape, and a Bloc that never emits leaves the
+      // screen spinning forever.
+      emit(state.copyWith(
+        status: ProfileStatus.failure,
+        error: OperationFailure.from(error).message,
+      ));
     }
   }
 }

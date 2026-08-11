@@ -124,7 +124,7 @@ class SupabaseBuildingRepository
       () async {
         final rows = await _client
             .from('floors')
-            .select('label, ordinal, rooms(id, name, kind, distance_m)')
+            .select('id, label, ordinal, rooms(id, name, kind, distance_m)')
             .eq('building_id', buildingId)
             .order('ordinal');
 
@@ -139,7 +139,11 @@ class SupabaseBuildingRepository
                   ))
               .toList()
             ..sort((a, b) => a.distanceM.compareTo(b.distanceM));
-          return BuildingFloor(label: row['label'] as String, rooms: rooms);
+          return BuildingFloor(
+            id: row['id'] as String,
+            label: row['label'] as String,
+            rooms: rooms,
+          );
         }).toList();
       },
       encode: (floors) => floors.map((f) => f.toJson()).toList(),
@@ -208,6 +212,80 @@ class SupabaseBuildingRepository
       // No cache to invalidate: savedMaps() is network-first and only falls
       // back to Hive when the fetch itself fails.
       return saved;
+    });
+  }
+
+  @override
+  Future<Building> create({
+    required String name,
+    required String area,
+    String category = 'campus',
+    int floors = 1,
+  }) {
+    return runOperation('building_create', () async {
+      final trimmed = name.trim();
+      if (trimmed.isEmpty) {
+        throw const OperationFailure('Give the building a name');
+      }
+
+      // `buildings.id` is a human-readable slug rather than a uuid, so it is
+      // generated here. A collision is somebody else's building, not this one:
+      // suffix rather than upsert, or a contributor adding "Great Hall" would
+      // silently start editing the Great Hall that already exists.
+      final base = slugify(trimmed);
+      var id = base;
+      for (var n = 2; n < 50; n++) {
+        final clash = await _client
+            .from('buildings')
+            .select('id')
+            .eq('id', id)
+            .maybeSingle();
+        if (clash == null) break;
+        id = '$base-$n';
+      }
+
+      await _client.from('buildings').insert({
+        'id': id,
+        'name': trimmed,
+        'area': area.trim(),
+        'category': category,
+        'glyph': 'building',
+        'mapped_percent': 0,
+        // RLS requires this to be the caller: "buildings insertable by
+        // signed-in users" checks created_by = auth.uid().
+        'created_by': _userId,
+      });
+
+      // Whoever adds a building is its first contributor, which is also what
+      // grants them the right to write its floors and, later, its traced plan.
+      await _client.from('building_contributors').upsert({
+        'building_id': id,
+        'user_id': _userId,
+      });
+
+      // Floors up front, and empty: a traced plan's nodes reference a real
+      // `floors.id` uuid, so a building with no floor rows cannot be traced at
+      // all. Rooms are deliberately not invented — the contributor is about to
+      // record them.
+      await _client.from('floors').insert([
+        for (var i = 0; i < floors; i++)
+          {
+            'building_id': id,
+            'label': i == 0 ? 'G' : '$i',
+            'ordinal': i,
+          },
+      ]);
+
+      // Explore and Home read cached lists, so a new building would not appear
+      // until the next cold start without this.
+      RepositoryMixin.clearEphemeralCache();
+
+      final row = await _client
+          .from('buildings_view')
+          .select(_buildingColumns)
+          .eq('id', id)
+          .single();
+      return _buildingFrom(row);
     });
   }
 }

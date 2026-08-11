@@ -6,6 +6,16 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
+    <!-- Guidance: hardware step counter, for distance between landmarks.
+         Runtime-dangerous from API 29, so it is also requested through
+         permission_handler; declaring it alone is not enough. -->
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION"/>
+    <!-- Like ARCore above, declared OPTIONAL on purpose: some budget and
+         Samsung devices expose no step counter at all, and requiring one
+         would lock exactly this project's target users out of an app whose
+         OCR-only fallback (spec §7 B5 rung 2) works without it. -->
+    <uses-feature android:name="android.hardware.sensor.stepcounter" android:required="false"/>
+    <uses-feature android:name="android.hardware.sensor.stepdetector" android:required="false"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
 

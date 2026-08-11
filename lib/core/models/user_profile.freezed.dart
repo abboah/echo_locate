@@ -15,7 +15,14 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$UserProfile {
 
- String get id; String get fullName; String get email; int get buildingsMapped; int get floorsMapped; int get roomsMapped; String get rankLabel;
+ String get id; String get fullName; String get email; int get buildingsMapped; int get floorsMapped; int get roomsMapped; String get rankLabel;/// Metres per step, from the calibration walk. Null until the user
+/// calibrates — guidance then falls back to a height estimate or
+/// [StrideProfile.fallback] rather than refusing to guide.
+///
+/// Stored as a bare number because `profiles.stride_length_m` is a single
+/// numeric column; how it was obtained is a runtime concern, not a
+/// persisted one.
+ double? get strideLengthM;
 /// Create a copy of UserProfile
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -28,16 +35,16 @@ $UserProfileCopyWith<UserProfile> get copyWith => _$UserProfileCopyWithImpl<User
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is UserProfile&&(identical(other.id, id) || other.id == id)&&(identical(other.fullName, fullName) || other.fullName == fullName)&&(identical(other.email, email) || other.email == email)&&(identical(other.buildingsMapped, buildingsMapped) || other.buildingsMapped == buildingsMapped)&&(identical(other.floorsMapped, floorsMapped) || other.floorsMapped == floorsMapped)&&(identical(other.roomsMapped, roomsMapped) || other.roomsMapped == roomsMapped)&&(identical(other.rankLabel, rankLabel) || other.rankLabel == rankLabel));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is UserProfile&&(identical(other.id, id) || other.id == id)&&(identical(other.fullName, fullName) || other.fullName == fullName)&&(identical(other.email, email) || other.email == email)&&(identical(other.buildingsMapped, buildingsMapped) || other.buildingsMapped == buildingsMapped)&&(identical(other.floorsMapped, floorsMapped) || other.floorsMapped == floorsMapped)&&(identical(other.roomsMapped, roomsMapped) || other.roomsMapped == roomsMapped)&&(identical(other.rankLabel, rankLabel) || other.rankLabel == rankLabel)&&(identical(other.strideLengthM, strideLengthM) || other.strideLengthM == strideLengthM));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,fullName,email,buildingsMapped,floorsMapped,roomsMapped,rankLabel);
+int get hashCode => Object.hash(runtimeType,id,fullName,email,buildingsMapped,floorsMapped,roomsMapped,rankLabel,strideLengthM);
 
 @override
 String toString() {
-  return 'UserProfile(id: $id, fullName: $fullName, email: $email, buildingsMapped: $buildingsMapped, floorsMapped: $floorsMapped, roomsMapped: $roomsMapped, rankLabel: $rankLabel)';
+  return 'UserProfile(id: $id, fullName: $fullName, email: $email, buildingsMapped: $buildingsMapped, floorsMapped: $floorsMapped, roomsMapped: $roomsMapped, rankLabel: $rankLabel, strideLengthM: $strideLengthM)';
 }
 
 
@@ -48,7 +55,7 @@ abstract mixin class $UserProfileCopyWith<$Res>  {
   factory $UserProfileCopyWith(UserProfile value, $Res Function(UserProfile) _then) = _$UserProfileCopyWithImpl;
 @useResult
 $Res call({
- String id, String fullName, String email, int buildingsMapped, int floorsMapped, int roomsMapped, String rankLabel
+ String id, String fullName, String email, int buildingsMapped, int floorsMapped, int roomsMapped, String rankLabel, double? strideLengthM
 });
 
 
@@ -65,7 +72,7 @@ class _$UserProfileCopyWithImpl<$Res>
 
 /// Create a copy of UserProfile
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? fullName = null,Object? email = null,Object? buildingsMapped = null,Object? floorsMapped = null,Object? roomsMapped = null,Object? rankLabel = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? fullName = null,Object? email = null,Object? buildingsMapped = null,Object? floorsMapped = null,Object? roomsMapped = null,Object? rankLabel = null,Object? strideLengthM = freezed,}) {
   return _then(_self.copyWith(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,fullName: null == fullName ? _self.fullName : fullName // ignore: cast_nullable_to_non_nullable
@@ -74,7 +81,8 @@ as String,buildingsMapped: null == buildingsMapped ? _self.buildingsMapped : bui
 as int,floorsMapped: null == floorsMapped ? _self.floorsMapped : floorsMapped // ignore: cast_nullable_to_non_nullable
 as int,roomsMapped: null == roomsMapped ? _self.roomsMapped : roomsMapped // ignore: cast_nullable_to_non_nullable
 as int,rankLabel: null == rankLabel ? _self.rankLabel : rankLabel // ignore: cast_nullable_to_non_nullable
-as String,
+as String,strideLengthM: freezed == strideLengthM ? _self.strideLengthM : strideLengthM // ignore: cast_nullable_to_non_nullable
+as double?,
   ));
 }
 
@@ -159,10 +167,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String fullName,  String email,  int buildingsMapped,  int floorsMapped,  int roomsMapped,  String rankLabel)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String fullName,  String email,  int buildingsMapped,  int floorsMapped,  int roomsMapped,  String rankLabel,  double? strideLengthM)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _UserProfile() when $default != null:
-return $default(_that.id,_that.fullName,_that.email,_that.buildingsMapped,_that.floorsMapped,_that.roomsMapped,_that.rankLabel);case _:
+return $default(_that.id,_that.fullName,_that.email,_that.buildingsMapped,_that.floorsMapped,_that.roomsMapped,_that.rankLabel,_that.strideLengthM);case _:
   return orElse();
 
 }
@@ -180,10 +188,10 @@ return $default(_that.id,_that.fullName,_that.email,_that.buildingsMapped,_that.
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String fullName,  String email,  int buildingsMapped,  int floorsMapped,  int roomsMapped,  String rankLabel)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String fullName,  String email,  int buildingsMapped,  int floorsMapped,  int roomsMapped,  String rankLabel,  double? strideLengthM)  $default,) {final _that = this;
 switch (_that) {
 case _UserProfile():
-return $default(_that.id,_that.fullName,_that.email,_that.buildingsMapped,_that.floorsMapped,_that.roomsMapped,_that.rankLabel);case _:
+return $default(_that.id,_that.fullName,_that.email,_that.buildingsMapped,_that.floorsMapped,_that.roomsMapped,_that.rankLabel,_that.strideLengthM);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -200,10 +208,10 @@ return $default(_that.id,_that.fullName,_that.email,_that.buildingsMapped,_that.
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String fullName,  String email,  int buildingsMapped,  int floorsMapped,  int roomsMapped,  String rankLabel)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String fullName,  String email,  int buildingsMapped,  int floorsMapped,  int roomsMapped,  String rankLabel,  double? strideLengthM)?  $default,) {final _that = this;
 switch (_that) {
 case _UserProfile() when $default != null:
-return $default(_that.id,_that.fullName,_that.email,_that.buildingsMapped,_that.floorsMapped,_that.roomsMapped,_that.rankLabel);case _:
+return $default(_that.id,_that.fullName,_that.email,_that.buildingsMapped,_that.floorsMapped,_that.roomsMapped,_that.rankLabel,_that.strideLengthM);case _:
   return null;
 
 }
@@ -215,7 +223,7 @@ return $default(_that.id,_that.fullName,_that.email,_that.buildingsMapped,_that.
 @JsonSerializable()
 
 class _UserProfile implements UserProfile {
-  const _UserProfile({required this.id, required this.fullName, required this.email, this.buildingsMapped = 0, this.floorsMapped = 0, this.roomsMapped = 0, this.rankLabel = 'New mapper'});
+  const _UserProfile({required this.id, required this.fullName, required this.email, this.buildingsMapped = 0, this.floorsMapped = 0, this.roomsMapped = 0, this.rankLabel = 'New mapper', this.strideLengthM});
   factory _UserProfile.fromJson(Map<String, dynamic> json) => _$UserProfileFromJson(json);
 
 @override final  String id;
@@ -225,6 +233,14 @@ class _UserProfile implements UserProfile {
 @override@JsonKey() final  int floorsMapped;
 @override@JsonKey() final  int roomsMapped;
 @override@JsonKey() final  String rankLabel;
+/// Metres per step, from the calibration walk. Null until the user
+/// calibrates — guidance then falls back to a height estimate or
+/// [StrideProfile.fallback] rather than refusing to guide.
+///
+/// Stored as a bare number because `profiles.stride_length_m` is a single
+/// numeric column; how it was obtained is a runtime concern, not a
+/// persisted one.
+@override final  double? strideLengthM;
 
 /// Create a copy of UserProfile
 /// with the given fields replaced by the non-null parameter values.
@@ -239,16 +255,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _UserProfile&&(identical(other.id, id) || other.id == id)&&(identical(other.fullName, fullName) || other.fullName == fullName)&&(identical(other.email, email) || other.email == email)&&(identical(other.buildingsMapped, buildingsMapped) || other.buildingsMapped == buildingsMapped)&&(identical(other.floorsMapped, floorsMapped) || other.floorsMapped == floorsMapped)&&(identical(other.roomsMapped, roomsMapped) || other.roomsMapped == roomsMapped)&&(identical(other.rankLabel, rankLabel) || other.rankLabel == rankLabel));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _UserProfile&&(identical(other.id, id) || other.id == id)&&(identical(other.fullName, fullName) || other.fullName == fullName)&&(identical(other.email, email) || other.email == email)&&(identical(other.buildingsMapped, buildingsMapped) || other.buildingsMapped == buildingsMapped)&&(identical(other.floorsMapped, floorsMapped) || other.floorsMapped == floorsMapped)&&(identical(other.roomsMapped, roomsMapped) || other.roomsMapped == roomsMapped)&&(identical(other.rankLabel, rankLabel) || other.rankLabel == rankLabel)&&(identical(other.strideLengthM, strideLengthM) || other.strideLengthM == strideLengthM));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,fullName,email,buildingsMapped,floorsMapped,roomsMapped,rankLabel);
+int get hashCode => Object.hash(runtimeType,id,fullName,email,buildingsMapped,floorsMapped,roomsMapped,rankLabel,strideLengthM);
 
 @override
 String toString() {
-  return 'UserProfile(id: $id, fullName: $fullName, email: $email, buildingsMapped: $buildingsMapped, floorsMapped: $floorsMapped, roomsMapped: $roomsMapped, rankLabel: $rankLabel)';
+  return 'UserProfile(id: $id, fullName: $fullName, email: $email, buildingsMapped: $buildingsMapped, floorsMapped: $floorsMapped, roomsMapped: $roomsMapped, rankLabel: $rankLabel, strideLengthM: $strideLengthM)';
 }
 
 
@@ -259,7 +275,7 @@ abstract mixin class _$UserProfileCopyWith<$Res> implements $UserProfileCopyWith
   factory _$UserProfileCopyWith(_UserProfile value, $Res Function(_UserProfile) _then) = __$UserProfileCopyWithImpl;
 @override @useResult
 $Res call({
- String id, String fullName, String email, int buildingsMapped, int floorsMapped, int roomsMapped, String rankLabel
+ String id, String fullName, String email, int buildingsMapped, int floorsMapped, int roomsMapped, String rankLabel, double? strideLengthM
 });
 
 
@@ -276,7 +292,7 @@ class __$UserProfileCopyWithImpl<$Res>
 
 /// Create a copy of UserProfile
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? fullName = null,Object? email = null,Object? buildingsMapped = null,Object? floorsMapped = null,Object? roomsMapped = null,Object? rankLabel = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? fullName = null,Object? email = null,Object? buildingsMapped = null,Object? floorsMapped = null,Object? roomsMapped = null,Object? rankLabel = null,Object? strideLengthM = freezed,}) {
   return _then(_UserProfile(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,fullName: null == fullName ? _self.fullName : fullName // ignore: cast_nullable_to_non_nullable
@@ -285,7 +301,8 @@ as String,buildingsMapped: null == buildingsMapped ? _self.buildingsMapped : bui
 as int,floorsMapped: null == floorsMapped ? _self.floorsMapped : floorsMapped // ignore: cast_nullable_to_non_nullable
 as int,roomsMapped: null == roomsMapped ? _self.roomsMapped : roomsMapped // ignore: cast_nullable_to_non_nullable
 as int,rankLabel: null == rankLabel ? _self.rankLabel : rankLabel // ignore: cast_nullable_to_non_nullable
-as String,
+as String,strideLengthM: freezed == strideLengthM ? _self.strideLengthM : strideLengthM // ignore: cast_nullable_to_non_nullable
+as double?,
   ));
 }
 

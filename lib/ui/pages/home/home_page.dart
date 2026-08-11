@@ -78,7 +78,8 @@ class _HomeView extends StatelessWidget {
             const SizedBox(height: AppDimens.space20),
             const _AssistBanner(),
             const SizedBox(height: AppDimens.space12),
-
+            const _TraceCard(),
+            const SizedBox(height: AppDimens.space12),
             const ScanCapabilityGate(child: _ScanCard()),
             const SizedBox(height: AppDimens.space24),
             SectionLabel(
@@ -186,6 +187,73 @@ class _AssistBanner extends StatelessWidget {
                   PhosphorIconsRegular.caretRight,
                   color: Colors.white70,
                   size: 20,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The contributor action that actually maps a building: trace the floor plan
+/// posted on its wall.
+///
+/// Above [_ScanCard] because it is the one that works — traced coordinates are
+/// absolute, where a walked capture chains step counts and drifts — and because
+/// it needs no working pedometer, which not every phone has.
+///
+/// Goes to the "what are you mapping" chooser rather than Explore: Explore
+/// only lists buildings somebody has already added, which strands the
+/// contributor standing in one nobody has — the case mapping exists for.
+class _TraceCard extends StatelessWidget {
+  const _TraceCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Semantics(
+      button: true,
+      label: 'Map a building. Trace the floor plan posted on its wall.',
+      child: Material(
+        color: AppColors.coralSoft,
+        borderRadius: BorderRadius.circular(AppDimens.radiusLg),
+        child: InkWell(
+          onTap: () => context.pushNamed(RouteNames.mapBuilding),
+          borderRadius: BorderRadius.circular(AppDimens.radiusLg),
+          child: Padding(
+            padding: const EdgeInsets.all(AppDimens.space16),
+            child: Row(
+              children: [
+                const Icon(
+                  PhosphorIconsFill.mapTrifold,
+                  size: 22,
+                  color: AppColors.coral,
+                ),
+                const SizedBox(width: AppDimens.space12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Map a building',
+                        style: theme.textTheme.titleMedium
+                            ?.copyWith(color: AppColors.ink),
+                      ),
+                      Text(
+                        'Trace the floor plan posted on its wall',
+                        style: theme.textTheme.bodyMedium
+                            ?.copyWith(color: AppColors.ink.withValues(alpha: 0.7)),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(
+                  PhosphorIconsRegular.caretRight,
+                  size: 20,
+                  color: AppColors.coral,
                 ),
               ],
             ),

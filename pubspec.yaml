@@ -64,6 +64,11 @@ dependencies:
 
   # --- Sensors / permissions / voice / utils ---
   sensors_plus: ^6.0.1
+  # Guidance step counting. Wraps Android's TYPE_STEP_COUNTER — the hardware
+  # sensor Google Fit reads — rather than hand-rolled accelerometer maths, so
+  # it survives the phone being held still in front of a sign. Needs
+  # ACTIVITY_RECOGNITION (declared in AndroidManifest.xml).
+  pedometer: ^4.0.2
   permission_handler: ^11.3.1
   flutter_tts: ^4.0.2
   speech_to_text: ^7.0.0

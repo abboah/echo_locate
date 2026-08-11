@@ -51,8 +51,10 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         password: event.password,
       );
       // Success lands via _AuthUserChanged from the repository stream.
-    } on OperationFailure catch (f) {
-      emit(AuthUnauthenticated(error: f.message));
+    } catch (error) {
+      // Broad on purpose: an AuthException or a dropped socket used to
+      // escape, leaving the sign-in button spinning with no way back.
+      emit(AuthUnauthenticated(error: OperationFailure.from(error).message));
     }
   }
 
@@ -67,8 +69,10 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         email: event.email,
         password: event.password,
       );
-    } on OperationFailure catch (f) {
-      emit(AuthUnauthenticated(error: f.message));
+    } catch (error) {
+      // Broad on purpose: an AuthException or a dropped socket used to
+      // escape, leaving the sign-in button spinning with no way back.
+      emit(AuthUnauthenticated(error: OperationFailure.from(error).message));
     }
   }
 
@@ -79,8 +83,10 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     emit(const AuthUnauthenticated(inProgress: true));
     try {
       await signIn();
-    } on OperationFailure catch (f) {
-      emit(AuthUnauthenticated(error: f.message));
+    } catch (error) {
+      // Broad on purpose: an AuthException or a dropped socket used to
+      // escape, leaving the sign-in button spinning with no way back.
+      emit(AuthUnauthenticated(error: OperationFailure.from(error).message));
     }
   }
 

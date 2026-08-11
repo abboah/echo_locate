@@ -30,6 +30,10 @@ class ProfilePage extends StatelessWidget {
 class _ProfileView extends StatelessWidget {
   const _ProfileView();
 
+  /// The building the seed migration and the mock repository both populate,
+  /// so the dev entry points below land somewhere with data either way.
+  static const String _demoBuildingId = 'knust-library';
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -130,6 +134,25 @@ class _ProfileView extends StatelessWidget {
                       ),
                       Divider(height: 1, color: theme.dividerColor),
                       ListTile(
+                        title: Text('Measure your step',
+                            style: theme.textTheme.titleMedium),
+                        subtitle: Text(
+                          profile.strideLengthM == null
+                              ? 'Not measured — distances are estimated'
+                              : '${(profile.strideLengthM! * 100).round()} cm '
+                                  'per step',
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                        trailing: Icon(
+                          PhosphorIconsRegular.caretRight,
+                          size: 18,
+                          color: theme.textTheme.bodyMedium?.color,
+                        ),
+                        onTap: () =>
+                            context.pushNamed(RouteNames.strideCalibration),
+                      ),
+                      Divider(height: 1, color: theme.dividerColor),
+                      ListTile(
                         title: Text('View the intro again',
                             style: theme.textTheme.titleMedium),
                         subtitle: Text('Replay the 3-step welcome tour',
@@ -151,9 +174,74 @@ class _ProfileView extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: AppDimens.space24),
-                // TEMPORARY dev entry point for the sonar feature — there's
-                // no Figma spot for it yet. Move/remove once one exists.
+                // TEMPORARY dev entry points — no Figma spot for these yet.
+                // Move/remove once one exists. They exist so every feature can
+                // be reached and tested without hunting for it: the landmark
+                // work is otherwise only reachable via a building's
+                // "Navigate here", which is easy to miss.
                 const SectionLabel('Developer'),
+                const SizedBox(height: AppDimens.space8),
+                Card(
+                  child: ListTile(
+                    title: Text('Landmark map + routing (dev)',
+                        style: theme.textTheme.titleMedium),
+                    subtitle: Text(
+                      'KNUST Library — schematic, A* between any two '
+                      'landmarks, then guidance',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                    trailing: Icon(
+                      PhosphorIconsRegular.caretRight,
+                      size: 18,
+                      color: theme.textTheme.bodyMedium?.color,
+                    ),
+                    onTap: () => context.pushNamed(
+                      RouteNames.navigate,
+                      pathParameters: {'id': _demoBuildingId},
+                    ),
+                  ),
+                ),
+                const SizedBox(height: AppDimens.space8),
+                Card(
+                  child: ListTile(
+                    title: Text('Trace a floor plan (dev)',
+                        style: theme.textTheme.titleMedium),
+                    subtitle: Text(
+                      'Photograph the posted plan, set its scale, tap the '
+                      'landmarks onto it — no step counting',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                    trailing: Icon(
+                      PhosphorIconsRegular.caretRight,
+                      size: 18,
+                      color: theme.textTheme.bodyMedium?.color,
+                    ),
+                    onTap: () => context.pushNamed(
+                      RouteNames.planTrace,
+                      pathParameters: {'id': _demoBuildingId},
+                    ),
+                  ),
+                ),
+                const SizedBox(height: AppDimens.space8),
+                Card(
+                  child: ListTile(
+                    title: Text('Record a route (dev)',
+                        style: theme.textTheme.titleMedium),
+                    subtitle: Text(
+                      'Capture flow: read a sign, count steps, tap the turn',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                    trailing: Icon(
+                      PhosphorIconsRegular.caretRight,
+                      size: 18,
+                      color: theme.textTheme.bodyMedium?.color,
+                    ),
+                    onTap: () => context.pushNamed(
+                      RouteNames.capture,
+                      pathParameters: {'id': _demoBuildingId},
+                    ),
+                  ),
+                ),
                 const SizedBox(height: AppDimens.space8),
                 Card(
                   child: ListTile(

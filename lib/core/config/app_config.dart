@@ -14,8 +14,21 @@ class AppConfig {
   static String get supabaseUrl => dotenv.maybeGet('SUPABASE_URL') ?? '';
   static String get supabaseKey => dotenv.maybeGet('SUPABASE_KEY') ?? '';
 
+  /// Forces the mock repositories even when `.env` is populated:
+  ///
+  /// ```
+  /// flutter run --dart-define=FORCE_MOCKS=true
+  /// ```
+  ///
+  /// For demonstrating the app where there is no usable network — a lecture
+  /// theatre, an emulator with no DNS — and for exercising the UI against the
+  /// seeded KNUST Library route without a round trip. A compile-time constant,
+  /// so a release build cannot be talked into it at runtime.
+  static const bool forceMocks =
+      bool.fromEnvironment('FORCE_MOCKS');
+
   static bool get hasSupabase =>
-      supabaseUrl.isNotEmpty && supabaseKey.isNotEmpty;
+      !forceMocks && supabaseUrl.isNotEmpty && supabaseKey.isNotEmpty;
 
   /// Web OAuth client ID, used on Android as `serverClientId` so Google
   /// issues an ID token addressed to the client Supabase verifies against.
