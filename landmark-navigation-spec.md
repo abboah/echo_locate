@@ -1,7 +1,8 @@
 # Landmark Navigation — Build Spec
 
-**Status:** approved scope, August 2026
-**Team:** two developers, split into Stream A (2D map + routing) and Stream B (capture + guidance)
+**Status:** approved scope, August 2026 · **streams merged 11 August 2026**
+**Team:** two developers. Built as Stream A (2D map + routing) and Stream B (capture +
+guidance); both are now integrated on one branch and the split is history — see §5.
 **Window:** ~2 weeks to submission
 
 ---
@@ -134,53 +135,65 @@ evaluation chapter.
 
 ---
 
-## 5. The contract between the two streams
+## 5. The seam between map and guidance
 
-Both streams code against these. **Define them first, together, before either starts** —
-they are the reason the work can proceed in parallel.
+Originally the contract that let two developers work in parallel: Stream A owned the
+migration, the models and the repository; Stream B consumed them. That worked, and the split
+has now served its purpose — both halves are integrated and the sections below describe one
+system rather than two assignments.
+
+What survives the merge is the seam itself, and it is worth keeping deliberate. The map and
+the voice are **the same graph read two ways**, and they cannot be allowed to drift apart:
+the picture an examiner checks and the directions a blind user follows have to be the same
+claim about the building, or one of them is lying.
+
+### The types both halves speak
 
 ```dart
-// lib/core/models/landmark.dart, route.dart  (freezed, matching existing models)
+// lib/core/models/landmark.dart, walk_route.dart  (freezed, matching existing models)
 class Landmark   { id, buildingId, floorId, kind, labelText, aliases, displayName, roomId }
 class RouteStep  { seq, fromLandmarkId, toLandmarkId, instruction, distanceM, turnDeg }
 class WalkRoute  { id, buildingId, startLandmarkId, destinationRoomId, totalDistanceM, steps }
+```
 
+`WalkRoute` is what a contributor **recorded**. `PlannedRoute` is what a user is about to
+**walk** — see §6 A4. Guidance takes the second, so following a recording and following an
+A\* path are one code path; the harder case would rot if only the demo exercised it.
+
+```dart
 // lib/features/routing/route_repository.dart
 abstract class RouteRepository {
   Future<List<Landmark>> landmarksOf(String buildingId);
   Future<List<WalkRoute>> routesOf(String buildingId);
   Future<WalkRoute?>      routeTo(String buildingId, String roomId);
   Future<void>            saveRoute(WalkRoute route, List<Landmark> newLandmarks);
+  Future<TracedPlan?>     tracedPlanOf(String buildingId);
 }
 ```
 
 `SupabaseRouteRepository` implements it with `runOfflineFirstQuery` so routes work offline
 once fetched — the same pattern as `SupabaseBuildingRepository`.
 
-**Stream A owns the migration, the models, and the repository.** Stream B consumes them.
-Ship this contract on day 1.
+### Seed data
 
-### Unblocking
-
-Stream A cannot wait for Stream B's capture flow to produce data. **Seed one hand-authored
-route** (KNUST Library ground floor → Reading Hall, ~5 legs) in the migration, so the map
-and A* have real input from hour one.
-
-Stream B is not blocked on Stream A's A*: v1 guidance follows a *recorded* route in `seq`
-order and needs no pathfinding. A* only matters for the room-to-room case in §6.
+The map and A\* needed real input before capture existed, so **two hand-authored routes** are
+seeded (KNUST Library ground floor → Reading Hall, and → Study Room 2B). The pair matters
+more than either one: they share their first legs and diverge on floor 2, which is what gives
+A\* somewhere to leave one contributor's walk and join another's. One seeded route would have
+made §6 A4 untestable.
 
 ---
 
-## 6. Stream A — 2D map and routing
+## 6. The map and routing
 
-**Owns:** `supabase/migrations/`, `lib/core/models/landmark.dart`, `route.dart`,
-`lib/features/routing/`, `lib/services/mapping/`, `lib/ui/pages/map/`,
-`lib/ui/widgets/floor_plan_painter.dart`
+**Lives in:** `supabase/migrations/`, `lib/core/models/landmark.dart`, `walk_route.dart`,
+`traced_plan.dart`, `lib/features/routing/`, `lib/services/mapping/`,
+`lib/ui/pages/navigate/`, `lib/ui/widgets/floor_plan_painter.dart`
 
-### A1 · Schema, models, repository — *day 1, blocking*
-Migration, freezed models, `RouteRepository` + `SupabaseRouteRepository`, seed route.
-**Accept:** `routesOf('knust-library')` returns the seeded route with 5 legs; offline
-fallback returns the cached copy.
+### A1 · Schema, models, repository
+Migration, freezed models, `RouteRepository` + `SupabaseRouteRepository`, seed routes.
+**Accept:** `routesOf('knust-library')` returns two seeded routes, the Reading Hall one with
+5 legs; offline fallback returns the cached copy.
 
 ### A2 · Turtle layout — *pure Dart, no device*
 Convert a route's legs into 2D coordinates. Start at the origin facing 0°; for each leg,
@@ -188,47 +201,100 @@ rotate by `turn_deg`, advance `distance_m`, emit a node.
 
 ```dart
 // lib/services/mapping/route_layout.dart
-List<MapNode> layout(WalkRoute route);   // MapNode: landmarkId, x, y
+List<MapNode> layout(WalkRoute route, [Map<String, Landmark> landmarks]);
+double? misclosureOf(List<MapNode> nodes);
+// MapNode: landmarkId, floorId, x, y
 ```
-**Accept:** unit test — a 4-leg square (10 m, turn 90° each) returns to within 0.01 m of
-the origin.
+
+Landmarks are passed in because they carry the floor. **A floor change consumes no
+horizontal distance:** the climb is real metres and guidance quotes them, but spending them
+on the plane would push every floor-2 landmark eight metres down a ground-floor corridor.
+The landing is placed directly above the stairwell, which is where it physically is.
+
+**Accept:** a 4-leg square (10 m, turn 90° each) returns to within 0.01 m of the origin; a
+route that climbs puts the landing at the stairwell's coordinates on the upper plane.
 
 ### A3 · Node snapping and graph merge
 Routes in one building share landmarks. Two routes through "floor 2 stairwell" pass through
-the *same point*. Merge layouts by landmark id: average duplicate positions, then rebuild.
+the *same point*. Each route is laid out in its own frame, then rotated and translated onto
+the landmarks it already shares with what is placed — one shared landmark fixes position, two
+fix rotation. Routes are placed most-overlapping first, so capture order does not decide
+whether a building comes out as one map or three. A route sharing nothing is parked clear of
+the rest rather than stacked on top of it.
 
 ```dart
 // lib/services/mapping/floor_graph.dart
-FloorGraph merge(List<WalkRoute> routes);  // nodes: landmarks, edges: legs weighted by distanceM
+static FloorGraph  merge(List<WalkRoute>, [Map<String, Landmark>]);
+static MergeResult mergeWithDiagnostics(List<WalkRoute>, [Map<String, Landmark>]);
+static FloorGraph  fromPlan(TracedPlan);
 ```
+
 Angular error accumulates and loops will not close cleanly. **Do not fight this with
 least-squares optimisation.** Average duplicates and label the artifact a schematic — that
-is what it is.
+is what it is. But *do* measure it: `MergeResult.spreadM` reports how far apart a landmark's
+separate placements were before averaging, and the map screen states the worst of it. A
+schematic that admits its own error is a result; one that hides it is a lie. (§10.)
+
+`fromPlan` is the counterpart, for a plan traced off the building's own posted floor plan:
+those coordinates are absolute, so there is nothing to lay out or average away. Such a graph
+is usually **unitless** — `FloorGraph.metric` is false, A\* does not care, and anything that
+speaks a distance aloud checks it first.
+
 **Accept:** two routes sharing two landmarks merge into one connected graph with no
-duplicate nodes.
+duplicate nodes; two recordings that disagree by 6 m report a 6 m spread; routes that share
+an id are all kept.
 
 ### A4 · A* over the graph
-Textbook A* — these graphs are tens of nodes, not thousands. Heuristic: straight-line
-distance between laid-out node positions.
-**Accept:** given entrance→204 and entrance→209 recorded separately, `route(204, 209)`
-returns a path that nobody ever walked. **This is the demo moment — make sure it works.**
+Textbook A\* — these graphs are tens of nodes, not thousands. Heuristic: straight-line
+distance between laid-out node positions, which is admissible because the turtle layout walks
+the recorded metres and a cross-floor pair sits at the same point.
 
-### A5 · `FloorPlanPainter` and map screen
-`CustomPainter` rendering the graph: corridors as lines, landmarks as nodes, rooms labelled,
-current route highlighted. Copy the structure of `lib/ui/widgets/radar_painter.dart`. Light
-and dark, per `CLAUDE.md`.
-**Accept:** the seeded route renders as a recognisable corridor schematic in both themes.
+The search is the easy half. A path spliced from fragments of other people's walks **cannot
+reuse their words or their turns**:
+
+- **Turns are recomputed** from the merged geometry. A recorded `turnDeg` is relative to the
+  leg that preceded it *in that recording*; splice two walks together and the stored angle
+  refers to an approach the user never made. The result is snapped to the vocabulary the
+  capture UI offers, because "turn 73 degrees" is useless to somebody who cannot see the
+  corner.
+- **Wording survives only where it is still true.** A direction nobody walked has no words at
+  all, and even the right direction is dropped when the user arrives a different way than its
+  author did — "turn right; the stairwell is at the end" becomes a lie approached from
+  anywhere else, and a lie spoken to somebody who cannot see the corridor is worse than
+  silence. A leg with no wording is left null and guidance says something neutral.
+
+**Accept:** given entrance→Reading Hall and entrance→Study 2B recorded separately,
+planning Reading Hall→Study 2B returns a path nobody ever walked. **This is the demo moment.**
+Walking a recorded corner backwards inverts its turn rather than replaying it.
+
+### A5 · `FloorPlanView` and the map screen
+Renders one floor of the graph: corridors as bordered bands, landmarks shaped by kind, the
+active route in coral, a "you are here" ripple. Light and dark, per `CLAUDE.md`. A floor
+switcher picks the plane — only the picture changes, since the graph spans every floor and
+A\* routes across them.
+
+**It is not left silent.** Every landmark is published as a `CustomPainterSemantics` node
+naming it, its kind, and its role in the current journey, so a screen reader can explore the
+plan and activate a landmark to say "I am here". A `CustomPaint` is one unlabelled box
+otherwise, and tapping a landmark is the one manual input the screen depends on.
+
+**Accept:** the seeded route renders as a recognisable corridor schematic in both themes;
+the semantics tree carries every landmark on the drawn floor; a tap resolves to the landmark
+that was drawn nearest it.
 
 > The map is for sighted contributors, for verification, and for the examiners. A blind user
-> never sees it — they are served by the same graph through voice. Say so in the report.
+> is served by the same graph through voice — and, where they do reach for the picture, by
+> its semantics. Say so in the report.
 
 ---
 
-## 7. Stream B — capture and guidance
+## 7. Capture and guidance
 
-**Owns:** `lib/services/sensing/text_recognition_service.dart`,
-`lib/services/motion/step_service.dart`, `lib/features/capture/`,
-`lib/features/guidance/`, `lib/ui/pages/capture/`, `lib/ui/pages/guidance/`
+**Lives in:** `lib/services/sensing/text_recognition_service.dart`,
+`lib/services/sensing/landmark_matcher.dart`, `lib/services/motion/step_service.dart`,
+`lib/services/motion/stride_profile.dart`, `lib/features/capture/`,
+`lib/features/guidance/`, `lib/features/plan_trace/`, `lib/ui/pages/capture/`,
+`lib/ui/pages/guidance/`, `lib/ui/pages/plan_trace/`
 
 ### B1 · OCR service
 Wrap `google_mlkit_text_recognition` as a stream of recognised text blocks, mirroring
@@ -317,26 +383,46 @@ irrelevant. The design lever is "record more landmarks", not "measure better".
 
 ---
 
-## 8. Shared files — merge conflict risk
+## 8. How the two halves were reconciled
 
-Both streams touch these. Keep the edits small and commit them on their own.
+Both streams reached the mapping layer and built it differently. That is recorded here
+because the resolution is a design decision, not a merge mechanic, and the reasoning should
+outlive the branches.
 
-- `lib/services/injection_container.dart` — both register services
-- `lib/router/app_router.dart` + `lib/core/routes/app_routes.dart` — both add routes
-- `pubspec.yaml` — A adds nothing new; B adds `pedometer`
-- `android/app/src/main/AndroidManifest.xml` — B only (`ACTIVITY_RECOGNITION`)
+**One graph, one planner, one painter.** Where the two implementations disagreed, the
+interfaces that the rest of the app already spoke were kept, and the better *behaviour* was
+ported onto them:
+
+| Kept | Ported in |
+|---|---|
+| `PlannedRoute` / `PlannedLeg` as guidance's currency | multi-floor `MapNode.floorId`, `nodesOn` / `edgesOn` |
+| Per-direction wording on `GraphEdge`, `FloorGraph.metric`, `fromPlan` | `mergeWithDiagnostics` spread evidence (§10) |
+| `FloorMapBloc` as the map screen's bloc | geometric turn recomputation and approach-matched wording (§6 A4) |
+| | `FloorPlanView`, its semantics tree and hit testing, `PlanViewport` |
+
+Two things were **dropped deliberately**. The floor-plan screen's own voice guidance is gone:
+it existed only because guidance did not yet, and `GuidanceBloc` is strictly more capable —
+it has the step counter, OCR, obstacles and the recovery ladder. And instruction *synthesis*
+in the planner was not adopted: a leg nobody phrased stays `null`, and guidance composes the
+neutral sentence, which is the one place that knows whether a step count can be promised.
+
+Files both halves touched — `injection_container.dart`, `app_router.dart`, `app_routes.dart`,
+`pubspec.yaml`, `AndroidManifest.xml` — are now single-owner. Keep edits to them small.
 
 ---
 
 ## 9. Sequencing
 
-**Days 1–2** — A1 together (schema, models, repository, seed). Then split.
-**Days 3–6** — A: layout, merge, A*. B: OCR, steps, capture flow.
-**Days 7–9** — A: painter and map screen. B: GuidanceBloc, priority, haptics, recovery.
+Delivered as:
+
+**Days 1–2** — schema, models, repository, seed, together. Then split.
+**Days 3–6** — map: layout, merge, A\*. Capture: OCR, steps, capture flow.
+**Days 7–9** — map: painter and screen. Guidance: GuidanceBloc, priority, haptics, recovery.
+**Day 10** — **streams merged** (§8); one branch from here.
 **Days 10–12** — field capture at KNUST, evaluation runs, fixes.
 **Days 13–14** — report.
 
-Report edits need no code and should run in parallel from day 1 (§11).
+Report edits need no code and run in parallel throughout (§11).
 
 ## 10. Evaluation — Deliverable 6
 
@@ -351,6 +437,12 @@ Every limitation above is measurable. That turns them into results rather than e
 | End-to-end success | blindfolded volunteers, 5 routes | completion rate + time + wrong turns |
 | Room classification | `RoomClassifier` vs known room types, ~10 rooms | confusion matrix |
 | Sonar range accuracy | vs tape, 3 environments | existing Deliverable 2 evidence |
+| Schematic drift | `MergeResult.spreadM` across real captures; `misclosureOf` on a walked loop | report the envelope |
+
+The last row is the one the map itself reports on screen. It is not a target to hit — the
+schematic is derived from step counts and tapped turns and *will* drift — it is the number
+that says by how much, which is what turns "this is a schematic" from a disclaimer into a
+measurement.
 
 ## 11. Report edits (no code — start now)
 

@@ -17,6 +17,42 @@ void main() {
         greaterThan(AudioUse.speech.rank),
       );
     });
+
+    test('guidance is ordered urgent > landmark > progress > routine', () {
+      // Spec §7 B4. Without this a user hears "in ten steps, turn—" layered
+      // over "CHAIR AHEAD", which is worse than useless to someone who cannot
+      // see the chair.
+      expect(
+        AudioUse.urgentSpeech.rank,
+        greaterThan(AudioUse.landmarkReached.rank),
+      );
+      expect(
+        AudioUse.landmarkReached.rank,
+        greaterThan(AudioUse.guidanceProgress.rank),
+      );
+      expect(
+        AudioUse.guidanceProgress.rank,
+        greaterThan(AudioUse.speech.rank),
+      );
+    });
+
+    test('a landmark confirmation cuts off a progress update', () async {
+      final arbiter = AudioArbiter();
+      final progress = await arbiter.acquire(AudioUse.guidanceProgress);
+
+      final landmark = await arbiter.acquire(AudioUse.landmarkReached);
+
+      expect(landmark, isNotNull);
+      expect(progress!.isCancelled, isTrue);
+    });
+
+    test('a progress update never talks over a landmark confirmation',
+        () async {
+      final arbiter = AudioArbiter();
+      await arbiter.acquire(AudioUse.landmarkReached);
+
+      expect(await arbiter.acquire(AudioUse.guidanceProgress), isNull);
+    });
   });
 
   group('acquire', () {

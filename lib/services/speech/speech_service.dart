@@ -44,9 +44,18 @@ class SpeechService {
   ///
   /// Takes the speaker from sonar if a measurement is in flight — see
   /// [AudioUse.speech] for why speech outranks ranging.
-  Future<void> speak(String text, {bool interrupt = false}) async {
-    final lease = await _arbiter
-        ?.acquire(interrupt ? AudioUse.urgentSpeech : AudioUse.speech);
+  ///
+  /// [use] names the priority explicitly, for callers with more than two
+  /// tiers: guidance has four, and collapsing them onto a bool would let a
+  /// progress update talk over the landmark confirmation that supersedes it.
+  Future<void> speak(
+    String text, {
+    bool interrupt = false,
+    AudioUse? use,
+  }) async {
+    final claim =
+        use ?? (interrupt ? AudioUse.urgentSpeech : AudioUse.speech);
+    final lease = await _arbiter?.acquire(claim);
     if (_arbiter != null && lease == null) {
       // A routine callout refused by another utterance: the running one is at
       // least as current as this text. An urgent one is never refused here —

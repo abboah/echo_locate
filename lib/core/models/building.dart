@@ -34,9 +34,17 @@ abstract class BuildingFloor with _$BuildingFloor {
     required String label,
     required List<Room> rooms,
 
-    /// Matches `Landmark.floorId`. Without it the floor plan can only label its
-    /// planes with the raw uuid the landmarks carry, so the switcher on the
-    /// navigation screen would read "b3f1c2…" instead of "Floor 2".
+    /// The `floors` row this came from, matching `Landmark.floorId`.
+    ///
+    /// Every landmark belongs to a floor, so recording a route cannot start
+    /// without one. It is also what lets the floor plan name its planes:
+    /// without it the switcher on the navigation screen reads "b3f1c2…"
+    /// instead of "Floor 2".
+    ///
+    /// Defaulted rather than required so a floor list cached by an older build
+    /// still decodes — an empty id means "cached before floors were
+    /// identified", and capture asks the contributor to reload rather than
+    /// uploading landmarks attached to nothing.
     @Default('') String id,
   }) = _BuildingFloor;
 

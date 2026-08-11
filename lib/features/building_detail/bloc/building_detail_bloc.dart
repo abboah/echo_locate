@@ -36,10 +36,13 @@ class BuildingDetailBloc
         selectedFloor: floors.length > 1 ? 1 : 0,
         saved: saved,
       ));
-    } on OperationFailure catch (f) {
+    } catch (error) {
+      // Broad on purpose: catching only OperationFailure let a Hive cache
+      // error escape, and this screen sat on its spinner with the floors
+      // already fetched and sitting in memory.
       emit(state.copyWith(
         status: BuildingDetailStatus.failure,
-        error: f.message,
+        error: OperationFailure.from(error).message,
       ));
     }
   }
@@ -63,8 +66,11 @@ class BuildingDetailBloc
     emit(state.copyWith(saved: next));
     try {
       await _buildings.setSaved(building.id, next);
-    } on OperationFailure catch (f) {
-      emit(state.copyWith(saved: !next, error: f.message));
+    } catch (error) {
+      emit(state.copyWith(
+        saved: !next,
+        error: OperationFailure.from(error).message,
+      ));
     }
   }
 }

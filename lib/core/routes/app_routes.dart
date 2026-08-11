@@ -27,6 +27,23 @@ class AppRoutes {
   static const String locationPrimer = '/location-primer';
   static const String buildingDetail = '/building/:id';
   static const String navigate = '/building/:id/navigate';
+
+  /// Recording a building by walking it (contributor).
+  static const String capture = '/building/:id/capture';
+
+  /// Mapping a building by tracing the floor plan posted on its wall
+  /// (contributor). Takes the floor id as `extra`.
+  static const String planTrace = '/building/:id/trace';
+
+  /// Choosing what to map — a building nobody has listed, or one that is.
+  static const String mapBuilding = '/map-building';
+
+  /// Following a route by voice. Takes a GuidanceSession as `extra`.
+  static const String guidance = '/guidance';
+
+  /// Measuring the user's step length, so stored metres convert to their
+  /// steps rather than the contributor's.
+  static const String strideCalibration = '/stride-calibration';
 }
 
 /// go_router route names (for pushNamed/goNamed).
@@ -52,4 +69,9 @@ class RouteNames {
   static const String locationPrimer = 'locationPrimer';
   static const String buildingDetail = 'buildingDetail';
   static const String navigate = 'navigate';
+  static const String capture = 'capture';
+  static const String planTrace = 'planTrace';
+  static const String mapBuilding = 'mapBuilding';
+  static const String guidance = 'guidance';
+  static const String strideCalibration = 'strideCalibration';
 }

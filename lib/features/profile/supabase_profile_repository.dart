@@ -23,6 +23,18 @@ class SupabaseProfileRepository
       };
 
   @override
+  Future<void> saveStride(double metresPerStep) {
+    return runOperation('profile_save_stride', () async {
+      final user = _client.auth.currentUser;
+      if (user == null) throw const OperationFailure('Not signed in');
+
+      await _client
+          .from('profiles')
+          .update({'stride_length_m': metresPerStep}).eq('id', user.id);
+    });
+  }
+
+  @override
   Future<UserProfile> currentProfile() {
     return runOperation('profile_current', () async {
       final user = _client.auth.currentUser;
@@ -30,7 +42,7 @@ class SupabaseProfileRepository
 
       final row = await _client
           .from('profiles')
-          .select('full_name, email')
+          .select('full_name, email, stride_length_m')
           .eq('id', user.id)
           .maybeSingle();
 
@@ -56,6 +68,7 @@ class SupabaseProfileRepository
         floorsMapped: (s['floors_mapped'] as num?)?.toInt() ?? 0,
         roomsMapped: (s['rooms_mapped'] as num?)?.toInt() ?? 0,
         rankLabel: _rankFor(buildings),
+        strideLengthM: (row?['stride_length_m'] as num?)?.toDouble(),
       );
     });
   }

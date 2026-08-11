@@ -20,8 +20,14 @@ class HomeBloc extends Bloc<HomeEvent, HomeState> {
     try {
       final recent = await _buildings.recentlyMapped();
       emit(state.copyWith(status: HomeStatus.success, recent: recent));
-    } on OperationFailure catch (f) {
-      emit(state.copyWith(status: HomeStatus.failure, error: f.message));
+    } catch (error) {
+      // Broad on purpose: a narrow catch let Supabase, socket and
+      // Hive errors escape, and a Bloc that never emits leaves the
+      // screen spinning forever.
+      emit(state.copyWith(
+        status: HomeStatus.failure,
+        error: OperationFailure.from(error).message,
+      ));
     }
   }
 }

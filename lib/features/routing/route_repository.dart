@@ -1,5 +1,6 @@
 import '../../core/models/landmark.dart';
 import '../../core/models/route_draft.dart';
+import '../../core/models/traced_plan.dart';
 import '../../core/models/walk_route.dart';
 import '../../data/repository_mixin.dart';
 
@@ -27,6 +28,21 @@ abstract class RouteRepository {
 
   /// Uploads a captured route atomically. Returns the new route's id.
   Future<String> saveRoute(RouteDraft draft);
+
+  /// The building's traced floor plan, or null when nobody has traced one.
+  ///
+  /// Preferred over [routesOf] when it exists: a plan traced off the posted
+  /// floor plan carries absolute coordinates, where a recorded walk's geometry
+  /// is chained from step counts and drifts.
+  Future<TracedPlan?> tracedPlanOf(String buildingId);
+
+  /// Stores a traced plan, replacing whatever the building had.
+  ///
+  /// Returns the plan with every node's ref rewritten to the id of the landmark
+  /// it was upserted as, so the caller can build a graph whose node ids match
+  /// the ones [landmarksOf] and OCR matching use. Saving and then reloading
+  /// must produce the same graph.
+  Future<TracedPlan> saveTracedPlan(TracedPlan plan);
 }
 
 /// Picks the best recording among several for one destination.
@@ -234,10 +250,101 @@ class MockRouteRepository with RepositoryMixin implements RouteRepository {
 
   final List<WalkRoute> _saved = [];
 
+  /// Landmarks captured this session, alongside the seeded ones.
+  final List<Landmark> _captured = [];
+
+  /// One traced plan per building, replaced wholesale on save.
+  final Map<String, TracedPlan> _plans = {};
+
+  /// Upserts a landmark on the natural key and returns its id.
+  ///
+  /// Mirrors `save_route`'s `on conflict (building_id, floor_id, display_name)`
+  /// so tracing a plan over a building somebody already walked reuses the
+  /// landmarks rather than duplicating them — two nodes for one door would give
+  /// A* a choice that does not exist and OCR two things to match.
+  String _upsertLandmark({
+    required String buildingId,
+    required String floorId,
+    required LandmarkKind kind,
+    required String labelText,
+    required String displayName,
+    required List<String> aliases,
+    String? roomId,
+  }) {
+    final existing = [..._landmarks, ..._captured].where(
+      (l) =>
+          l.buildingId == buildingId &&
+          l.floorId == floorId &&
+          l.displayName == displayName,
+    );
+    if (existing.isNotEmpty) return existing.first.id;
+
+    final landmark = Landmark(
+      id: 'lm-${_captured.length + 1}-'
+          '${displayName.toLowerCase().replaceAll(RegExp(r'\s+'), '-')}',
+      buildingId: buildingId,
+      floorId: floorId,
+      kind: kind,
+      labelText: labelText,
+      displayName: displayName,
+      aliases: aliases,
+      roomId: roomId,
+    );
+    _captured.add(landmark);
+    return landmark.id;
+  }
+
+  @override
+  Future<TracedPlan?> tracedPlanOf(String buildingId) async {
+    await Future<void>.delayed(_latency);
+    return _plans[buildingId];
+  }
+
+  @override
+  Future<TracedPlan> saveTracedPlan(TracedPlan plan) async {
+    await Future<void>.delayed(_latency);
+
+    final idOfRef = <String, String>{
+      for (final node in plan.nodes)
+        node.ref: _upsertLandmark(
+          buildingId: plan.buildingId,
+          floorId: node.floorId,
+          kind: node.kind,
+          labelText: node.labelText,
+          displayName: node.displayName,
+          aliases: node.aliases,
+          roomId: node.roomId,
+        ),
+    };
+
+    final resolved = TracedPlan(
+      buildingId: plan.buildingId,
+      nodes: [
+        for (final node in plan.nodes) node.copyWith(ref: idOfRef[node.ref]!),
+      ],
+      edges: [
+        for (final edge in plan.edges)
+          // An edge whose ends did not resolve is dropped rather than stored
+          // pointing at a ref no landmark answers to.
+          if (idOfRef[edge.fromRef] != null && idOfRef[edge.toRef] != null)
+            TracedEdge(
+              fromRef: idOfRef[edge.fromRef]!,
+              toRef: idOfRef[edge.toRef]!,
+            ),
+      ],
+    );
+
+    _plans[plan.buildingId] = resolved;
+    return resolved;
+  }
+
   @override
   Future<List<Landmark>> landmarksOf(String buildingId) async {
     await Future<void>.delayed(_latency);
-    return _landmarks.where((l) => l.buildingId == buildingId).toList();
+    return [
+      for (final landmark in [..._landmarks, ..._captured])
+        if (landmark.buildingId == buildingId) landmark,
+    ];
   }
 
   @override
@@ -258,13 +365,32 @@ class MockRouteRepository with RepositoryMixin implements RouteRepository {
   Future<String> saveRoute(RouteDraft draft) async {
     if (draft.steps.isEmpty) throw const OperationFailure(emptyDraftMessage);
     await Future<void>.delayed(_latency);
-    // Refs stand in for the uuids the server would mint.
+
+    // Mirrors `save_route`: landmarks are upserted on their display name
+    // within the building, and the client-side refs ('L1') are swapped for the
+    // ids the steps then point at. Doing less here would leave the mock map
+    // with nodes no landmark matches, which is what the real server avoids.
+    final idOfRef = <String, String>{
+      for (final drafted in draft.landmarks)
+        drafted.ref: _upsertLandmark(
+          buildingId: draft.buildingId,
+          floorId: drafted.floorId,
+          kind: drafted.kind,
+          labelText: drafted.labelText,
+          displayName: drafted.displayName,
+          aliases: drafted.aliases,
+          roomId: drafted.roomId,
+        ),
+    };
+
     final id = 'route-${_saved.length + 1}';
     _saved.add(
       WalkRoute(
         id: id,
         buildingId: draft.buildingId,
-        startLandmarkId: draft.steps.isEmpty ? '' : draft.steps.first.fromRef,
+        startLandmarkId: draft.steps.isEmpty
+            ? ''
+            : idOfRef[draft.steps.first.fromRef] ?? '',
         destinationRoomId: draft.destinationRoomId,
         totalDistanceM:
             draft.steps.fold(0, (sum, s) => sum + s.distanceM),
@@ -272,8 +398,8 @@ class MockRouteRepository with RepositoryMixin implements RouteRepository {
           for (final s in draft.steps)
             RouteStep(
               seq: s.seq,
-              fromLandmarkId: s.fromRef,
-              toLandmarkId: s.toRef,
+              fromLandmarkId: idOfRef[s.fromRef] ?? s.fromRef,
+              toLandmarkId: idOfRef[s.toRef] ?? s.toRef,
               instruction: s.instruction,
               distanceM: s.distanceM,
               turnDeg: s.turnDeg,

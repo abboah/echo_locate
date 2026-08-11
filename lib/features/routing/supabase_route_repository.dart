@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/models/landmark.dart';
 import '../../core/models/route_draft.dart';
+import '../../core/models/traced_plan.dart';
 import '../../core/models/walk_route.dart';
 import '../../data/repository_mixin.dart';
 import 'route_repository.dart';
@@ -126,6 +127,48 @@ class SupabaseRouteRepository with RepositoryMixin implements RouteRepository {
         params: {'p_route': draft.toRpcPayload()},
       );
       return id;
+    });
+  }
+
+  @override
+  Future<TracedPlan?> tracedPlanOf(String buildingId) {
+    return runOfflineFirstQuery(
+      'traced_plan:$buildingId',
+      () async {
+        final rows = await _client
+            .from('traced_plans')
+            .select('plan')
+            .eq('building_id', buildingId)
+            .limit(1);
+        if (rows.isEmpty) return null;
+        return TracedPlan.fromJson(
+          Map<String, dynamic>.from(rows.first['plan'] as Map),
+        );
+      },
+      encode: (plan) => plan?.toJson(),
+      decode: (cached) => cached == null
+          ? null
+          : TracedPlan.fromJson(Map<String, dynamic>.from(cached as Map)),
+    );
+  }
+
+  @override
+  Future<TracedPlan> saveTracedPlan(TracedPlan plan) {
+    return runOperation('save_traced_plan', () async {
+      if (plan.nodes.isEmpty) {
+        throw const OperationFailure(
+          'Place at least one landmark before saving',
+        );
+      }
+      // One RPC, one transaction, for the same reason as save_route: the
+      // landmarks and the plan that references them are written together, so a
+      // dropped connection cannot leave a plan pointing at ids that were never
+      // created. The function returns the plan with refs already resolved.
+      final saved = await _client.rpc<Map<String, dynamic>>(
+        'save_traced_plan',
+        params: {'p_plan': plan.toJson()},
+      );
+      return TracedPlan.fromJson(Map<String, dynamic>.from(saved));
     });
   }
 }

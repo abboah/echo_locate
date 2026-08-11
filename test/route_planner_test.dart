@@ -1,416 +1,288 @@
+import 'package:echo_locate/core/models/landmark.dart';
+import 'package:echo_locate/core/models/walk_route.dart';
+import 'package:echo_locate/services/mapping/floor_graph.dart';
+import 'package:echo_locate/services/mapping/route_planner.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:echo_locate/core/models/walk_route.dart';
-import 'package:echo_locate/features/routing/route_repository.dart';
-import 'package:echo_locate/services/mapping/route_planner.dart';
+WalkRoute routeOf(
+  String id,
+  List<({String from, String to, double distanceM, int turnDeg})> legs,
+) =>
+    WalkRoute(
+      id: id,
+      buildingId: 'b1',
+      startLandmarkId: legs.first.from,
+      destinationRoomId: 'room-$id',
+      steps: [
+        for (var i = 0; i < legs.length; i++)
+          RouteStep(
+            seq: i + 1,
+            fromLandmarkId: legs[i].from,
+            toLandmarkId: legs[i].to,
+            instruction: 'walk to ${legs[i].to}',
+            distanceM: legs[i].distanceM,
+            turnDeg: legs[i].turnDeg,
+          ),
+      ],
+    );
 
-import 'route_layout_test.dart' show landmarksOn, routeOf;
-
-Future<RoutePlanner> libraryPlanner() async {
-  final repository = MockRouteRepository();
-  return RoutePlanner.from(
-    await repository.routesOf('knust-library'),
-    await repository.landmarksOf('knust-library'),
-  );
-}
+({String from, String to, double distanceM, int turnDeg}) leg(
+  String from,
+  String to, {
+  double distanceM = 10,
+  int turnDeg = 0,
+}) =>
+    (from: from, to: to, distanceM: distanceM, turnDeg: turnDeg);
 
 void main() {
-  group('findPath', () {
-    test('finds the shortest way round a graph with two branches', () {
-      // A -> B -> C the long way, A -> D -> C the short way.
-      final long = routeOf([('B', 20, 0), ('C', 20, 90)], id: 'long');
-      final short = routeOf([('D', 5, 90), ('C', 5, -90)], id: 'short');
-      final planner = RoutePlanner.from(
-        [long, short],
-        landmarksOn('g', ['A', 'B', 'C', 'D']).values.toList(),
-      );
+  const planner = RoutePlanner();
 
-      expect(planner.findPath('A', 'C'), ['A', 'D', 'C']);
-    });
+  test('a landmark that is not on the map has no route', () {
+    final graph = FloorGraph.merge([
+      routeOf('r1', [leg('a', 'b')]),
+    ]);
 
-    test('returns a single node when start and destination are the same', () {
-      final planner = RoutePlanner.from(
-        [routeOf([('B', 10, 0)])],
-        landmarksOn('g', ['A', 'B']).values.toList(),
-      );
-      expect(planner.findPath('A', 'A'), ['A']);
-    });
-
-    test('returns nothing for landmarks the graph does not hold', () {
-      final planner = RoutePlanner.from(
-        [routeOf([('B', 10, 0)])],
-        landmarksOn('g', ['A', 'B']).values.toList(),
-      );
-      expect(planner.findPath('A', 'nowhere'), isEmpty);
-      expect(planner.findPath('nowhere', 'B'), isEmpty);
-    });
-
-    test('returns nothing between disconnected wings', () {
-      final west = routeOf([('B', 10, 0)], id: 'west');
-      final east = routeOf([('Z', 10, 0)], id: 'east', start: 'Y');
-      final planner = RoutePlanner.from(
-        [west, east],
-        landmarksOn('g', ['A', 'B', 'Y', 'Z']).values.toList(),
-      );
-
-      // Recorded, but no walk connects them — better than inventing a corridor.
-      expect(planner.findPath('A', 'Z'), isEmpty);
-    });
-
-    test('walks a leg backwards when that is the way round', () {
-      final planner = RoutePlanner.from(
-        [routeOf([('B', 10, 0), ('C', 10, 0)])],
-        landmarksOn('g', ['A', 'B', 'C']).values.toList(),
-      );
-      expect(planner.findPath('C', 'A'), ['C', 'B', 'A']);
-    });
+    expect(planner.plan(graph, from: 'a', to: 'nowhere'), isNull);
+    expect(planner.plan(graph, from: 'nowhere', to: 'b'), isNull);
   });
 
-  group('landmarkForRoom', () {
-    test('resolves a room to the landmark at its door', () async {
-      final planner = await libraryPlanner();
-      expect(planner.landmarkForRoom('reading-hall'), 'lm-reading-hall');
-      expect(planner.landmarkForRoom('study-2b'), 'lm-study-2b');
-    });
+  test('standing at the destination is a route with no legs', () {
+    final graph = FloorGraph.merge([
+      routeOf('r1', [leg('a', 'b')]),
+    ]);
 
-    test('returns null for a room nobody has recorded a landmark for',
-        () async {
-      final planner = await libraryPlanner();
-      // Rooms without a landmark cannot be navigated to. Saying so is the
-      // point — silently routing to the nearest door would be worse.
-      expect(planner.landmarkForRoom('help-desk'), isNull);
-    });
+    final plan = planner.plan(graph, from: 'a', to: 'a');
+
+    expect(plan, isNotNull);
+    expect(plan!.legs, isEmpty);
+    expect(plan.totalDistanceM, 0);
   });
 
-  group('planBetweenRooms — the demo moment', () {
-    test('returns a path nobody ever walked', () async {
-      final planner = await libraryPlanner();
+  test('an unconnected landmark has no route', () {
+    final graph = FloorGraph.merge([
+      routeOf('r1', [leg('a', 'b')]),
+      routeOf('r2', [leg('x', 'y')]),
+    ]);
 
-      final route = planner.planBetweenRooms(
-        fromRoomId: 'reading-hall',
-        toRoomId: 'study-2b',
-      );
+    expect(planner.plan(graph, from: 'a', to: 'y'), isNull);
+  });
 
-      expect(route, isNotNull);
-      // Both recordings run entrance -> ... -> a floor 2 door. Nobody walked
-      // between the two doors; this is spliced from the tail of one and the
-      // reversed tail of the other.
-      expect(route!.landmarkIds, [
-        'lm-reading-hall',
-        'lm-corridor-2',
-        'lm-study-2b',
+  test('a recorded leg keeps the wording its contributor spoke', () {
+    final graph = FloorGraph.merge([
+      routeOf('r1', [leg('a', 'b', distanceM: 14)]),
+    ]);
+
+    final plan = planner.plan(graph, from: 'a', to: 'b')!;
+
+    expect(plan.legs.single.instruction, 'walk to b');
+    expect(plan.legs.single.distanceM, 14);
+    expect(plan.totalDistanceM, 14);
+  });
+
+  test('a leg walked against its recording carries no wording', () {
+    final graph = FloorGraph.merge([
+      routeOf('r1', [leg('a', 'b')]),
+    ]);
+
+    final plan = planner.plan(graph, from: 'b', to: 'a')!;
+
+    expect(plan.legs.single.fromLandmarkId, 'b');
+    expect(plan.legs.single.instruction, isNull);
+  });
+
+  test('the shorter way round is chosen', () {
+    final graph = FloorGraph.merge([
+      routeOf('long', [leg('a', 'b', distanceM: 10), leg('b', 'd', distanceM: 10)]),
+      routeOf('short', [
+        leg('a', 'c', distanceM: 4, turnDeg: 90),
+        leg('c', 'd', distanceM: 4, turnDeg: -90),
+      ]),
+    ]);
+
+    final plan = planner.plan(graph, from: 'a', to: 'd')!;
+
+    expect(plan.landmarkIds, ['a', 'c', 'd']);
+    expect(plan.totalDistanceM, closeTo(8, 0.01));
+  });
+
+  test('routes recorded separately join up into a walk nobody recorded', () {
+    // The demo moment (spec §6 A4): one contributor walked entrance→204,
+    // another walked entrance→209. Nobody ever walked 204→209.
+    final graph = FloorGraph.merge([
+      routeOf('to-204', [
+        leg('entrance', 'junction', distanceM: 12),
+        leg('junction', '204', distanceM: 8, turnDeg: 90),
+      ]),
+      routeOf('to-209', [
+        leg('entrance', 'junction', distanceM: 12),
+        leg('junction', '209', distanceM: 6, turnDeg: -90),
+      ]),
+    ]);
+
+    final plan = planner.plan(graph, from: '204', to: '209')!;
+
+    expect(plan.landmarkIds, ['204', 'junction', '209']);
+    expect(plan.totalDistanceM, closeTo(14, 0.01));
+    // Leaving 204 runs against the recording, so nothing is put in the
+    // contributor's words; rejoining a recorded direction is spoken as walked.
+    expect(plan.legs.first.instruction, isNull);
+    expect(plan.legs.last.instruction, 'walk to 209');
+  });
+
+  test('a recorded route can be followed without planning', () {
+    final recorded = routeOf('r1', [leg('a', 'b'), leg('b', 'c')]);
+
+    final plan = PlannedRoute.fromRecorded(recorded);
+
+    expect(plan.landmarkIds, ['a', 'b', 'c']);
+    expect(plan.legs.first.instruction, 'walk to b');
+    expect(plan.totalDistanceM, 20);
+  });
+
+  group('turns are recomputed from the merged geometry', () {
+    // A recorded turnDeg is relative to the leg that preceded it *in that
+    // recording*. Splice legs from two walks together and the stored angle
+    // refers to an approach the user never made — so it is recomputed from
+    // where the landmarks actually ended up.
+
+    test('a corner is measured from the approach actually taken', () {
+      // Walk 1 goes north up the spine: south → junction → north.
+      // Walk 2 turns off it: south → junction → east.
+      final graph = FloorGraph.merge([
+        routeOf('spine', [leg('south', 'junction'), leg('junction', 'north')]),
+        routeOf('branch', [
+          leg('south', 'junction'),
+          leg('junction', 'east', turnDeg: 90),
+        ]),
       ]);
-      expect(route.steps, hasLength(2));
-      expect(route.totalDistanceM, closeTo(13, 0.01));
+
+      // Coming up the spine and turning off onto the branch is a right turn,
+      // and nobody recorded that pairing.
+      final plan = planner.plan(graph, from: 'south', to: 'east');
+
+      expect(plan, isNotNull);
+      expect(plan!.landmarkIds, ['south', 'junction', 'east']);
+      expect(plan.legs.last.turnDeg, 90);
     });
 
-    test('is marked planned, not recorded', () async {
-      final planner = await libraryPlanner();
-      final route = planner.planBetweenRooms(
-        fromRoomId: 'reading-hall',
-        toRoomId: 'study-2b',
-      )!;
-
-      expect(route.isPlanned, isTrue);
-      expect(route.verifiedCount, 0);
-      // Computed distance must never masquerade as somebody's step count.
-      expect(route.steps.every((s) => s.stepsRecorded == null), isTrue);
-    });
-
-    test('turns are recomputed for the approach actually taken', () async {
-      final planner = await libraryPlanner();
-      final route = planner.planBetweenRooms(
-        fromRoomId: 'reading-hall',
-        toRoomId: 'study-2b',
-      )!;
-
-      // Leaving the Reading Hall there is no previous leg to turn from.
-      expect(route.steps.first.turnDeg, 0);
-
-      // At the directory board the walker is heading back down the corridor,
-      // so Study Room 2B is on the LEFT — the opposite of the recorded
-      // "turn right", which was written for somebody arriving from the stairs.
-      expect(route.steps.last.turnDeg, -90);
-    });
-
-    test('a leg walked backwards is reworded, not replayed', () async {
-      final planner = await libraryPlanner();
-      final route = planner.planBetweenRooms(
-        fromRoomId: 'reading-hall',
-        toRoomId: 'study-2b',
-      )!;
-
-      final backwards = route.steps.first;
-      // The recording said "Straight on; the Reading Hall is the second door
-      // on your right". Spoken to somebody walking the other way, out of the
-      // Reading Hall, that is simply false.
-      expect(backwards.instruction, isNot(contains('Reading Hall is')));
-      expect(backwards.instruction, contains('directory board'));
-
-      final turned = route.steps.last;
-      expect(turned.instruction, contains('Turn left'));
-      expect(turned.instruction, contains('Study Room 2B'));
-    });
-
-    test('distances come from what somebody measured', () async {
-      final planner = await libraryPlanner();
-      final route = planner.planBetweenRooms(
-        fromRoomId: 'reading-hall',
-        toRoomId: 'study-2b',
-      )!;
-
-      // 6 m from the Reading Hall to the board, 7 m from the board to 2B —
-      // both walked, neither derived from the schematic.
-      expect(route.steps.first.distanceM, closeTo(6, 0.01));
-      expect(route.steps.last.distanceM, closeTo(7, 0.01));
-    });
-
-    test('returns null when either room has no landmark', () async {
-      final planner = await libraryPlanner();
-      expect(
-        planner.planBetweenRooms(
-          fromRoomId: 'reading-hall',
-          toRoomId: 'help-desk',
-        ),
-        isNull,
-      );
-    });
-  });
-
-  group('planBetweenLandmarks', () {
-    test('replays the recorded wording when the approach matches', () async {
-      final planner = await libraryPlanner();
-      final route = planner.planBetweenLandmarks(
-        fromLandmarkId: 'lm-entrance',
-        toLandmarkId: 'lm-reading-hall',
-      )!;
-
-      // Walked exactly as recorded, so the contributor's own sentences stand —
-      // a human description of a corridor beats anything generated.
-      expect(route.steps.map((s) => s.instruction), [
-        'Straight ahead, past the entrance desk',
-        'Turn right; the stairwell is at the end of the corridor',
-        'Take the stairs up two flights to floor 2',
-        'Turn left along the main corridor to the directory board',
-        'Straight on; the Reading Hall is the second door on your right',
+    test('the first leg has no approach, so it has no turn', () {
+      final graph = FloorGraph.merge([
+        routeOf('r', [
+          leg('a', 'b', turnDeg: 90),
+          leg('b', 'c', turnDeg: 90),
+        ]),
       ]);
-      expect(route.steps.map((s) => s.turnDeg), [0, 90, 0, -90, 0]);
+
+      final plan = planner.plan(graph, from: 'a', to: 'c');
+
+      // Recorded as a 90° turn entering the first leg, but a user starting at
+      // 'a' has not come from anywhere — there is nothing to turn relative to.
+      expect(plan!.legs.first.turnDeg, 0);
     });
 
-    test('hands back the recording when one covers the whole path', () async {
-      final planner = await libraryPlanner();
-      final route = planner.planBetweenLandmarks(
-        fromLandmarkId: 'lm-entrance',
-        toLandmarkId: 'lm-reading-hall',
-      )!;
+    test('walking a recorded route backwards inverts its corner', () {
+      final graph = FloorGraph.merge([
+        routeOf('r', [
+          leg('a', 'b'),
+          leg('b', 'c', turnDeg: 90),
+        ]),
+      ]);
 
-      // Somebody walked exactly this. Reconstructing it would throw away their
-      // step counts and their verification, and the UI would then call a real
-      // walk an "estimated route".
-      expect(route.id, 'route-reading-hall');
-      expect(route.isPlanned, isFalse);
-      expect(route.steps.first.stepsRecorded, isNotNull);
+      final forward = planner.plan(graph, from: 'a', to: 'c')!;
+      final backward = planner.plan(graph, from: 'c', to: 'a')!;
+
+      expect(forward.legs.last.turnDeg, 90);
+      // The same corner taken from the other side is a left turn. Replaying
+      // the recorded +90 here would send a blind user into a wall.
+      expect(backward.legs.last.turnDeg, -90);
     });
 
-    test('a partial path is still synthesised', () async {
-      final planner = await libraryPlanner();
-      // A prefix of a recording is not itself a recording.
-      final route = planner.planBetweenLandmarks(
-        fromLandmarkId: 'lm-entrance',
-        toLandmarkId: 'lm-stairs-g',
-      )!;
-
-      expect(route.isPlanned, isTrue);
-      expect(route.steps, hasLength(2));
-    });
-
-    test('the full reverse journey is described in reverse', () async {
-      final planner = await libraryPlanner();
-      final route = planner.planBetweenLandmarks(
-        fromLandmarkId: 'lm-reading-hall',
-        toLandmarkId: 'lm-entrance',
-      )!;
-
-      expect(route.steps, hasLength(5));
-      expect(route.startLandmarkId, 'lm-reading-hall');
-      // Nothing recorded survives verbatim: every leg is walked the wrong way.
-      for (final step in route.steps) {
-        expect(step.stepsRecorded, isNull);
-      }
-      // The stairs are still stairs going down.
-      expect(
-        route.steps.any((s) => s.instruction.contains('Take the stairs')),
-        isTrue,
+    test('a floor change is described rather than turned into', () {
+      // Stairs put both ends at the same point, so there is no direction to
+      // measure and no turn to speak.
+      final graph = FloorGraph.merge(
+        [
+          routeOf('r', [
+            leg('door', 'stairs-g'),
+            leg('stairs-g', 'landing-2'),
+            leg('landing-2', 'hall'),
+          ]),
+        ],
+        {
+          'door': _landmark('door', 'floor-g'),
+          'stairs-g': _landmark('stairs-g', 'floor-g'),
+          'landing-2': _landmark('landing-2', 'floor-2'),
+          'hall': _landmark('hall', 'floor-2'),
+        },
       );
-    });
 
-    test('a floor change is described, not turned into', () async {
-      final planner = await libraryPlanner();
-      final route = planner.planBetweenLandmarks(
-        fromLandmarkId: 'lm-reading-hall',
-        toLandmarkId: 'lm-entrance',
-      )!;
+      final plan = planner.plan(graph, from: 'door', to: 'hall')!;
 
-      final stairs = route.steps.firstWhere(
-        (s) => s.toLandmarkId == 'lm-stairs-g',
-      );
-      // Two nodes at the same point give no direction to measure, so no turn
-      // is invented for them.
-      expect(stairs.turnDeg, 0);
-      expect(stairs.instruction, contains('stairs'));
-    });
-
-    test('legs are sequenced from 1 and chain end to end', () async {
-      final planner = await libraryPlanner();
-      final route = planner.planBetweenLandmarks(
-        fromLandmarkId: 'lm-reading-hall',
-        toLandmarkId: 'lm-entrance',
-      )!;
-
-      expect(route.steps.map((s) => s.seq), [1, 2, 3, 4, 5]);
-      for (var i = 1; i < route.steps.length; i++) {
-        expect(route.steps[i].fromLandmarkId, route.steps[i - 1].toLandmarkId);
-      }
-      expect(route.steps.first.fromLandmarkId, route.startLandmarkId);
-    });
-
-    test('total distance is the sum of its legs', () async {
-      final planner = await libraryPlanner();
-      final route = planner.planBetweenLandmarks(
-        fromLandmarkId: 'lm-entrance',
-        toLandmarkId: 'lm-study-2b',
-      )!;
-
-      final summed = route.steps.fold<double>(0, (sum, s) => sum + s.distanceM);
-      expect(route.totalDistanceM, closeTo(summed, 0.001));
-      expect(route.totalDistanceM, closeTo(54, 0.01));
-    });
-
-    test('returns null when no path exists', () async {
-      final planner = await libraryPlanner();
-      expect(
-        planner.planBetweenLandmarks(
-          fromLandmarkId: 'lm-entrance',
-          toLandmarkId: 'nowhere',
-        ),
-        isNull,
-      );
-    });
-
-    test('carries the destination room id when the door has one', () async {
-      final planner = await libraryPlanner();
-      final route = planner.planBetweenLandmarks(
-        fromLandmarkId: 'lm-entrance',
-        toLandmarkId: 'lm-study-2b',
-      )!;
-      expect(route.destinationRoomId, 'study-2b');
-
-      // A junction is not a room, and claiming otherwise would break guidance.
-      final toJunction = planner.planBetweenLandmarks(
-        fromLandmarkId: 'lm-entrance',
-        toLandmarkId: 'lm-desk',
-      )!;
-      expect(toJunction.destinationRoomId, isEmpty);
+      expect(plan.landmarkIds, ['door', 'stairs-g', 'landing-2', 'hall']);
+      // The climb itself, and the leg leaving the landing: neither has a
+      // horizontal bearing to turn against.
+      expect(plan.legs[1].turnDeg, 0);
+      expect(plan.legs[2].turnDeg, 0);
     });
   });
 
-  group('synthesised wording', () {
-    test('names every turn the capture UI can record', () {
-      // A star of legs out of a hub, each at a different angle, so every
-      // phrase the walker might hear is exercised.
+  group('wording only survives where it is still true', () {
+    test('a sentence recorded from a different approach is dropped', () {
+      // "walk to c" was recorded by somebody arriving at 'b' from 'a'. A user
+      // arriving from 'x' is being told something that was never true of their
+      // journey, so they are told nothing instead.
       final routes = [
-        routeOf([('H', 10, 0), ('N', 10, 0)], id: 'n'),
-        routeOf([('H', 10, 0), ('E', 10, 90)], id: 'e'),
-        routeOf([('H', 10, 0), ('W', 10, -90)], id: 'w'),
-        routeOf([('H', 10, 0), ('SE', 10, 135)], id: 'se'),
-        routeOf([('H', 10, 0), ('SW', 10, -135)], id: 'sw'),
+        routeOf('recorded', [leg('a', 'b'), leg('b', 'c')]),
+        routeOf('other', [leg('x', 'b')]),
       ];
-      final planner = RoutePlanner.from(
-        routes,
-        landmarksOn('g', ['A', 'H', 'N', 'E', 'W', 'SE', 'SW']).values.toList(),
+      final graph = FloorGraph.merge(routes);
+
+      final plan = planner.plan(
+        graph,
+        from: 'x',
+        to: 'c',
+        recorded: routes,
       );
 
-      String legInto(String destination) => planner
-          .planBetweenLandmarks(fromLandmarkId: 'N', toLandmarkId: destination)!
-          .steps
-          .last
-          .instruction;
-
-      // Arriving at the hub southbound from N, so the compass flips.
-      expect(legInto('E'), contains('Turn left'));
-      expect(legInto('W'), contains('Turn right'));
-      expect(legInto('SE'), contains('Bear left'));
-      expect(legInto('SW'), contains('Bear right'));
+      expect(plan!.landmarkIds, ['x', 'b', 'c']);
+      expect(plan.legs.last.instruction, isNull);
+      // Silence on a leg is exactly what "stitched from several walks" means.
+      expect(plan.synthesised, isTrue);
     });
 
-    test('quotes distance in whole metres', () async {
-      final planner = await libraryPlanner();
-      final route = planner.planBetweenRooms(
-        fromRoomId: 'study-2b',
-        toRoomId: 'reading-hall',
-      )!;
+    test('the same approach keeps the contributor’s words', () {
+      final routes = [
+        routeOf('recorded', [leg('a', 'b'), leg('b', 'c')]),
+      ];
+      final graph = FloorGraph.merge(routes);
 
-      expect(route.steps.last.instruction, contains('6 metres'));
-      expect(route.steps.last.instruction, isNot(contains('.')));
+      final plan = planner.plan(graph, from: 'a', to: 'c', recorded: routes);
+
+      expect(plan!.legs.last.instruction, 'walk to c');
+      expect(plan.synthesised, isFalse);
     });
 
-    test('falls back to a neutral phrase for an unnamed landmark', () {
-      final planner = RoutePlanner.from(
-        [routeOf([('B', 10, 0), ('C', 10, 90)])],
-        // 'C' deliberately absent from the landmark set.
-        landmarksOn('g', ['A', 'B']).values.toList(),
-      );
+    test('without recordings the edge wording is taken at face value', () {
+      // Guidance replans mid-walk with only the graph to hand. That is the
+      // main line, and it must not go silent for want of the route list.
+      final routes = [
+        routeOf('recorded', [leg('a', 'b'), leg('b', 'c')]),
+        routeOf('other', [leg('x', 'b')]),
+      ];
+      final graph = FloorGraph.merge(routes);
 
-      // Starting mid-route, so the recorded wording for B->C does not apply
-      // and a sentence has to be built for a landmark with no name.
-      final route = planner.planBetweenLandmarks(
-        fromLandmarkId: 'B',
-        toLandmarkId: 'C',
-      )!;
-      expect(route.steps.single.instruction, contains('the next landmark'));
-    });
-  });
+      final plan = planner.plan(graph, from: 'x', to: 'c');
 
-  group('competing recordings', () {
-    test('the most-verified wording wins', () {
-      const careless = WalkRoute(
-        id: 'careless',
-        buildingId: 'b',
-        startLandmarkId: 'A',
-        destinationRoomId: 'room',
-        steps: [
-          RouteStep(
-            seq: 1,
-            fromLandmarkId: 'A',
-            toLandmarkId: 'B',
-            instruction: 'go that way',
-            distanceM: 10,
-          ),
-        ],
-      );
-      final trusted = careless.copyWith(
-        id: 'trusted',
-        verifiedCount: 7,
-        steps: [
-          careless.steps.first.copyWith(
-            instruction: 'Straight past the noticeboard to the lifts',
-          ),
-        ],
-      );
-
-      final planner = RoutePlanner.from(
-        [careless, trusted],
-        landmarksOn('g', ['A', 'B']).values.toList(),
-      );
-
-      expect(
-        planner
-            .planBetweenLandmarks(fromLandmarkId: 'A', toLandmarkId: 'B')!
-            .steps
-            .single
-            .instruction,
-        'Straight past the noticeboard to the lifts',
-      );
+      expect(plan!.legs.last.instruction, 'walk to c');
     });
   });
 }
+
+Landmark _landmark(String id, String floorId) => Landmark(
+      id: id,
+      buildingId: 'b1',
+      floorId: floorId,
+      kind: LandmarkKind.sign,
+      labelText: id.toUpperCase(),
+      displayName: id,
+    );

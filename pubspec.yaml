@@ -64,12 +64,21 @@ dependencies:
 
   # --- Sensors / permissions / voice / utils ---
   sensors_plus: ^6.0.1
+  # Guidance step counting. Wraps Android's TYPE_STEP_COUNTER — the hardware
+  # sensor Google Fit reads — rather than hand-rolled accelerometer maths, so
+  # it survives the phone being held still in front of a sign. Needs
+  # ACTIVITY_RECOGNITION (declared in AndroidManifest.xml).
+  pedometer: ^4.0.2
   permission_handler: ^11.3.1
   flutter_tts: ^4.0.2
   speech_to_text: ^7.0.0
   logger: ^2.4.0
   phosphoricons_flutter: ^1.0.0
   flutter_dotenv: ^6.0.1
+  # Where a traced plan's photo is kept. `camera` writes stills into the cache
+  # directory, which Android evicts under pressure — so a plan re-opened days
+  # later lost the backdrop its landmarks were tapped onto. Documents survive.
+  path_provider: ^2.1.4
 
 dev_dependencies:
   flutter_test:

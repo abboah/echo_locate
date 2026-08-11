@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 
 import '../../core/models/landmark.dart';
-import '../../core/models/walk_route.dart';
 import '../../core/theme/app_colors.dart';
+import '../../services/mapping/floor_graph.dart';
 import '../../services/mapping/map_node.dart';
 import '../../services/mapping/plan_viewport.dart';
+import '../../services/mapping/route_planner.dart';
 
 /// Renders one floor of a merged landmark graph: corridors as lines, landmarks
 /// as nodes, the active route highlighted.
@@ -35,14 +36,19 @@ class FloorPlanView extends StatelessWidget {
   /// has to know which plane is active.
   final List<MapNode> nodes;
 
-  /// Edges with both ends on this floor. A stairs leg belongs to neither and is
-  /// deliberately absent: drawing it would imply a corridor that is not there.
-  final List<MapEdge> edges;
+  /// Edges with both ends on this floor — `FloorGraph.edgesOn` gives exactly
+  /// this. A stairs leg belongs to neither floor and is deliberately absent:
+  /// drawing it would imply a corridor that is not there.
+  final List<GraphEdge> edges;
 
   final Map<String, Landmark> landmarks;
 
   /// Highlighted in coral. Legs that leave this floor are skipped.
-  final WalkRoute? route;
+  ///
+  /// A [PlannedRoute] whether or not anybody walked it end to end — following a
+  /// recording and following an A* path are drawn the same, because to the user
+  /// they are the same.
+  final PlannedRoute? route;
 
   /// Where the user is now, if guidance is running.
   final String? currentLandmarkId;
@@ -85,9 +91,9 @@ class FloorPlanView extends StatelessWidget {
                 landmarks: landmarks,
                 viewport: viewport,
                 routeLandmarkIds: route?.landmarkIds ?? const [],
-                destinationId: route?.steps.isEmpty ?? true
+                destinationId: route == null || route!.legs.isEmpty
                     ? null
-                    : route!.steps.last.toLandmarkId,
+                    : route!.legs.last.toLandmarkId,
                 currentLandmarkId: currentLandmarkId,
                 brightness: theme.brightness,
                 hairline: theme.dividerColor,
@@ -169,7 +175,7 @@ class _FloorPlanPainter extends CustomPainter {
   });
 
   final List<MapNode> nodes;
-  final List<MapEdge> edges;
+  final List<GraphEdge> edges;
   final Map<String, Landmark> landmarks;
   final PlanViewport viewport;
   final List<String> routeLandmarkIds;

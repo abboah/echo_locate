@@ -1,17 +1,23 @@
+# Codegen options.
+#
+# `explicit_to_json` makes a model's `toJson` call `toJson` on nested models
+# rather than leaving them as objects. Without it, `BuildingFloor.toJson`
+# returns live `Room` instances inside the map, and `WalkRoute.toJson` returns
+# live `RouteStep`s. That is invisible over the wire — PostgREST only ever
+# receives generated JSON — but every offline-first repository writes `toJson`
+# output straight into the Hive cache box, which `jsonEncode` happens to
+# tolerate and Hive does not:
+#
+#   HiveError: Cannot write, unknown type: _Room
+#
+# Because the cache write happens inside `runOfflineFirstQuery`'s try block,
+# the throw is caught, the (never written) cache misses, and a perfectly
+# successful network read surfaces as a failure. Turned on globally so a new
+# nested model — BuildingFloor.rooms, WalkRoute.steps, RouteDraft.landmarks —
+# cannot reintroduce it.
 targets:
   $default:
     builders:
       json_serializable:
         options:
-          # Nested models must serialise to maps, not be left as objects.
-          #
-          # Without this, `WalkRoute.toJson()` emits its `steps` as live
-          # RouteStep instances and `Floor.toJson()` does the same with its
-          # rooms. That is invisible over the wire — PostgREST only ever
-          # receives generated JSON — but the offline cache writes the result
-          # straight into Hive, which cannot encode an arbitrary Dart object
-          # and throws. Because the cache write happens inside
-          # `runOfflineFirstQuery`'s try block, the throw is caught, the
-          # (never written) cache misses, and a perfectly successful network
-          # read surfaces as a failure.
           explicit_to_json: true

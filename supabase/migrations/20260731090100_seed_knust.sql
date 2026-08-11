@@ -1,23 +1,22 @@
--- Seed: the KNUST-area buildings the Phase 1 screens were designed against
--- (previously hardcoded in MockBuildingRepository).
+-- Seed: the one building kept for demonstration.
 --
--- Coordinates are approximate — campus buildings are offsets from the KNUST
--- centre, KATH and Kumasi City Mall are near their real positions. Replace
--- with GPS readings taken during field mapping.
+-- This file used to seed eight invented buildings with invented mapper counts
+-- and completion percentages. They were Phase 1 scaffolding for screens built
+-- before there was a database, and they became misleading the moment there was
+-- one: a browsable campus of buildings nobody has actually mapped.
+--
+-- KNUST Library survives alone, because a demo needs somewhere to demo. Its
+-- floors and rooms are real enough to trace against, and `20260810090100`
+-- removes the other seven from any database this already ran on.
+--
+-- Coordinates are approximate. Replace with a GPS reading taken on site.
 --
 -- Idempotent: safe to re-run.
 
 insert into public.buildings
   (id, name, area, category, glyph, mapped_percent, lat, lng, seed_mappers)
 values
-  ('knust-library',     'KNUST Library',     'KNUST, Kumasi',   'campus',   'building', 94, 6.67650, -1.57130, 12),
-  ('engineering-block', 'Engineering Block', 'KNUST, Kumasi',   'campus',   'door',     71, 6.67110, -1.57130,  8),
-  ('src-building',      'SRC Building',      'KNUST, Kumasi',   'campus',   'home',     42, 6.66930, -1.57130,  3),
-  ('great-hall',        'Great Hall',        'KNUST, Kumasi',   'campus',   'hall',     88, 6.67920, -1.57130,  6),
-  ('cabs-block',        'CABS Block',        'KNUST, Kumasi',   'campus',   'building', 87, 6.67470, -1.56858,  4),
-  ('science-block',     'Science Block',     'KNUST, Kumasi',   'campus',   'door',     62, 6.67470, -1.57492,  2),
-  ('kath-wing-a',       'KATH — Wing A',     'Bantama, Kumasi', 'hospital', 'building', 55, 6.69750, -1.63180,  5),
-  ('kumasi-city-mall',  'Kumasi City Mall',  'Asokwa, Kumasi',  'mall',     'hall',     77, 6.67840, -1.60860,  9)
+  ('knust-library', 'KNUST Library', 'KNUST, Kumasi', 'campus', 'building', 94, 6.67650, -1.57130, 12)
 on conflict (id) do update set
   name           = excluded.name,
   area           = excluded.area,
@@ -40,11 +39,7 @@ declare
   new_floor_id uuid;
 begin
   for b in
-    select * from (values
-      ('knust-library', 4), ('engineering-block', 5), ('src-building', 2),
-      ('great-hall', 1),    ('cabs-block', 3),        ('science-block', 2),
-      ('kath-wing-a', 3),   ('kumasi-city-mall', 2)
-    ) as t(id, floors)
+    select * from (values ('knust-library', 4)) as t(id, floors)
   loop
     floor_count := b.floors;
 
@@ -74,9 +69,6 @@ begin
   end loop;
 end $$;
 
--- Set the freshness labels last: inserting floors/rooms fires the triggers
--- that bump buildings.updated_at, so any values set earlier would be lost.
-update public.buildings set updated_at = now()                     where id in ('knust-library', 'cabs-block', 'kumasi-city-mall');
-update public.buildings set updated_at = now() - interval '1 day'  where id in ('engineering-block', 'science-block');
-update public.buildings set updated_at = now() - interval '3 days' where id = 'src-building';
-update public.buildings set updated_at = now() - interval '9 days' where id in ('great-hall', 'kath-wing-a');
+-- Set the freshness label last: inserting floors/rooms fires the triggers that
+-- bump buildings.updated_at, so a value set earlier would be lost.
+update public.buildings set updated_at = now() where id = 'knust-library';

@@ -14,6 +14,16 @@ enum AudioUse {
   /// visually impaired user is holding the phone at all.
   speech,
 
+  /// "About halfway", "you're close — sweep your phone to find the sign".
+  /// Outranks a routine obstacle callout because it is time-sensitive: said
+  /// late it describes somewhere the user has already walked past.
+  guidanceProgress,
+
+  /// "Reading Hall door." The confirmation that the user is where the route
+  /// says they are — the single most useful sentence guidance ever speaks, and
+  /// the one that resets the step count.
+  landmarkReached,
+
   /// A callout about something the user is about to walk into. Same hardware
   /// as [speech], separated only so it can cut one off — see [rank].
   urgentSpeech;
@@ -28,9 +38,17 @@ enum AudioUse {
   /// takes seconds to say, so "very close, ahead" would otherwise be refused
   /// for being late to a queue behind "sign on your right" — silently, and
   /// exactly when it mattered most.
+  ///
+  /// The two guidance ranks sit between them, giving the order spec §7 B4
+  /// requires: urgent obstacle > landmark confirmed > progress update >
+  /// routine obstacle. Being where you think you are matters more than being
+  /// told about a chair you are not about to hit; not walking into the chair
+  /// matters more than either.
   int get rank => switch (this) {
         AudioUse.ranging => 0,
         AudioUse.speech => 10,
+        AudioUse.guidanceProgress => 12,
+        AudioUse.landmarkReached => 15,
         AudioUse.urgentSpeech => 20,
       };
 }

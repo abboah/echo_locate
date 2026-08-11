@@ -1,14 +1,20 @@
 import 'dart:async';
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/models/building.dart';
 import '../core/routes/app_routes.dart';
 import '../core/settings/settings_repository.dart';
 import '../features/auth/bloc/auth_bloc.dart';
+import '../features/guidance/guidance_session.dart';
 import '../services/injection_container.dart';
 import '../ui/pages/assist/assist_page.dart';
+import '../ui/pages/capture/capture_page.dart';
+import '../ui/pages/map_building/map_building_page.dart';
+import '../ui/pages/plan_trace/plan_trace_page.dart';
+import '../ui/pages/guidance/guidance_page.dart';
+import '../ui/pages/profile/stride_calibration_page.dart';
 import '../ui/pages/auth/sign_in_page.dart';
 import '../ui/pages/auth/sign_up_page.dart';
 import '../ui/pages/auth/welcome_page.dart';
@@ -161,12 +167,77 @@ final GoRouter appRouter = GoRouter(
       name: RouteNames.navigate,
       parentNavigatorKey: _rootNavigatorKey,
       builder: (context, state) => NavigationPage(
+        buildingId: state.pathParameters['id']!,
         building: state.extra as Building?,
         destinationRoomId: state.uri.queryParameters['room'],
       ),
     ),
+    GoRoute(
+      path: AppRoutes.capture,
+      name: RouteNames.capture,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => CapturePage(
+        buildingId: state.pathParameters['id']!,
+      ),
+    ),
+    GoRoute(
+      path: AppRoutes.mapBuilding,
+      name: RouteNames.mapBuilding,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const MapBuildingPage(),
+    ),
+    GoRoute(
+      path: AppRoutes.planTrace,
+      name: RouteNames.planTrace,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => PlanTracePage(
+        buildingId: state.pathParameters['id']!,
+        // Which floor the trace starts on. Changeable on the screen itself,
+        // since one plan can span a building.
+        floorId: state.extra as String? ?? 'floor-g',
+      ),
+    ),
+    GoRoute(
+      path: AppRoutes.guidance,
+      name: RouteNames.guidance,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) {
+        // The route to walk is handed over whole rather than re-fetched: the
+        // map screen has already merged the graph and planned the path, and
+        // repeating that here would be a second chance to disagree with it.
+        final session = state.extra as GuidanceSession?;
+        if (session == null) return const _MissingRoute();
+        return GuidancePage(session: session);
+      },
+    ),
+    GoRoute(
+      path: AppRoutes.strideCalibration,
+      name: RouteNames.strideCalibration,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const StrideCalibrationPage(),
+    ),
   ],
 );
+
+/// Guidance opened without a route — a deep link, or a restored stack. Says so
+/// rather than crashing on a null cast.
+class _MissingRoute extends StatelessWidget {
+  const _MissingRoute();
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              'Pick a destination on the building map to start guidance.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
+          ),
+        ),
+      );
+}
 
 String? _redirect(BuildContext context, GoRouterState state) {
   final settings = getIt<SettingsRepository>();

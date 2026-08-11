@@ -20,8 +20,14 @@ class MapsBloc extends Bloc<MapsEvent, MapsState> {
     try {
       final saved = await _buildings.savedMaps();
       emit(state.copyWith(status: MapsStatus.success, saved: saved));
-    } on OperationFailure catch (f) {
-      emit(state.copyWith(status: MapsStatus.failure, error: f.message));
+    } catch (error) {
+      // Broad on purpose: a narrow catch let Supabase, socket and
+      // Hive errors escape, and a Bloc that never emits leaves the
+      // screen spinning forever.
+      emit(state.copyWith(
+        status: MapsStatus.failure,
+        error: OperationFailure.from(error).message,
+      ));
     }
   }
 }

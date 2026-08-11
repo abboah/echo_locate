@@ -24,12 +24,50 @@ abstract class BuildingRepository {
 
   /// Save/unsave a building for offline use; returns the new saved state.
   Future<bool> setSaved(String buildingId, bool saved);
+
+  /// Adds a building nobody has listed yet, with [floors] empty floors ready to
+  /// be traced, and makes the caller its first contributor.
+  ///
+  /// The index is crowdsourced, so it cannot only contain what was seeded into
+  /// it: a contributor standing in an unlisted building has to be able to add
+  /// it and start mapping, or the whole feature only works on buildings that
+  /// somebody else already thought of.
+  Future<Building> create({
+    required String name,
+    required String area,
+    String category,
+    int floors,
+  });
+}
+
+/// Slug for a new building's id: `'Great Hall Annexe'` → `'great-hall-annexe'`.
+///
+/// The `buildings` primary key is human-readable text rather than a uuid, so it
+/// is generated rather than minted. Uniqueness is the caller's problem —
+/// [BuildingRepository.create] suffixes a collision rather than overwriting
+/// somebody else's building.
+String slugify(String name) {
+  final slug = name
+      .toLowerCase()
+      .replaceAll(RegExp(r"[^a-z0-9]+"), '-')
+      .replaceAll(RegExp(r'^-+|-+$'), '');
+  return slug.isEmpty ? 'building' : slug;
 }
 
 class MockBuildingRepository with RepositoryMixin implements BuildingRepository {
   static const _latency = Duration(milliseconds: 350);
 
-  // KNUST-flavoured seed data matching the Figma screens.
+  /// The one building the offline path knows about.
+  ///
+  /// This list used to hold eight invented buildings with invented mapper
+  /// counts and completion percentages — Phase 1 scaffolding for screens built
+  /// before there was a database. Kept past that point they were a claim the
+  /// app could not back up: a browsable campus nobody had mapped. They are gone
+  /// from `20260731090100_seed_knust.sql` too.
+  ///
+  /// One survives because a demonstration with no network needs somewhere to
+  /// demonstrate, and because it is the building the Profile developer
+  /// shortcuts open.
   static const _buildings = [
     Building(
       id: 'knust-library',
@@ -43,108 +81,28 @@ class MockBuildingRepository with RepositoryMixin implements BuildingRepository 
       glyph: 'building',
       updatedLabel: 'updated today',
     ),
-    Building(
-      id: 'engineering-block',
-      name: 'Engineering Block',
-      area: 'KNUST, Kumasi',
-      floorsCount: 5,
-      mappers: 8,
-      mappedPercent: 71,
-      distanceKm: 0.4,
-      category: 'campus',
-      glyph: 'door',
-      updatedLabel: 'updated yesterday',
-    ),
-    Building(
-      id: 'src-building',
-      name: 'SRC Building',
-      area: 'KNUST, Kumasi',
-      floorsCount: 2,
-      mappers: 3,
-      mappedPercent: 42,
-      distanceKm: 0.6,
-      category: 'campus',
-      glyph: 'home',
-      updatedLabel: 'updated 3 days ago',
-    ),
-    Building(
-      id: 'great-hall',
-      name: 'Great Hall',
-      area: 'KNUST, Kumasi',
-      floorsCount: 1,
-      mappers: 6,
-      mappedPercent: 88,
-      distanceKm: 0.5,
-      category: 'campus',
-      glyph: 'hall',
-      updatedLabel: 'updated this week',
-    ),
-    Building(
-      id: 'cabs-block',
-      name: 'CABS Block',
-      area: 'KNUST, Kumasi',
-      floorsCount: 3,
-      mappers: 4,
-      mappedPercent: 87,
-      distanceKm: 0.3,
-      category: 'campus',
-      glyph: 'building',
-      updatedLabel: 'updated today',
-    ),
-    Building(
-      id: 'science-block',
-      name: 'Science Block',
-      area: 'KNUST, Kumasi',
-      floorsCount: 2,
-      mappers: 2,
-      mappedPercent: 62,
-      distanceKm: 0.4,
-      category: 'campus',
-      glyph: 'door',
-      updatedLabel: 'updated yesterday',
-    ),
-    Building(
-      id: 'kath-wing-a',
-      name: 'KATH — Wing A',
-      area: 'Bantama, Kumasi',
-      floorsCount: 3,
-      mappers: 5,
-      mappedPercent: 55,
-      distanceKm: 2.1,
-      category: 'hospital',
-      glyph: 'building',
-      updatedLabel: 'updated this week',
-    ),
-    Building(
-      id: 'kumasi-city-mall',
-      name: 'Kumasi City Mall',
-      area: 'Asokwa, Kumasi',
-      floorsCount: 2,
-      mappers: 9,
-      mappedPercent: 77,
-      distanceKm: 3.4,
-      category: 'mall',
-      glyph: 'hall',
-      updatedLabel: 'updated today',
-    ),
   ];
 
   @override
   Future<List<Building>> recentlyMapped() {
     return runEphemeralQuery('buildings:recent', () async {
       await Future<void>.delayed(_latency);
-      return _buildings
-          .where((b) => b.id == 'cabs-block' || b.id == 'science-block')
-          .toList();
+      // Everything there is, which offline is the demo building plus anything
+      // added this session. This used to name two of the invented buildings;
+      // with those gone it would have silently returned nothing and left Home
+      // looking broken rather than empty.
+      return _all;
     });
   }
+
+  List<Building> get _all => [..._buildings, ..._created];
 
   @override
   Future<List<Building>> nearby({String category = 'all', String query = ''}) {
     // Cache the full list once per session; filter in memory per call.
     return runEphemeralQuery('buildings:all', () async {
       await Future<void>.delayed(_latency);
-      return _buildings;
+      return _all;
     }).then((all) {
       final q = query.trim().toLowerCase();
       return all
@@ -168,12 +126,20 @@ class MockBuildingRepository with RepositoryMixin implements BuildingRepository 
   Future<List<BuildingFloor>> floorsOf(String buildingId) {
     return runEphemeralQuery('floors:$buildingId', () async {
       await Future<void>.delayed(_latency);
+      // A building added this session has its floors already, empty and
+      // waiting to be traced — generating rooms into them would invent the
+      // very data the contributor is about to record.
+      final created = _createdFloors[buildingId];
+      if (created != null) return created;
       final building = await byId(buildingId);
       return List.generate(building.floorsCount, (i) {
         final label = i == 0 ? 'G' : '$i';
-        // Mirrors the ids the seeded landmarks reference, so the floor plan's
-        // switcher can name its planes offline exactly as it does online.
         return BuildingFloor(
+          // Stands in for the uuid the `floors` table would mint, so capture
+          // works against the mocks too. Deliberately the same ids the mock
+          // landmarks carry (`floor-g`, `floor-2`): the floor switcher matches
+          // a graph node's floor against this list to name it, so a mock world
+          // that disagrees with itself would label every plane with a raw id.
           id: i == 0 ? 'floor-g' : 'floor-$i',
           label: label,
           rooms: _roomsFor(buildingId, i),
@@ -183,12 +149,12 @@ class MockBuildingRepository with RepositoryMixin implements BuildingRepository 
   }
 
   /// Session-scoped stand-in for the `saved_maps` table.
-  final Set<String> _saved = {'knust-library', 'great-hall'};
+  final Set<String> _saved = {'knust-library'};
 
   @override
   Future<List<Building>> savedMaps() async {
     await Future<void>.delayed(_latency);
-    return _buildings.where((b) => _saved.contains(b.id)).toList();
+    return _all.where((b) => _saved.contains(b.id)).toList();
   }
 
   @override
@@ -202,6 +168,62 @@ class MockBuildingRepository with RepositoryMixin implements BuildingRepository 
       _saved.remove(buildingId);
     }
     return saved;
+  }
+
+  /// Buildings added in this session, alongside the one demo building.
+  final List<Building> _created = [];
+
+  final Map<String, List<BuildingFloor>> _createdFloors = {};
+
+  @override
+  Future<Building> create({
+    required String name,
+    required String area,
+    String category = 'campus',
+    int floors = 1,
+  }) async {
+    await Future<void>.delayed(_latency);
+
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) {
+      throw const OperationFailure('Give the building a name');
+    }
+
+    final taken = {..._buildings, ..._created}.map((b) => b.id).toSet();
+    var id = slugify(trimmed);
+    for (var n = 2; taken.contains(id); n++) {
+      id = '${slugify(trimmed)}-$n';
+    }
+
+    final building = Building(
+      id: id,
+      name: trimmed,
+      area: area.trim(),
+      floorsCount: floors,
+      // Nothing has been traced yet, and saying otherwise is the invented
+      // statistic this app just finished removing.
+      mappers: 1,
+      mappedPercent: 0,
+      distanceKm: 0,
+      category: category,
+      glyph: 'building',
+      updatedLabel: 'updated today',
+    );
+
+    _created.add(building);
+    _createdFloors[id] = [
+      for (var i = 0; i < floors; i++)
+        BuildingFloor(
+          id: '$id-floor-${i == 0 ? 'g' : i}',
+          label: i == 0 ? 'G' : '$i',
+          rooms: const [],
+        ),
+    ];
+
+    // The session caches are keyed lists, so a new building would not show up
+    // on Explore or Home until the app restarted without this.
+    RepositoryMixin.clearEphemeralCache();
+    return building;
   }
 
   List<Room> _roomsFor(String buildingId, int floorIndex) {

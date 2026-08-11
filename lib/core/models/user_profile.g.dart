@@ -14,6 +14,7 @@ _UserProfile _$UserProfileFromJson(Map<String, dynamic> json) => _UserProfile(
   floorsMapped: (json['floorsMapped'] as num?)?.toInt() ?? 0,
   roomsMapped: (json['roomsMapped'] as num?)?.toInt() ?? 0,
   rankLabel: json['rankLabel'] as String? ?? 'New mapper',
+  strideLengthM: (json['strideLengthM'] as num?)?.toDouble(),
 );
 
 Map<String, dynamic> _$UserProfileToJson(_UserProfile instance) =>
@@ -25,4 +26,5 @@ Map<String, dynamic> _$UserProfileToJson(_UserProfile instance) =>
       'floorsMapped': instance.floorsMapped,
       'roomsMapped': instance.roomsMapped,
       'rankLabel': instance.rankLabel,
+      'strideLengthM': instance.strideLengthM,
     };
