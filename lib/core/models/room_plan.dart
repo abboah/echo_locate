@@ -164,6 +164,39 @@ abstract class WingPlacement with _$WingPlacement {
     );
   }
 
+  /// [apply] undone: a point read off the drawing, back in the wing's own
+  /// frame.
+  ///
+  /// What every edit to placed geometry has to go through before it is stored.
+  /// The corners on screen are `apply`'d, so writing a dragged one straight back
+  /// into [RoomPlan.storedRooms] saves a position that has the placement baked
+  /// into it — and [RoomPlan.rooms] then applies the same placement again, so
+  /// the whole wing jumps by its own offset the next time it is drawn.
+  Offset unapply(Offset point) {
+    final x = point.dx - dx;
+    final y = point.dy - dy;
+    if (rotation == 0) return Offset(x, y);
+    final cos = math.cos(rotation);
+    final sin = math.sin(rotation);
+    return Offset(x * cos + y * sin, -x * sin + y * cos);
+  }
+
+  /// The same inverse for a *difference* between two placed points.
+  ///
+  /// Separate from [unapply] because a delta carries no position, so the shift
+  /// must not be subtracted from it — only the rotation undone. Passing a drag
+  /// delta through [unapply] would move the room by the wing's offset on every
+  /// frame of the drag.
+  Offset unrotate(Offset delta) {
+    if (rotation == 0) return delta;
+    final cos = math.cos(rotation);
+    final sin = math.sin(rotation);
+    return Offset(
+      delta.dx * cos + delta.dy * sin,
+      -delta.dx * sin + delta.dy * cos,
+    );
+  }
+
   WingPlacement movedBy(Offset delta) =>
       copyWith(dx: dx + delta.dx, dy: dy + delta.dy);
 
@@ -508,6 +541,54 @@ abstract class RoomPlan with _$RoomPlan {
   /// Moves one wing, leaving every other alone.
   RoomPlan placeWing(String wingId, WingPlacement placement) =>
       copyWith(wings: {...wings, wingId: placement});
+
+  /// A room as it is *stored* — the frame edits are written back into.
+  ///
+  /// [roomOf] hands back the placed room, which is right for drawing and
+  /// routing and wrong for editing: an edit has to change the numbers that are
+  /// saved, not the numbers that were drawn.
+  Room? storedRoomOf(String id) {
+    for (final room in storedRooms) {
+      if (room.id == id) return room;
+    }
+    return null;
+  }
+
+  /// Where [roomId]'s wing has been put, or the identity for a room in no wing.
+  WingPlacement placementOfRoom(String roomId) =>
+      wings[storedRoomOf(roomId)?.wingId] ?? const WingPlacement();
+
+  /// Placements dropped for wings that no longer have any rooms.
+  ///
+  /// A wing is a set of rooms captured in one frame, so an entry naming one
+  /// that nothing belongs to places nothing — but it is not inert. `wingIds` is
+  /// derived from the rooms, so an empty floor of wings makes
+  /// `RoomTraceBloc._lastWingIn` fall back to `wing-1`, and if `wing-1` is the
+  /// stale entry then everything traced next is silently minted into a wing
+  /// parked half a floor away. That is the same stranding twice over: once for
+  /// the work that was parked, and again for the work that replaces it after
+  /// somebody deletes the first lot and tries again.
+  RoomPlan get withoutEmptyWings {
+    final live = wingIds.toSet();
+    if (wings.keys.every(live.contains)) return this;
+    return copyWith(wings: {
+      for (final entry in wings.entries)
+        if (live.contains(entry.key)) entry.key: entry.value,
+    });
+  }
+
+  /// Every wing flattened into the floor's own frame.
+  ///
+  /// Placement stops being a separate layer and becomes the geometry: what was
+  /// drawn is now what is stored, and [wings] is emptied so nothing applies it a
+  /// second time. For operations that legitimately work across wings at once —
+  /// squaring the whole floor onto one grid — where keeping the placements would
+  /// mean writing placed coordinates under a transform that still fires.
+  RoomPlan get baked => copyWith(
+    storedRooms: rooms,
+    storedOpenings: openings,
+    wings: const {},
+  );
 
   /// Extent of everything already placed — where a new wing has to go around.
   Rect get bounds {

@@ -39,6 +39,7 @@ void main() {
     when(
       () => photos.capture(any(), any()),
     ).thenAnswer((_) async => '/tmp/board.jpg');
+    when(() => photos.aspectOf(any())).thenAnswer((_) async => 4 / 3);
     when(
       () => photos.storedPhotos(any()),
     ).thenAnswer((_) async => const <String, String>{});
@@ -53,11 +54,30 @@ void main() {
   RoomTraceBloc build() => RoomTraceBloc(plans, photos, buildings);
 
   /// Starts a trace and gets past the photo step.
+  ///
+  /// Skipping the photo continues whatever frame the floor is already in — a
+  /// blank grid is not a coordinate system of its own. See [tracedOnNewBoard]
+  /// for the path that does open a wing.
   Future<RoomTraceBloc> traced() async {
     final bloc = build();
     bloc.add(const RoomTraceStarted(buildingId: 'knust-cs'));
     await Future<void>.delayed(Duration.zero);
     bloc.add(const RoomPhotoSkipped());
+    await Future<void>.delayed(Duration.zero);
+    return bloc;
+  }
+
+  /// Starts a trace and says the photo is of a *different* board.
+  ///
+  /// The only way a second wing is opened now: the contributor is asked, at the
+  /// photo step, because nothing in a photograph can say whether it is the board
+  /// the floor was already traced from.
+  Future<RoomTraceBloc> tracedOnNewBoard() async {
+    final bloc = build();
+    bloc.add(const RoomTraceStarted(buildingId: 'knust-cs'));
+    await Future<void>.delayed(Duration.zero);
+    bloc.add(const RoomPhotoTaken(newBoard: true));
+    await Future<void>.delayed(Duration.zero);
     await Future<void>.delayed(Duration.zero);
     return bloc;
   }
@@ -656,7 +676,7 @@ void main() {
         ),
       );
 
-      final bloc = await traced();
+      final bloc = await tracedOnNewBoard();
       await traceRect(
         bloc,
         left: 0.1,
@@ -697,12 +717,102 @@ void main() {
         ),
       );
 
-      final bloc = await traced();
+      final bloc = await tracedOnNewBoard();
 
       expect(
         bloc.state.plan.wings['wing-2']!.dx,
         closeTo(0.3 + RoomTraceBloc.parkingGapUnits, 0.001),
       );
+      await bloc.close();
+    });
+
+    test('tracing on a blank grid never parks a wing', () async {
+      // The failure this is here for, reported off a real board: a contributor
+      // came back to a floor traced without a photo, chose "trace without a
+      // photo" again — the only thing on offer, since a floor with no stored
+      // photo always reopens at that step — and drew one corridor to join two
+      // sections. It was minted into a fresh wing and parked half a floor east
+      // of both, drawn in empty space beside the building.
+      //
+      // A blank grid is not a frame. What a finger is placed against is the
+      // rooms drawn on the grid, which are the ones already on the floor.
+      when(() => plans.planFor(any(), any())).thenAnswer(
+        (_) async => const RoomPlan(
+          buildingId: 'knust-cs',
+          floorId: 'floor-uuid-g',
+          codePrefix: 'GF',
+          storedRooms: [
+            Room(
+              id: 'room-1',
+              floorId: 'floor-uuid-g',
+              code: 'GF 1',
+              category: RoomCategory.office,
+              polygon: [
+                RoomCorner(x: 0, y: 0),
+                RoomCorner(x: 0.3, y: 0),
+                RoomCorner(x: 0.3, y: 0.2),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      final bloc = await traced();
+      expect(bloc.state.plan.wings, isEmpty);
+
+      // A corridor drawn down the middle stays down the middle.
+      bloc.add(const HallPointTapped(0.5, 0.2));
+      bloc.add(const HallPointTapped(0.5, 0.6));
+      await Future<void>.delayed(Duration.zero);
+      bloc.add(const CorridorPathClosed());
+      await Future<void>.delayed(Duration.zero);
+
+      final corridor = bloc.state.plan.drawableRooms.last;
+      expect(corridor.spine.first.dx, closeTo(0.5, 0.001));
+      expect(bloc.state.plan.wings, isEmpty);
+      await bloc.close();
+    });
+
+    test('a placement left behind by a deleted wing is dropped', () async {
+      // The trap that follows the stranded corridor. Undo the corridor and its
+      // wing has no rooms left, but the placement stays in the plan — and
+      // `_lastWingIn` falls back to `wing-1`, so the next thing traced is minted
+      // straight back into the parked wing and stranded all over again.
+      when(() => plans.planFor(any(), any())).thenAnswer(
+        (_) async => const RoomPlan(
+          buildingId: 'knust-cs',
+          floorId: 'floor-uuid-g',
+          codePrefix: 'GF',
+          wings: {'wing-1': WingPlacement(dx: 1.3)},
+          storedRooms: [
+            Room(
+              id: 'room-1',
+              floorId: 'floor-uuid-g',
+              code: 'GF 1',
+              category: RoomCategory.office,
+              polygon: [
+                RoomCorner(x: 0, y: 0),
+                RoomCorner(x: 0.3, y: 0),
+                RoomCorner(x: 0.3, y: 0.2),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      final bloc = await traced();
+      expect(bloc.state.plan.wings, isEmpty);
+
+      await traceRect(
+        bloc,
+        left: 0.1,
+        right: 0.4,
+        top: 0.4,
+        bottom: 0.6,
+        category: RoomCategory.office,
+      );
+      // Where it was drawn, not 1.3 east of it.
+      expect(bloc.state.plan.drawableRooms.last.bounds.left, closeTo(0.1, 0.01));
       await bloc.close();
     });
 
@@ -1624,6 +1734,197 @@ void main() {
       // An opening naming a room that no longer exists is the orphan that
       // keeps counting towards a corridor's declared door total.
       expect(bloc.state.plan.openings, isEmpty);
+      await bloc.close();
+    });
+  });
+
+  group('undo', () {
+    test('takes back the last finished room', () async {
+      final bloc = await traced();
+      await traceRect(
+        bloc,
+        left: 0.1,
+        right: 0.3,
+        top: 0.1,
+        bottom: 0.3,
+        category: RoomCategory.office,
+      );
+      await traceRect(
+        bloc,
+        left: 0.4,
+        right: 0.6,
+        top: 0.1,
+        bottom: 0.3,
+        category: RoomCategory.office,
+      );
+      expect(bloc.state.plan.drawableRooms, hasLength(2));
+
+      bloc.add(const TraceUndone());
+      await Future<void>.delayed(Duration.zero);
+
+      expect(bloc.state.plan.drawableRooms, hasLength(1));
+      expect(bloc.canUndo, isTrue); // the first room is still undoable
+      await bloc.close();
+    });
+
+    test('hands back the corners that were tapped', () async {
+      // Undoing a room that closed wrongly must not also cost the four taps
+      // that made it, or the fix for a bad close is to do the whole thing
+      // again.
+      final bloc = await traced();
+      await traceRect(
+        bloc,
+        left: 0.1,
+        right: 0.3,
+        top: 0.1,
+        bottom: 0.3,
+        category: RoomCategory.office,
+      );
+      expect(bloc.state.draft, isEmpty);
+
+      bloc.add(const TraceUndone());
+      await Future<void>.delayed(Duration.zero);
+
+      expect(bloc.state.draft, hasLength(4));
+      expect(bloc.state.plan.drawableRooms, isEmpty);
+      await bloc.close();
+    });
+
+    test('nothing to undo on a fresh floor', () async {
+      final bloc = await traced();
+      expect(bloc.canUndo, isFalse);
+
+      bloc.add(const TraceUndone());
+      await Future<void>.delayed(Duration.zero);
+
+      expect(bloc.state.warning, 'Nothing to undo.');
+      await bloc.close();
+    });
+
+    test('an edit that was refused leaves no step behind', () async {
+      // A door tapped where there is no wall changes nothing, so undo must not
+      // offer a step that appears to do nothing when taken.
+      final bloc = await traced();
+      await traceRect(
+        bloc,
+        left: 0.1,
+        right: 0.3,
+        top: 0.1,
+        bottom: 0.3,
+        category: RoomCategory.office,
+      );
+
+      bloc.add(const RoomTraceModeChanged(RoomTraceMode.doors));
+      bloc.add(const RoomDoorTapped(0.9, 0.9)); // nowhere near a wall
+      await Future<void>.delayed(Duration.zero);
+      expect(bloc.state.plan.openings, isEmpty);
+
+      // Still exactly the one step: the room that was closed.
+      bloc.add(const TraceUndone());
+      await Future<void>.delayed(Duration.zero);
+      expect(bloc.state.plan.drawableRooms, isEmpty);
+      expect(bloc.canUndo, isFalse);
+      await bloc.close();
+    });
+
+    test('tapping corners does not fill the undo stack', () async {
+      // Corners have their own undo. One step per finished act, or taking back
+      // a room means pressing undo once per tap that made it.
+      final bloc = await traced();
+      bloc.add(const RoomCornerTapped(0.1, 0.1));
+      bloc.add(const RoomCornerTapped(0.4, 0.1));
+      bloc.add(const RoomCornerTapped(0.4, 0.3));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(bloc.canUndo, isFalse);
+      await bloc.close();
+    });
+  });
+
+  group('a second board is parked without disturbing the first', () {
+    test('rooms in a parked wing stay where they were drawn', () async {
+      // The wing placement is a transform applied when the plan is read. Write
+      // the *read* rooms back and it is applied a second time, so every room in
+      // the parked wing marches east by the parking gap each time anything else
+      // is traced — while the contributor watches the room they just drew slide
+      // off the board.
+      final bloc = await traced();
+      await traceRect(
+        bloc,
+        left: 0.1,
+        right: 0.3,
+        top: 0.1,
+        bottom: 0.3,
+        category: RoomCategory.office,
+      );
+
+      // A second board, declared as one: what follows is parked beside the
+      // floor. Skipping the photo would not do this any more — see
+      // "tracing on a blank grid never parks a wing".
+      bloc.add(const RoomPhotoTaken(newBoard: true));
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      await traceRect(
+        bloc,
+        left: 0.1,
+        right: 0.3,
+        top: 0.1,
+        bottom: 0.3,
+        category: RoomCategory.office,
+      );
+      final parked = bloc.state.plan.drawableRooms.last;
+      final drawnAt = parked.bounds.left;
+
+      // Trace another room in the same wing.
+      await traceRect(
+        bloc,
+        left: 0.4,
+        right: 0.6,
+        top: 0.1,
+        bottom: 0.3,
+        category: RoomCategory.office,
+      );
+
+      final again = bloc.state.plan.drawableRooms.firstWhere(
+        (r) => r.id == parked.id,
+      );
+      expect(again.bounds.left, closeTo(drawnAt, 1e-9));
+      await bloc.close();
+    });
+
+    test('a door can still be placed on a parked board', () async {
+      // The tap is in the new board's coordinates and the parked wing is drawn
+      // half a floor east of them, so asking the placed floor which wall was
+      // tapped answered "none" for every door on a second board.
+      final bloc = await traced();
+      await traceRect(
+        bloc,
+        left: 0.1,
+        right: 0.3,
+        top: 0.1,
+        bottom: 0.3,
+        category: RoomCategory.office,
+      );
+
+      bloc.add(const RoomPhotoTaken(newBoard: true));
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      await traceRect(
+        bloc,
+        left: 0.1,
+        right: 0.3,
+        top: 0.1,
+        bottom: 0.3,
+        category: RoomCategory.office,
+      );
+
+      bloc.add(const RoomTraceModeChanged(RoomTraceMode.doors));
+      bloc.add(const RoomDoorTapped(0.2, 0.3)); // on the new room's bottom wall
+      await Future<void>.delayed(Duration.zero);
+
+      expect(bloc.state.plan.openings, hasLength(1));
       await bloc.close();
     });
   });

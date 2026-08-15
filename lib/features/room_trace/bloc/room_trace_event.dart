@@ -3,8 +3,33 @@ part of 'room_trace_bloc.dart';
 sealed class RoomTraceEvent extends Equatable {
   const RoomTraceEvent();
 
+  /// Whether this event changes the saved floor, and so whether the state
+  /// before it is worth keeping for [TraceUndone].
+  ///
+  /// Declared on the event rather than decided in the handler for two reasons.
+  /// A handler that refuses — a door tapped at no wall, a room that cleaned up
+  /// below three corners — must not leave an undo step behind that appears to do
+  /// nothing when taken, and pairing this with "did the plan actually change"
+  /// gets that for free. And a tool added later has to answer the question in
+  /// its own declaration instead of remembering to call something.
+  ///
+  /// False for the ones that only move the *drawing*: tapping corners into a
+  /// draft has its own undo in [RoomCornerUndone], and loading a floor or
+  /// opening a wing is not an edit somebody made.
+  bool get changesTheFloor => false;
+
   @override
   List<Object?> get props => const [];
+}
+
+/// Take back the last change to the floor.
+///
+/// One step per finished act — a room closed, a door placed, a room deleted —
+/// not per tap. Restores the half-traced polygon that was on screen at the time
+/// as well, so undoing a room that closed badly hands the corners back rather
+/// than making them be tapped again.
+class TraceUndone extends RoomTraceEvent {
+  const TraceUndone();
 }
 
 class RoomTraceStarted extends RoomTraceEvent {
@@ -19,17 +44,40 @@ class RoomTraceStarted extends RoomTraceEvent {
 
 /// The contributor photographed the wall board, or chose to trace on a blank
 /// grid because there is no camera.
+///
+/// [newBoard] is the one fact that decides which coordinate frame everything
+/// traced next belongs to, and the app cannot work it out: two photographs of
+/// the same board and photographs of two different boards are the same bytes as
+/// far as it is concerned. So it is asked, and only when there is already a
+/// floor for the answer to matter to — see `RoomTraceBloc._openWing`.
 class RoomPhotoTaken extends RoomTraceEvent {
-  const RoomPhotoTaken();
+  const RoomPhotoTaken({this.newBoard = false});
+
+  final bool newBoard;
+
+  @override
+  List<Object?> get props => [newBoard];
 }
 
+/// Trace on a blank grid.
+///
+/// Never a new frame. A blank grid has no coordinates of its own to be in, and
+/// the rooms already traced are drawn on it — so somebody tapping here is
+/// placing points against geometry they can see, in the frame they can see it
+/// in. Parking a wing here put a corridor drawn down the middle of the board
+/// half a floor to the east of the building it was meant to join.
 class RoomPhotoSkipped extends RoomTraceEvent {
   const RoomPhotoSkipped();
 }
 
 /// The contributor chose a board photo already in their gallery.
 class RoomPhotoPicked extends RoomTraceEvent {
-  const RoomPhotoPicked();
+  const RoomPhotoPicked({this.newBoard = false});
+
+  final bool newBoard;
+
+  @override
+  List<Object?> get props => [newBoard];
 }
 
 /// A tap on the plan, in **image coordinates**: fractions of the displayed
@@ -56,6 +104,9 @@ class RoomClosed extends RoomTraceEvent {
 
   final RoomCategory category;
   final String? label;
+
+  @override
+  bool get changesTheFloor => true;
 
   @override
   List<Object?> get props => [category, label];
@@ -94,6 +145,9 @@ class CorridorPathClosed extends RoomTraceEvent {
   final RoomCategory category;
 
   @override
+  bool get changesTheFloor => true;
+
+  @override
   List<Object?> get props => [label, category];
 }
 
@@ -104,6 +158,9 @@ class StairsTapped extends RoomTraceEvent {
   final double u;
   final double v;
   final RoomCategory category;
+
+  @override
+  bool get changesTheFloor => true;
 
   @override
   List<Object?> get props => [u, v, category];
@@ -118,6 +175,9 @@ class RoomDeleted extends RoomTraceEvent {
   const RoomDeleted(this.roomId);
 
   final String roomId;
+
+  @override
+  bool get changesTheFloor => true;
 
   @override
   List<Object?> get props => [roomId];
@@ -161,11 +221,17 @@ class ScaleDeclared extends RoomTraceEvent {
   final double metres;
 
   @override
+  bool get changesTheFloor => true;
+
+  @override
   List<Object?> get props => [metres];
 }
 
 class ScaleCleared extends RoomTraceEvent {
   const ScaleCleared();
+
+  @override
+  bool get changesTheFloor => true;
 }
 
 /// Switch between tracing rooms and placing doors.
@@ -186,6 +252,9 @@ class RoomDoorTapped extends RoomTraceEvent {
   final double v;
 
   @override
+  bool get changesTheFloor => true;
+
+  @override
   List<Object?> get props => [u, v];
 }
 
@@ -193,6 +262,9 @@ class RoomDoorRemoved extends RoomTraceEvent {
   const RoomDoorRemoved(this.openingId);
 
   final String openingId;
+
+  @override
+  bool get changesTheFloor => true;
 
   @override
   List<Object?> get props => [openingId];
@@ -211,6 +283,9 @@ class CorridorDoorCountDeclared extends RoomTraceEvent {
   final int count;
 
   @override
+  bool get changesTheFloor => true;
+
+  @override
   List<Object?> get props => [corridorId, count];
 }
 
@@ -218,6 +293,9 @@ class CorridorDoorCountDeclared extends RoomTraceEvent {
 /// never opened — floorplan spec §6.3.
 class StubRoomAdded extends RoomTraceEvent {
   const StubRoomAdded();
+
+  @override
+  bool get changesTheFloor => true;
 }
 
 class RoomTraceSaved extends RoomTraceEvent {

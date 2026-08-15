@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:echo_locate/core/models/room_plan.dart';
 import 'package:echo_locate/services/mapping/plan_editing.dart';
 import 'package:echo_locate/services/mapping/room_geometry.dart';
@@ -42,6 +44,28 @@ RoomPlan planOf(List<Room> rooms, [List<Opening> openings = const []]) =>
 
 Opening doorAt(String id, String roomA, double x, double y) =>
     Opening(id: id, roomAId: roomA, at: RoomCorner(x: x, y: y));
+
+/// The same square, filed under a wing that has been dragged somewhere else.
+///
+/// The state a floor is in the moment a second board or a second AR session is
+/// traced: the geometry is stored where it was captured, and the plan carries
+/// the placement that says where it really goes.
+RoomPlan wingedPlan(
+  WingPlacement placement, {
+  List<Opening> openings = const [],
+}) => RoomPlan(
+  buildingId: 'b',
+  floorId: 'f',
+  codePrefix: 'G',
+  storedRooms: [square('a').copyWith(wingId: 'wing-2')],
+  storedOpenings: openings,
+  wings: {'wing-2': placement},
+);
+
+/// Where a room is *drawn* — placement applied, which is what a finger points
+/// at and what these tests measure.
+Offset placedCorner(RoomPlan plan, String roomId, int index) =>
+    plan.roomOf(roomId)!.corners[index];
 
 void main() {
   group('corridor points', () {
@@ -172,6 +196,113 @@ void main() {
 
       expect(out.plan.openings.map((o) => o.id), contains('other'));
       expect(out.doorsDropped, 0);
+    });
+  });
+
+  // The frame edits are read in is not the frame they are written to. Every
+  // test here fails by a wing jumping its own offset — a fault that is
+  // completely invisible until somebody captures a second wing.
+  group('editing a wing that has been placed', () {
+    test('a dragged corner lands where it was dropped, not twice as far', () {
+      final plan = wingedPlan(const WingPlacement(dx: 100));
+      // Corner 2 is drawn at (110, 10) — the stored (10, 10) shifted by the
+      // wing. Dropping it at (114, 14) must leave it drawn at (114, 14).
+      final out = moveRoomCorner(plan, 'a', 2, const Offset(114, 14));
+
+      expect(placedCorner(out.plan, 'a', 2), const Offset(114, 14));
+      // And stored in the wing's own coordinates, with the offset taken back
+      // off. Storing (114, 14) here is what makes it read as (214, 14).
+      expect(out.plan.storedRoomOf('a')!.corners[2], const Offset(14, 14));
+    });
+
+    test('the placement survives the edit', () {
+      final plan = wingedPlan(const WingPlacement(dx: 100));
+      final out = moveRoomCorner(plan, 'a', 2, const Offset(114, 14));
+
+      expect(out.plan.wings['wing-2'], const WingPlacement(dx: 100));
+      // Nothing else in the wing moved with it.
+      expect(placedCorner(out.plan, 'a', 0), const Offset(100, 0));
+    });
+
+    test('a rotated wing takes the drag back through its own rotation', () {
+      final plan = wingedPlan(const WingPlacement(rotation: math.pi / 2));
+      // A quarter turn puts stored (10, 10) at drawn (-10, 10).
+      final drawn = placedCorner(plan, 'a', 2);
+      expect(drawn.dx, closeTo(-10, 1e-9));
+      expect(drawn.dy, closeTo(10, 1e-9));
+
+      final out = moveRoomCorner(plan, 'a', 2, const Offset(-14, 14));
+      final after = placedCorner(out.plan, 'a', 2);
+      expect(after.dx, closeTo(-14, 1e-9));
+      expect(after.dy, closeTo(14, 1e-9));
+    });
+
+    test('a door in the wing is measured against the wing, not the floor', () {
+      // The door is stored at the wing's own (5, 0) — drawn at (105, 0), right
+      // on the room's wall. Measured raw against a room stored at 0..10 it is a
+      // hundred units away and would be dropped by the first discrete edit.
+      final plan = wingedPlan(
+        const WingPlacement(dx: 100),
+        openings: [doorAt('d', 'a', 5, 0)],
+      );
+      final out = deleteRoomCorner(plan, 'a', 2);
+
+      expect(out.doorsDropped, 0);
+      expect(out.plan.openings.map((o) => o.id), ['d']);
+    });
+  });
+
+  group('moving a whole room', () {
+    test('the room and its doors move together', () {
+      final plan = planOf([square('a')], [doorAt('d', 'a', 5, 0)]);
+      final out = moveRoom(plan, 'a', const Offset(3, 4));
+
+      expect(out.plan.rooms.first.corners.first, const Offset(3, 4));
+      expect(out.plan.openings.first.position, const Offset(8, 4));
+      expect(out.doorsDropped, 0);
+    });
+
+    test('a corridor keeps its centreline under its band', () {
+      final plan = planOf([corridor('c')]);
+      final out = moveRoom(plan, 'c', const Offset(0, 5));
+
+      expect(out.plan.rooms.first.spine.first, const Offset(0, 17));
+      // The band came along, so the corridor is not drawn where it no longer
+      // routes.
+      final ys = out.plan.rooms.first.corners.map((c) => c.dy);
+      expect(ys.reduce(math.min), greaterThan(15));
+    });
+
+    test('a room in another wing is left alone', () {
+      final plan = planOf([square('a'), square('b', left: 20)]);
+      final out = moveRoom(plan, 'a', const Offset(3, 0));
+
+      expect(out.plan.rooms[1].corners.first, const Offset(20, 0));
+    });
+
+    test('a move on a placed wing is stored in the wing frame', () {
+      final plan = wingedPlan(const WingPlacement(dx: 100));
+      final out = moveRoom(plan, 'a', const Offset(5, 0));
+
+      expect(placedCorner(out.plan, 'a', 0), const Offset(105, 0));
+      expect(out.plan.storedRoomOf('a')!.corners.first, const Offset(5, 0));
+    });
+
+    test('a rotated wing turns the drag into its own frame', () {
+      final plan = wingedPlan(const WingPlacement(rotation: math.pi / 2));
+      // Dragging a quarter-turned wing north on screen must move it north on
+      // screen — not east, which is what an unrotated delta does.
+      final out = moveRoom(plan, 'a', const Offset(0, 1));
+      final before = placedCorner(plan, 'a', 0);
+      final after = placedCorner(out.plan, 'a', 0);
+
+      expect(after.dx - before.dx, closeTo(0, 1e-9));
+      expect(after.dy - before.dy, closeTo(1, 1e-9));
+    });
+
+    test('an unknown room changes nothing', () {
+      final plan = planOf([square('a')]);
+      expect(moveRoom(plan, 'nope', const Offset(1, 1)).plan, plan);
     });
   });
 }

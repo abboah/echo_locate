@@ -202,6 +202,44 @@ void main() {
       expect(cubit.state.plan, before);
       await cubit.close();
     });
+
+    test('putting a wing back lands its rooms where they were traced', () async {
+      // For work that was parked and should never have been: the rooms are
+      // stored at the coordinates they were drawn at, so clearing the placement
+      // is the whole fix.
+      final cubit = await opened();
+      final stored = cubit.state.plan.storedRoomOf('c2')!.bounds;
+
+      cubit.unparkWing();
+
+      expect(cubit.state.plan.wings['wing-2'], const WingPlacement());
+      expect(cubit.state.plan.roomOf('c2')!.bounds, stored);
+      await cubit.close();
+    });
+
+    test('reset cannot undo a wing that arrived parked, and put-back can',
+        () async {
+      // The reason both exist. `reset` restores the placement the plan was
+      // loaded with, which for a wing parked by the tracer *is* the parked one
+      // — a no-op at the exact moment somebody needs it undone.
+      final cubit = await opened();
+
+      cubit.resetWing();
+      expect(cubit.state.plan.wings['wing-2'], const WingPlacement(dx: 40));
+
+      cubit.unparkWing();
+      expect(cubit.state.plan.wings['wing-2'], const WingPlacement());
+      await cubit.close();
+    });
+
+    test('putting back a wing already on the floor says so', () async {
+      final cubit = await opened();
+      cubit.unparkWing();
+      cubit.unparkWing();
+
+      expect(cubit.state.hint, 'That wing is already on the floor.');
+      await cubit.close();
+    });
   });
 
   group('squaring wings up', () {

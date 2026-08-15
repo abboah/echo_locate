@@ -72,6 +72,14 @@ double dominantSkew(RoomPlan plan) {
 ///
 /// Openings and centrelines are carried through the same transform, so doors
 /// stay in the walls they were placed in and corridors keep their spines.
+///
+/// **Wings are baked.** This is the one operation here that genuinely works on
+/// the floor as drawn: a single grid across every wing is the whole idea, and
+/// each wing's placement is part of where its walls actually are. So the result
+/// is written with the placements folded in and [RoomPlan.wings] emptied —
+/// keeping them would leave placed coordinates sitting under a transform that
+/// still fires, and every wing would jump by its own offset. `undoSquaring` in
+/// the editor restores both the geometry and the placements together.
 RoomPlan squareFloor(RoomPlan plan, {double weldFraction = kWeldFraction}) {
   final drawable = [for (final r in plan.rooms) if (r.corners.length >= 3) r];
   if (drawable.isEmpty) return plan;
@@ -140,6 +148,7 @@ RoomPlan squareFloor(RoomPlan plan, {double weldFraction = kWeldFraction}) {
       for (final o in plan.openings)
         o.copyWith(at: RoomCorner.of(place(o.at.offset))),
     ],
+    wings: const {},
   );
 }
 

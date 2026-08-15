@@ -55,10 +55,15 @@ class PlanEditorCubit extends Cubit<PlanEditorState> {
   /// One nudge of the rotate control, in degrees.
   static const double rotateStepDeg = 1;
 
+  /// The floor as it stood before the last [squareUpFloor], for [undoSquaring].
+  RoomPlan? _beforeSquaring;
+
   Future<void> load({
     required String buildingId,
     required String floorId,
   }) async {
+    // Belongs to the floor that is on screen, not to the screen.
+    _beforeSquaring = null;
     emit(state.copyWith(status: PlanEditorStatus.loading));
 
     // The building's floors, so a floor above the ground can be edited at all.
@@ -213,6 +218,7 @@ class PlanEditorCubit extends Cubit<PlanEditorState> {
       emit(state.copyWith(hint: 'Nothing to square up on this floor.'));
       return;
     }
+    _beforeSquaring = state.plan;
     emit(
       state.copyWith(
         plan: squared,
@@ -285,12 +291,8 @@ class PlanEditorCubit extends Cubit<PlanEditorState> {
     refused: 'Could not add a corner there.',
   );
 
-  Room? _roomOf(String roomId) {
-    for (final room in state.plan.rooms) {
-      if (room.id == roomId) return room;
-    }
-    return null;
-  }
+  /// The room as stored, which is the frame every edit below writes into.
+  Room? _roomOf(String roomId) => state.plan.storedRoomOf(roomId);
 
   void _applyEdit(EditedPlan edited, {required String refused}) {
     if (edited.plan == state.plan) {
@@ -311,19 +313,49 @@ class PlanEditorCubit extends Cubit<PlanEditorState> {
     );
   }
 
-  /// Restores the geometry exactly as it was traced.
+  /// Puts the floor back exactly as it was the moment before [squareUpFloor].
   ///
-  /// Rooms and openings only: a wing the contributor has since dragged into
-  /// place is their work, not the squaring's, and throwing it away because they
-  /// disliked the snap would cost them the alignment too.
+  /// The whole plan, not a field of it. [squareFloor] bakes each wing's
+  /// placement into the corners it welds, so afterwards there is no separating
+  /// "the geometry" from "where the wings were put" — restoring stored rooms
+  /// alone would send every wing back to where it was captured and lose an
+  /// alignment the contributor may have spent minutes on, and restoring the
+  /// placements alone would apply that alignment on top of geometry that
+  /// already contains it.
   void undoSquaring() {
+    final before = _beforeSquaring;
+    if (before == null) {
+      emit(state.copyWith(hint: 'Nothing to put back.'));
+      return;
+    }
+    _beforeSquaring = null;
+    emit(
+      state.copyWith(plan: before, hint: 'Back to the geometry as traced.'),
+    );
+  }
+
+  /// Puts the selected wing back where its rooms were actually drawn.
+  ///
+  /// The answer to "this is not a separate wing" — a board re-photographed and
+  /// mistaken for a second one, or work parked by a tracer that used to park on
+  /// every visit. Its rooms are stored at the coordinates they were traced at,
+  /// so clearing the placement is all it takes to land them where the
+  /// contributor put them.
+  ///
+  /// [resetWing] cannot do this job. It restores the placement the plan was
+  /// *loaded* with, and a wing that arrived parked was loaded parked — resetting
+  /// it is a no-op at exactly the moment somebody needs it undone.
+  void unparkWing() {
+    final wingId = state.selectedWingId;
+    if (wingId == null) return;
+    if (state.placementOf(wingId).isIdentity) {
+      emit(state.copyWith(hint: 'That wing is already on the floor.'));
+      return;
+    }
     emit(
       state.copyWith(
-        plan: state.plan.copyWith(
-          storedRooms: state.original.rooms,
-          storedOpenings: state.original.openings,
-        ),
-        hint: 'Back to the geometry as traced.',
+        plan: state.plan.placeWing(wingId, const WingPlacement()),
+        hint: 'Put back where it was traced.',
       ),
     );
   }

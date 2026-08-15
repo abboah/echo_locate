@@ -475,7 +475,7 @@ class RoomCaptureCubit extends Cubit<RoomCaptureState> {
     }
 
     if (roomB != null &&
-        state.plan.openings.any(
+        state.plan.storedOpenings.any(
           (o) => o.touches(roomA.id) && o.touches(roomB.id),
         )) {
       emit(state.copyWith(hint: 'Those rooms already have a door.'));
@@ -486,7 +486,7 @@ class RoomCaptureCubit extends Cubit<RoomCaptureState> {
       state.copyWith(
         plan: state.plan.copyWith(
           storedOpenings: [
-            ...state.plan.openings,
+            ...state.plan.storedOpenings,
             Opening(
               id: _id('door'),
               roomAId: roomA.id,
@@ -507,7 +507,7 @@ class RoomCaptureCubit extends Cubit<RoomCaptureState> {
       state.copyWith(
         plan: state.plan.copyWith(
           storedOpenings: [
-            for (final opening in state.plan.openings)
+            for (final opening in state.plan.storedOpenings)
               if (opening.id != openingId) opening,
           ],
         ),
@@ -553,7 +553,7 @@ class RoomCaptureCubit extends Cubit<RoomCaptureState> {
     );
     emit(
       state.copyWith(
-        plan: state.plan.copyWith(storedRooms: [...state.plan.rooms, room]),
+        plan: state.plan.copyWith(storedRooms: [...state.plan.storedRooms, room]),
       ),
     );
   }
@@ -645,7 +645,7 @@ class RoomCaptureCubit extends Cubit<RoomCaptureState> {
 
     emit(
       state.copyWith(
-        plan: state.plan.copyWith(storedRooms: [...state.plan.rooms, room]),
+        plan: state.plan.copyWith(storedRooms: [...state.plan.storedRooms, room]),
         draft: const [],
         hint: null,
       ),

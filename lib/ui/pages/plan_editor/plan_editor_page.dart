@@ -463,6 +463,16 @@ class _WingControls extends StatelessWidget {
                 ),
               ],
             ),
+            const SizedBox(height: AppDimens.space8),
+            // Its own row, and worded as a statement about the building rather
+            // than an operation on coordinates: somebody reaching for this has
+            // found their work sitting in a field beside the floor and wants to
+            // say "that is not a separate wing", not to compute a translation.
+            OutlinedButton.icon(
+              onPressed: cubit.unparkWing,
+              icon: const Icon(PhosphorIcons.arrowsInLineHorizontal),
+              label: const Text('Not a separate wing — put it back'),
+            ),
           ],
         ),
       ),

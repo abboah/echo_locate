@@ -96,6 +96,20 @@ class RoomTraceView extends StatelessWidget {
             ),
             actions: [
               if (state.stage != RoomTraceStage.photo) const _SetupMenu(),
+              // Every mode, including the two that draw nothing: a mis-tapped
+              // door or a staircase in the wrong place is as much a mistake as a
+              // corner, and until now the only way back from either was to find
+              // the thing on a list and delete it.
+              if (state.stage != RoomTraceStage.photo)
+                IconButton(
+                  tooltip: 'Undo the last change',
+                  icon: const Icon(PhosphorIcons.arrowUUpLeft),
+                  onPressed: context.read<RoomTraceBloc>().canUndo
+                      ? () => context.read<RoomTraceBloc>().add(
+                          const TraceUndone(),
+                        )
+                      : null,
+                ),
               // Lives here rather than beside the mode bar, which needs the
               // whole width for its four segments.
               if (state.stage != RoomTraceStage.photo)
@@ -157,7 +171,11 @@ class _PhotoStep extends StatelessWidget {
               const SizedBox(height: AppDimens.space12),
               if (state.cameraReady)
                 FilledButton.icon(
-                  onPressed: () => bloc.add(const RoomPhotoTaken()),
+                  onPressed: () async {
+                    final newBoard = await _askIfNewBoard(context, state);
+                    if (newBoard == null) return;
+                    bloc.add(RoomPhotoTaken(newBoard: newBoard));
+                  },
                   icon: const Icon(PhosphorIcons.camera),
                   label: const Text('Take the photo'),
                 ),
@@ -168,7 +186,11 @@ class _PhotoStep extends StatelessWidget {
               // lets a contributor pick their squarest shot, which is exactly
               // what makes the perspective correction have less to undo.
               OutlinedButton.icon(
-                onPressed: () => bloc.add(const RoomPhotoPicked()),
+                onPressed: () async {
+                  final newBoard = await _askIfNewBoard(context, state);
+                  if (newBoard == null) return;
+                  bloc.add(RoomPhotoPicked(newBoard: newBoard));
+                },
                 icon: const Icon(PhosphorIcons.image),
                 label: const Text('Choose a photo from your gallery'),
               ),
@@ -187,6 +209,55 @@ class _PhotoStep extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Whether the photo about to be traced is of a *different* board.
+///
+/// Returns false without asking on a floor with nothing on it yet, where there
+/// is no other frame for the answer to be about; null means the contributor
+/// backed out and no photo should be taken.
+///
+/// Asked rather than inferred because nothing in the image can answer it. Two
+/// photographs of the same board and photographs of two different boards are
+/// indistinguishable to the app, and guessing wrong is expensive in one
+/// direction: assume "new board" and everything traced next is parked half a
+/// floor away from the building it belongs to, which reads as the app having
+/// thrown the work somewhere random.
+///
+/// Defaulted to "same board" for the same reason. Adding to a floor you can see
+/// is the ordinary case, and it is the recoverable one — geometry traced into
+/// one frame can always be split off later, while a corridor stranded in an
+/// empty field has to be found first.
+Future<bool?> _askIfNewBoard(BuildContext context, RoomTraceState state) async {
+  if (state.plan.drawableRooms.isEmpty) return false;
+
+  return showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Same board?'),
+      content: const Text(
+        'This floor already has rooms on it.\n\n'
+        'If this is the same board, what you trace now is laid onto the floor '
+        'you have already made. If it is a different board — another wing, '
+        'another entrance — it is parked beside the floor for you to line up '
+        'afterwards.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('A different board'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('The same board'),
+        ),
+      ],
+    ),
+  );
 }
 
 /// The tappable plan area. See the note where it is attached.
@@ -590,9 +661,17 @@ class _TraceControls extends StatelessWidget {
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
+                      // One button, one meaning: take back the last thing you
+                      // did. While a polygon is open that is its last corner;
+                      // with nothing open it is the last room you closed. The
+                      // alternative — greying this out the moment a room is
+                      // finished — is a dead control sitting next to the mistake
+                      // somebody wants to take back.
                       onPressed: state.isTracing
                           ? () => bloc.add(const RoomCornerUndone())
-                          : null,
+                          : (bloc.canUndo
+                                ? () => bloc.add(const TraceUndone())
+                                : null),
                       icon: const Icon(PhosphorIcons.arrowUUpLeft),
                       label: const Text('Undo'),
                     ),
@@ -616,7 +695,9 @@ class _TraceControls extends StatelessWidget {
                     child: OutlinedButton.icon(
                       onPressed: state.isTracing
                           ? () => bloc.add(const RoomCornerUndone())
-                          : null,
+                          : (bloc.canUndo
+                                ? () => bloc.add(const TraceUndone())
+                                : null),
                       icon: const Icon(PhosphorIcons.arrowUUpLeft),
                       label: const Text('Undo'),
                     ),

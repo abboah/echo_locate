@@ -72,6 +72,7 @@ class RoomTraceBloc extends Bloc<RoomTraceEvent, RoomTraceState> {
     on<RoomDoorRemoved>(_onDoorRemoved);
     on<CorridorDoorCountDeclared>(_onDoorCountDeclared);
     on<StubRoomAdded>(_onStubRoomAdded);
+    on<TraceUndone>(_onUndone);
     on<RoomTraceSaved>(_onSaved);
   }
 
@@ -137,6 +138,34 @@ class RoomTraceBloc extends Bloc<RoomTraceEvent, RoomTraceState> {
   /// outside it is half a stairwell away.
   static const double stairLinkRadius = 0.06;
 
+  /// How many changes to the floor can be taken back.
+  ///
+  /// Snapshots of a plan, not diffs — a floor is a few hundred small objects
+  /// and the whole point of an immutable model is that keeping one costs a
+  /// pointer. Thirty is far more than anybody reaches for and still nothing.
+  static const int maxUndoSteps = 30;
+
+  /// The floor before each of the last [maxUndoSteps] changes, oldest first.
+  ///
+  /// The draft rides along so undoing a room that closed wrongly gives back the
+  /// corners that were tapped, rather than an empty canvas and the job to do
+  /// again.
+  final List<({RoomPlan plan, List<Offset> draft})> _history = [];
+
+  /// Whether the event being handled is one whose result can be taken back.
+  ///
+  /// Set from the event itself in [onEvent] and read in [onChange], so it can
+  /// never be left set by a handler that decided to refuse.
+  bool _undoable = false;
+
+  /// Whether there is anything to take back.
+  ///
+  /// On the bloc rather than in the state, because the alternative is threading
+  /// a count through every `copyWith` in this file and losing it the first time
+  /// somebody adds a tool and forgets. The history only ever changes alongside a
+  /// state change, so a `context.watch` rebuild always reads a current answer.
+  bool get canUndo => _history.isNotEmpty;
+
   int _nextId = 1;
 
   String? _wingId;
@@ -186,9 +215,15 @@ class RoomTraceBloc extends Bloc<RoomTraceEvent, RoomTraceState> {
   ///
   /// Resuming means the same board and the same coordinates, so new rooms join
   /// the frame the last ones were traced in and nothing is displaced.
+  /// Resuming also drops placements belonging to wings that have no rooms —
+  /// see [RoomPlan.withoutEmptyWings]. Load time is the safe moment for it:
+  /// nothing has been traced yet, so the only such entries are leftovers, and
+  /// the wing [_openWing] parks before its first room is closed cannot be
+  /// caught by it.
   RoomPlan _continueWing(RoomPlan plan) {
-    _wingId = _lastWingIn(plan);
-    return plan;
+    final pruned = plan.withoutEmptyWings;
+    _wingId = _lastWingIn(pruned);
+    return pruned;
   }
 
   /// Warns that what is traced next lands beside the floor, not on it.
@@ -204,7 +239,7 @@ class RoomTraceBloc extends Bloc<RoomTraceEvent, RoomTraceState> {
 
   /// The frame the most recently traced room belongs to.
   String _lastWingIn(RoomPlan plan) {
-    for (final room in plan.rooms.reversed) {
+    for (final room in plan.storedRooms.reversed) {
       final id = room.wingId;
       if (id != null && id.isNotEmpty) return id;
     }
@@ -245,15 +280,44 @@ class RoomTraceBloc extends Bloc<RoomTraceEvent, RoomTraceState> {
   static Offset toImage(Offset plan, Homography rectification) =>
       rectification.invert(Offset(plan.dx, -plan.dy));
 
+  /// Rooms traced in *this* session's frame — what a tap may snap or join to.
+  ///
+  /// Stored rather than placed, and this wing rather than the floor. A tap
+  /// arrives from [_toPlan] in the current board's coordinates, so measuring it
+  /// against [RoomPlan.drawableRooms] — which has every wing's placement applied
+  /// — compares two different frames and quietly answers in whichever is
+  /// nearer. It cannot bite while the wings are half a floor apart, since
+  /// nothing is ever within a snapping radius of anything; it would bite the
+  /// moment somebody aligned the wings and came back to trace more, which is a
+  /// normal thing to do and a very hard thing to debug.
+  ///
+  /// Restricting it to one wing is also the right rule on its own terms: two
+  /// boards say nothing about where each other's rooms are, so a corner on the
+  /// other board is not a corner this one can share a wall with until a person
+  /// has said where the two sit.
+  Iterable<Room> get _wingRooms => [
+    for (final room in state.plan.storedRooms)
+      if (!room.isStub && room.wingId == _wingId) room,
+  ];
+
+  /// The floor as this session sees it: this wing's rooms, in this wing's own
+  /// coordinates and with no placement left to apply.
+  ///
+  /// For handing to the shared geometry helpers, which take a whole [RoomPlan]
+  /// and quite reasonably read the placed rooms out of it. See [_wingRooms] for
+  /// why a tap must not be measured against those.
+  RoomPlan get _wingPlan =>
+      state.plan.copyWith(storedRooms: _wingRooms.toList(), wings: const {});
+
   /// A corner already on the plan within [cornerSnapRadius] of [point], or null.
   ///
-  /// Searched across every room, not just the one being traced: the whole point
-  /// is that a wall shared with the room next door ends up genuinely shared
-  /// rather than two walls a millimetre apart.
+  /// Searched across every room in the wing, not just the one being traced: the
+  /// whole point is that a wall shared with the room next door ends up genuinely
+  /// shared rather than two walls a millimetre apart.
   Offset? _nearbyCorner(Offset point) {
     Offset? best;
     var bestDistance = cornerSnapRadius;
-    for (final room in state.plan.drawableRooms) {
+    for (final room in _wingRooms) {
       for (final corner in room.corners) {
         final distance = (corner - point).distance;
         if (distance < bestDistance) {
@@ -570,7 +634,7 @@ class RoomTraceBloc extends Bloc<RoomTraceEvent, RoomTraceState> {
   static int _highestIdIn(RoomPlan plan) {
     var highest = 0;
     for (final id in [
-      ...plan.rooms.map((r) => r.id),
+      ...plan.storedRooms.map((r) => r.id),
       ...plan.openings.map((o) => o.id),
     ]) {
       final n = int.tryParse(id.split('-').last);
@@ -604,15 +668,16 @@ class RoomTraceBloc extends Bloc<RoomTraceEvent, RoomTraceState> {
     emit(
       state.copyWith(
         // A second board is a second coordinate frame — see [_openWing]. This
-        // is the moment one begins, not the moment the screen opens.
-        plan: _openWing(state.plan),
+        // is the moment one begins, not the moment the screen opens, and only
+        // when the contributor has said it is a different board.
+        plan: event.newBoard ? _openWing(state.plan) : _continueWing(state.plan),
         photoPath: path,
         photoAspect: await _aspectOf(path),
         stage: RoomTraceStage.trace,
         // A failed shot is not a failed trace — the grid still works.
         warning: path == null
             ? 'Could not take the photo. Tracing on a grid.'
-            : _parkedNotice(),
+            : (event.newBoard ? _parkedNotice() : null),
       ),
     );
     await _photos.stop();
@@ -634,12 +699,13 @@ class RoomTraceBloc extends Bloc<RoomTraceEvent, RoomTraceState> {
 
     emit(
       state.copyWith(
-        // Same reason as [_onPhotoTaken]: a new board is a new frame.
-        plan: _openWing(state.plan),
+        // Same reason as [_onPhotoTaken]: a new board is a new frame, and only
+        // the contributor knows whether this is one.
+        plan: event.newBoard ? _openWing(state.plan) : _continueWing(state.plan),
         photoPath: path,
         photoAspect: await _aspectOf(path),
         stage: RoomTraceStage.trace,
-        warning: _parkedNotice(),
+        warning: event.newBoard ? _parkedNotice() : null,
       ),
     );
     // The camera is not needed once a photo is in hand, and holding it open
@@ -652,16 +718,20 @@ class RoomTraceBloc extends Bloc<RoomTraceEvent, RoomTraceState> {
     RoomPhotoSkipped event,
     Emitter<RoomTraceState> emit,
   ) async {
-    // Skipping is a fresh frame too: a blank grid is not the photograph the
-    // rooms already on this floor were traced against, so what follows is
-    // parked rather than laid over them. Resuming a floor whose photo is still
-    // stored never reaches here — that path continues the existing frame, which
-    // is the case that matters and the one that used to displace people's work.
+    // Never a new frame — see [RoomPhotoSkipped].
+    //
+    // This used to park, on the reasoning that a blank grid is not the
+    // photograph the existing rooms were traced against. True, and beside the
+    // point: the grid is not a frame at all, and what somebody taps against is
+    // the rooms drawn on it. Worse, a floor traced without a photo has no photo
+    // stored, so [_onStarted] sends it back to this step on *every* visit — and
+    // every visit minted another parked wing. Adding one corridor to join two
+    // sections put it half a floor east of both, and doing it again would have
+    // parked it again.
     emit(
       state.copyWith(
-        plan: _openWing(state.plan),
+        plan: _continueWing(state.plan),
         stage: RoomTraceStage.trace,
-        warning: _parkedNotice(),
       ),
     );
     await _photos.stop();
@@ -746,7 +816,7 @@ class RoomTraceBloc extends Bloc<RoomTraceEvent, RoomTraceState> {
 
     emit(
       state.copyWith(
-        plan: state.plan.copyWith(storedRooms: [...state.plan.rooms, room]),
+        plan: state.plan.copyWith(storedRooms: [...state.plan.storedRooms, room]),
         draft: const [],
         selectedRoomId: room.id,
       ),
@@ -803,7 +873,7 @@ class RoomTraceBloc extends Bloc<RoomTraceEvent, RoomTraceState> {
     ({Room room, Offset at})? best;
     var bestDistance = within;
 
-    for (final room in state.plan.drawableRooms) {
+    for (final room in _wingRooms) {
       if (!room.hasSpine) continue;
       final hit = projectOntoPolyline(room.spine, at);
       if (hit.distance < bestDistance) {
@@ -819,7 +889,7 @@ class RoomTraceBloc extends Bloc<RoomTraceEvent, RoomTraceState> {
   /// Circulation is skipped: a hall legitimately runs into another hall, and a
   /// staircase marker sits in the corridor outside it by design.
   Room? _roomCrossedBetween(Offset a, Offset b) {
-    for (final room in state.plan.drawableRooms) {
+    for (final room in _wingRooms) {
       if (room.isCirculation) continue;
       if (segmentEntersPolygon(room.corners, a, b)) return room;
     }
@@ -898,7 +968,7 @@ class RoomTraceBloc extends Bloc<RoomTraceEvent, RoomTraceState> {
     }
 
     final openings = [
-      ...state.plan.openings,
+      ...state.plan.storedOpenings,
       for (final entry in joins.entries)
         Opening(
           id: _id('door'),
@@ -915,7 +985,7 @@ class RoomTraceBloc extends Bloc<RoomTraceEvent, RoomTraceState> {
     emit(
       state.copyWith(
         plan: state.plan.copyWith(
-          storedRooms: [...state.plan.rooms, room],
+          storedRooms: [...state.plan.storedRooms, room],
           storedOpenings: openings,
         ),
         draft: const [],
@@ -984,7 +1054,7 @@ class RoomTraceBloc extends Bloc<RoomTraceEvent, RoomTraceState> {
     // itself — its own walls are the nearest thing to its own centre.
     final neighbour = _nearestRoomTo(at, within: stairLinkRadius);
 
-    final openings = [...state.plan.openings];
+    final openings = [...state.plan.storedOpenings];
     if (neighbour != null) {
       openings.add(
         Opening(
@@ -999,7 +1069,7 @@ class RoomTraceBloc extends Bloc<RoomTraceEvent, RoomTraceState> {
     emit(
       state.copyWith(
         plan: state.plan.copyWith(
-          storedRooms: [...state.plan.rooms, room],
+          storedRooms: [...state.plan.storedRooms, room],
           storedOpenings: openings,
         ),
         selectedRoomId: room.id,
@@ -1019,7 +1089,7 @@ class RoomTraceBloc extends Bloc<RoomTraceEvent, RoomTraceState> {
     ({Room room, Offset nearest})? best;
     var bestDistance = within;
 
-    for (final room in state.plan.drawableRooms) {
+    for (final room in _wingRooms) {
       final corners = room.corners;
       for (var i = 0; i < corners.length; i++) {
         final a = corners[i];
@@ -1049,11 +1119,11 @@ class RoomTraceBloc extends Bloc<RoomTraceEvent, RoomTraceState> {
       state.copyWith(
         plan: state.plan.copyWith(
           storedRooms: [
-            for (final room in state.plan.rooms)
+            for (final room in state.plan.storedRooms)
               if (room.id != event.roomId) room,
           ],
           storedOpenings: [
-            for (final opening in state.plan.openings)
+            for (final opening in state.plan.storedOpenings)
               if (!opening.touches(event.roomId)) opening,
           ],
         ),
@@ -1084,7 +1154,11 @@ class RoomTraceBloc extends Bloc<RoomTraceEvent, RoomTraceState> {
     // Shared with the AR capture flow so the rule cannot drift between them —
     // see [RoomNavGraph.inferDoorAt]. The radius differs because the units do.
     final inferred = RoomNavGraph.inferDoorAt(
-      state.plan,
+      // This wing only. The tap is in this board's coordinates, and a parked
+      // wing's rooms are drawn half a floor from where they are stored — so
+      // asking the placed floor which wall was tapped answered "none" for every
+      // door on a second board.
+      _wingPlan,
       at,
       radius: doorSnapRadius,
     );
@@ -1101,7 +1175,7 @@ class RoomTraceBloc extends Bloc<RoomTraceEvent, RoomTraceState> {
     }
 
     if (roomB != null &&
-        state.plan.openings.any(
+        state.plan.storedOpenings.any(
           (o) => o.touches(roomA.id) && o.touches(roomB.id),
         )) {
       emit(state.copyWith(warning: 'Those rooms already have a door.'));
@@ -1112,7 +1186,7 @@ class RoomTraceBloc extends Bloc<RoomTraceEvent, RoomTraceState> {
       state.copyWith(
         plan: state.plan.copyWith(
           storedOpenings: [
-            ...state.plan.openings,
+            ...state.plan.storedOpenings,
             Opening(
               id: _id('door'),
               roomAId: roomA.id,
@@ -1133,7 +1207,7 @@ class RoomTraceBloc extends Bloc<RoomTraceEvent, RoomTraceState> {
       state.copyWith(
         plan: state.plan.copyWith(
           storedOpenings: [
-            for (final opening in state.plan.openings)
+            for (final opening in state.plan.storedOpenings)
               if (opening.id != event.openingId) opening,
           ],
         ),
@@ -1173,7 +1247,7 @@ class RoomTraceBloc extends Bloc<RoomTraceEvent, RoomTraceState> {
     );
     emit(
       state.copyWith(
-        plan: state.plan.copyWith(storedRooms: [...state.plan.rooms, room]),
+        plan: state.plan.copyWith(storedRooms: [...state.plan.storedRooms, room]),
         selectedRoomId: room.id,
       ),
     );
@@ -1216,6 +1290,37 @@ class RoomTraceBloc extends Bloc<RoomTraceEvent, RoomTraceState> {
   /// The plan as something routable, for the live preview.
   RoomNavGraph get graph => RoomNavGraph.build(state.plan);
 
+  /// Takes back the last change to the floor.
+  void _onUndone(TraceUndone event, Emitter<RoomTraceState> emit) {
+    if (_history.isEmpty) {
+      emit(state.copyWith(warning: 'Nothing to undo.'));
+      return;
+    }
+
+    final previous = _history.removeLast();
+    emit(
+      state.copyWith(
+        plan: previous.plan,
+        draft: previous.draft,
+        // The selection is an index into the floor that just changed under it.
+        // Left alone, undoing the room that was selected leaves the controls
+        // describing a room that is no longer there.
+        clearSelection: true,
+        warning: 'Undone.',
+      ),
+    );
+  }
+
+  /// Notes whether what is about to happen can be taken back.
+  ///
+  /// See [RoomTraceEvent.changesTheFloor]. Reset on every event, so a refusal
+  /// cannot leave the flag standing for whatever comes next.
+  @override
+  void onEvent(RoomTraceEvent event) {
+    super.onEvent(event);
+    _undoable = event.changesTheFloor;
+  }
+
   /// Writes a draft whenever the floor itself changes.
   ///
   /// Hooked here rather than into each handler so a new tool cannot be added
@@ -1230,6 +1335,20 @@ class RoomTraceBloc extends Bloc<RoomTraceEvent, RoomTraceState> {
     super.onChange(change);
     final plan = change.nextState.plan;
     if (plan == change.currentState.plan) return;
+
+    // Paired with the flag rather than taken from it alone: an event that
+    // declares itself an edit and then refuses one — a door tapped at no wall —
+    // never reaches here, so it cannot leave behind an undo step that does
+    // nothing when taken. Cleared immediately so a handler that emits twice
+    // records one step, not two.
+    if (_undoable) {
+      _undoable = false;
+      _history.add((
+        plan: change.currentState.plan,
+        draft: change.currentState.draft,
+      ));
+      if (_history.length > maxUndoSteps) _history.removeAt(0);
+    }
     if (plan.buildingId.isEmpty || plan.floorId.isEmpty) return;
     if (plan.rooms.isEmpty) return;
     // Guarded, and the try matters as much as the catchError: `onChange` runs
