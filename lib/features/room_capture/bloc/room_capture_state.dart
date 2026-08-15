@@ -36,8 +36,8 @@ class RoomCaptureState extends Equatable {
     this.tracking = CaptureTracking.stopped,
     this.issue = CaptureTrackingIssue.none,
     this.planeLocked = false,
-    this.preview,
-    this.previewQuarterTurns = 1,
+    this.surface = CaptureSurface.none,
+    this.textureId,
     this.hint,
     this.error,
   });
@@ -87,16 +87,23 @@ class RoomCaptureState extends Equatable {
   final CaptureTracking tracking;
   final CaptureTrackingIssue issue;
 
-  /// Whether a floor plane is locked for the room in progress.
+  /// Whether a surface is locked for the room in progress.
   final bool planeLocked;
 
-  /// Last camera frame received. Held between throttled updates.
-  final Uint8List? preview;
+  /// Floor or ceiling, decided by the room's first corner.
+  ///
+  /// Shown rather than inferred: a room that locked to the wrong surface is
+  /// otherwise invisible until the finished plan comes out misshapen, and by
+  /// then the contributor has walked away from the building.
+  final CaptureSurface surface;
 
-  /// Quarter turns the preview needs to appear upright. The sensor image is
-  /// landscape on essentially every phone while the phone is held portrait.
-  /// Affects only how it looks — taps are mapped by ARCore, not by this.
-  final int previewQuarterTurns;
+  /// The Flutter texture the camera is being drawn into, once the session has
+  /// started.
+  ///
+  /// The camera image never crosses the platform channel — ARCore renders into
+  /// a GL texture, native blits it into a surface Flutter registered, and this
+  /// screen shows it with a `Texture` widget.
+  final int? textureId;
 
   /// Transient guidance — "aim at the floor", "move more slowly".
   final String? hint;
@@ -194,12 +201,25 @@ class RoomCaptureState extends Equatable {
 
     if (draft.isEmpty) {
       return planeLocked
-          ? 'Tap the floor at the base of each corner.'
-          : 'Point at the floor and move slowly until it is detected.';
+          ? 'Tap the ${surface.noun} ${surface.cornerAim}.'
+          // The ceiling is offered up front rather than kept as a fix for a
+          // failure, because the rooms it helps with — stores, packed offices,
+          // lecture halls with fixed seating — are recognisable on sight, and
+          // discovering it after ten minutes of failing to tap a floor behind a
+          // filing cabinet is discovering it too late.
+          : 'Point at the floor and move slowly until it is detected. If the '
+                'floor is cluttered, trace the ceiling instead — same shape.';
     }
-    return '${draft.length} corner${draft.length == 1 ? "" : "s"} placed. '
-        'Tap the next, or close the room.';
+    return '${draft.length} corner${draft.length == 1 ? "" : "s"} placed on the '
+        '${surface.noun}. Tap the next, or close the room.';
   }
+
+  /// Whether this room is being traced overhead.
+  ///
+  /// Worth saying plainly on screen: it is decided by the first tap rather than
+  /// chosen, so a room that locked to the wrong surface is otherwise invisible
+  /// until the plan comes out misshapen.
+  bool get isTracingCeiling => surface == CaptureSurface.ceiling;
 
   RoomCaptureState copyWith({
     RoomCaptureStage? stage,
@@ -214,8 +234,15 @@ class RoomCaptureState extends Equatable {
     CaptureTracking? tracking,
     CaptureTrackingIssue? issue,
     bool? planeLocked,
-    Uint8List? preview,
-    int? previewQuarterTurns,
+    CaptureSurface? surface,
+    int? textureId,
+    /// Drops the texture rather than keeping the last one.
+    ///
+    /// Needed because a null [textureId] means "unchanged" everywhere else, and
+    /// the one moment it has to mean "gone" is when the session is torn down on
+    /// backgrounding — a `Texture` widget still pointing at a released id draws
+    /// nothing at all, with no error anywhere to say why.
+    bool clearTexture = false,
     String? hint,
     String? error,
   }) => RoomCaptureState(
@@ -231,8 +258,8 @@ class RoomCaptureState extends Equatable {
     tracking: tracking ?? this.tracking,
     issue: issue ?? this.issue,
     planeLocked: planeLocked ?? this.planeLocked,
-    preview: preview ?? this.preview,
-    previewQuarterTurns: previewQuarterTurns ?? this.previewQuarterTurns,
+    surface: surface ?? this.surface,
+    textureId: clearTexture ? null : (textureId ?? this.textureId),
     // Neither is sticky: a hint about a tap that missed must not outlive
     // the tap that worked, or the screen keeps correcting a mistake the
     // user already fixed.
@@ -257,8 +284,8 @@ class RoomCaptureState extends Equatable {
     tracking,
     issue,
     planeLocked,
-    preview,
-    previewQuarterTurns,
+    surface,
+    textureId,
     hint,
     error,
   ];

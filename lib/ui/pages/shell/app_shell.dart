@@ -4,7 +4,7 @@ import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimens.dart';
-import '../scan/camera_flow.dart';
+import '../camera_flow.dart';
 
 /// 5-slot bottom navigation: Home · Explore · [Assist FAB] · Maps · Profile.
 /// The coral center FAB starts Assist Mode — one tap from anywhere to

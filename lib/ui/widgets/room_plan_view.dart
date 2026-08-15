@@ -41,6 +41,10 @@ class RoomPlanView extends StatelessWidget {
     this.onRoomTap,
     this.showLegend = true,
     this.zoomable = true,
+    this.editingRoomId,
+    this.selectedPoint,
+    this.onPointSelected,
+    this.onPointMoved,
   });
 
   final RoomPlan plan;
@@ -65,6 +69,22 @@ class RoomPlanView extends StatelessWidget {
   /// nobody is meant to work on — a gesture that zooms something decorative is
   /// a gesture that eats the scroll of the list it sits in.
   final bool zoomable;
+
+  /// The room whose points are open for editing, if any.
+  ///
+  /// Editing is opt-in per room rather than a mode over the whole floor: with
+  /// thirty-six rooms every corner on screen at once is a field of handles
+  /// nobody can hit the right one of, and a stray drag silently reshapes a room
+  /// the contributor was not looking at.
+  final String? editingRoomId;
+
+  /// Which of [editablePoints] is selected, so the controls can act on it.
+  final int? selectedPoint;
+
+  final ValueChanged<int?>? onPointSelected;
+
+  /// Reports a handle dragged to a new position, in **plan** coordinates.
+  final void Function(int index, Offset to)? onPointMoved;
 
   @override
   Widget build(BuildContext context) {
@@ -96,20 +116,56 @@ class RoomPlanView extends StatelessWidget {
               showLegend: showLegend,
               onRoomTap: onRoomTap,
               zoom: zoom,
+              editingRoomId: editingRoomId,
+              editablePoints: editablePoints(),
+              selectedPoint: selectedPoint,
             ),
           );
 
           final onTap = onRoomTap;
-          if (onTap == null) return painter;
+          final onMoved = onPointMoved;
+          final editing = editingRoomId != null && onMoved != null;
+          if (onTap == null && !editing) return painter;
+
+          // Tracks which handle a drag started on. Held here rather than in
+          // state so a drag survives the rebuild each move causes: looking the
+          // handle up again mid-drag finds whichever one is now nearest the
+          // finger, and two points close together swap under you.
+          int? dragging;
 
           return GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTapUp: (details) {
+              if (editing) {
+                final handle = handleAt(details.localPosition, viewport);
+                if (handle != null) {
+                  onPointSelected?.call(handle);
+                  return;
+                }
+              }
               // Inside the zoom, so this is still box coordinates and the
               // viewport computed above is still the one that was drawn.
               final hit = roomAt(details.localPosition, viewport);
-              if (hit != null) onTap(hit);
+              if (hit != null) onTap?.call(hit);
             },
+            onPanStart: !editing
+                ? null
+                : (details) {
+                    dragging = handleAt(details.localPosition, viewport);
+                    if (dragging != null) onPointSelected?.call(dragging);
+                  },
+            onPanUpdate: !editing
+                ? null
+                : (details) {
+                    final index = dragging;
+                    if (index == null) return;
+                    final to = viewport.toPlan(
+                      details.localPosition.dx,
+                      details.localPosition.dy,
+                    );
+                    onMoved(index, Offset(to.x, to.y));
+                  },
+            onPanEnd: !editing ? null : (_) => dragging = null,
             child: painter,
           );
         }
@@ -197,6 +253,45 @@ class RoomPlanView extends StatelessWidget {
   /// Exposed for testing: hit testing that drifts from the drawing shows up as
   /// "tapping does nothing sometimes", which is close to undebuggable in the
   /// field.
+  /// The editable points of [editingRoomId] — a corridor's centreline, or any
+  /// other room's corners.
+  ///
+  /// One list for both because to the person dragging them they are the same
+  /// thing: the points this shape is made of. Which list it is decides what an
+  /// edit means, and that is [PlanEditorCubit]'s business, not the canvas's.
+  List<Offset> editablePoints() {
+    final id = editingRoomId;
+    if (id == null) return const [];
+    for (final room in plan.rooms) {
+      if (room.id != id) continue;
+      return room.hasSpine ? room.spine : room.corners;
+    }
+    return const [];
+  }
+
+  /// Index of the handle under [point], or null.
+  ///
+  /// Hit radius is in *screen* pixels rather than plan units: a handle has to
+  /// stay thumb-sized however far the plan is zoomed out, or the points on a
+  /// floor viewed whole are untappable.
+  int? handleAt(Offset point, PlanViewport viewport, {double radius = 22}) {
+    final points = editablePoints();
+    int? best;
+    var bestDistance = radius;
+    for (var i = 0; i < points.length; i++) {
+      final at = Offset(
+        viewport.toCanvasX(points[i].dx),
+        viewport.toCanvasY(points[i].dy),
+      );
+      final d = (at - point).distance;
+      if (d <= bestDistance) {
+        bestDistance = d;
+        best = i;
+      }
+    }
+    return best;
+  }
+
   String? roomAt(Offset point, PlanViewport viewport) {
     // Smallest room first, so a washroom inside a suite is reachable rather
     // than swallowed by whatever encloses it.
@@ -237,7 +332,14 @@ class _RoomPlanPainter extends CustomPainter {
     required this.showLegend,
     this.onRoomTap,
     this.zoom = 1,
+    this.editingRoomId,
+    this.editablePoints = const [],
+    this.selectedPoint,
   });
+
+  final String? editingRoomId;
+  final List<Offset> editablePoints;
+  final int? selectedPoint;
 
   /// How magnified the plan is — see [ZoomablePlan]. Divides every size below
   /// that is meant to be a fixed number of screen pixels.
@@ -297,6 +399,8 @@ class _RoomPlanPainter extends CustomPainter {
     for (final room in byPrecedence) {
       _paintLabel(canvas, room, size, placed);
     }
+
+    _paintHandles(canvas);
 
     if (showLegend) _paintLegend(canvas, size, rooms);
   }
@@ -380,6 +484,34 @@ class _RoomPlanPainter extends CustomPainter {
         centre + along,
         opening.isExterior ? exterior : paint,
       );
+    }
+  }
+
+  /// Draggable handles on the shape being edited.
+  ///
+  /// Drawn last, over everything including the route, because they are the only
+  /// thing on screen the finger is aimed at while editing. Sized in screen
+  /// pixels via [_px] so they stay thumb-sized at any zoom — a handle that
+  /// scales with the plan is untappable on a floor viewed whole, which is
+  /// exactly when somebody is looking for the corridor that runs too far.
+  void _paintHandles(Canvas canvas) {
+    if (editingRoomId == null || editablePoints.isEmpty) return;
+
+    final fill = Paint()..color = palette.corridorFill;
+    final edge = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = _px(2)
+      ..color = AppColors.coral;
+
+    for (var i = 0; i < editablePoints.length; i++) {
+      final at = Offset(
+        viewport.toCanvasX(editablePoints[i].dx),
+        viewport.toCanvasY(editablePoints[i].dy),
+      );
+      final selected = i == selectedPoint;
+      final radius = _px(selected ? 8 : 5.5);
+      canvas.drawCircle(at, radius, selected ? (Paint()..color = AppColors.coral) : fill);
+      canvas.drawCircle(at, radius, edge);
     }
   }
 
@@ -658,20 +790,49 @@ class _RoomPlanPainter extends CustomPainter {
     );
   }
 
-  TextPainter _textPainter(String text, double size, Color colour) =>
-      TextPainter(
-        text: TextSpan(
-          text: text,
-          style: TextStyle(
-            fontSize: _px(size),
-            fontWeight: FontWeight.w600,
-            height: 1.15,
-            color: colour,
-          ),
+  /// Laid-out labels, kept between paints.
+  ///
+  /// Laying out text is the expensive part of drawing this plan: thirty-six
+  /// rooms, up to three size attempts each, is over a hundred layouts per
+  /// frame — and dragging a corner repaints every frame. The result depends
+  /// only on the text, size, colour and direction, none of which change while a
+  /// point is being dragged, so it is computed once and reused.
+  ///
+  /// Static because the painter itself is rebuilt on every repaint. Bounded so
+  /// a long editing session cannot grow it without limit; the cap is far above
+  /// the ~150 entries a busy floor needs, and clearing wholesale costs one
+  /// frame's layouts rather than tracking usage.
+  static final Map<({String text, double size, int colour, TextDirection dir}),
+      TextPainter> _labelCache = {};
+
+  static const int _labelCacheLimit = 600;
+
+  TextPainter _textPainter(String text, double size, Color colour) {
+    final key = (
+      text: text,
+      size: _px(size),
+      colour: colour.toARGB32(),
+      dir: textDirection,
+    );
+    final hit = _labelCache[key];
+    if (hit != null) return hit;
+
+    if (_labelCache.length >= _labelCacheLimit) _labelCache.clear();
+
+    return _labelCache[key] = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          fontSize: _px(size),
+          fontWeight: FontWeight.w600,
+          height: 1.15,
+          color: colour,
         ),
-        textDirection: textDirection,
-        textAlign: TextAlign.center,
-      )..layout();
+      ),
+      textDirection: textDirection,
+      textAlign: TextAlign.center,
+    )..layout();
+  }
 
   /// Publishes every room as a semantics node, naming it, its category and its
   /// role in the current route.
@@ -725,7 +886,12 @@ class _RoomPlanPainter extends CustomPainter {
       old.brightness != brightness ||
       old.textDirection != textDirection ||
       old.showLegend != showLegend ||
-      old.zoom != zoom;
+      old.zoom != zoom ||
+      // Selecting a handle changes nothing but the handles, so without these
+      // the tap would land, the cubit would update, and the point would not
+      // look any different.
+      old.editingRoomId != editingRoomId ||
+      old.selectedPoint != selectedPoint;
 
   @override
   bool shouldRebuildSemantics(covariant _RoomPlanPainter old) =>

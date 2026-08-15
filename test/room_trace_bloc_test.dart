@@ -706,6 +706,56 @@ void main() {
       await bloc.close();
     });
 
+    test('resuming a floor keeps tracing in the frame it was traced in',
+        () async {
+      // The bug this exists for. Re-opening a finished floor to add one
+      // corridor used to mint a wing and park it half a floor east, so the
+      // corridor was drawn into empty space beside the building and joined to
+      // nothing. A resumed session is the same board and the same coordinates.
+      when(() => plans.planFor(any(), any())).thenAnswer(
+        (_) async => const RoomPlan(
+          buildingId: 'knust-cs',
+          floorId: 'floor-uuid-g',
+          codePrefix: 'GF',
+          storedRooms: [
+            Room(
+              id: 'room-1',
+              floorId: 'floor-uuid-g',
+              code: 'room-1',
+              category: RoomCategory.office,
+              wingId: 'wing-1',
+              polygon: [
+                RoomCorner(x: 0, y: 0),
+                RoomCorner(x: 0.3, y: 0),
+                RoomCorner(x: 0.3, y: 0.2),
+              ],
+            ),
+          ],
+        ),
+      );
+      when(() => photos.storedPhotos(any()))
+          .thenAnswer((_) async => {'floor-uuid-g': '/tmp/board.jpg'});
+
+      final bloc = build();
+      bloc.add(const RoomTraceStarted(buildingId: 'knust-cs'));
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      await traceRect(
+        bloc,
+        left: 0.1,
+        right: 0.4,
+        top: 0.1,
+        bottom: 0.3,
+        category: RoomCategory.office,
+      );
+
+      // Same wing as what was already there, and nothing parked anywhere.
+      expect(bloc.state.plan.storedRooms.last.wingId, 'wing-1');
+      expect(bloc.state.plan.wings, isEmpty);
+      await bloc.close();
+    });
+
     test('the first wing on an empty floor is not parked', () async {
       final bloc = await traced();
       await traceRect(

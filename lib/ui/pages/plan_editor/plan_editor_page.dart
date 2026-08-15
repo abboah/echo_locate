@@ -150,15 +150,123 @@ class _Editor extends StatelessWidget {
         Expanded(
           child: RoomPlanView(
             plan: state.plan,
-            highlightedRoomId: state.selectedRoomId,
-            onRoomTap: (id) => _editRoom(context, cubit, id),
+            highlightedRoomId: state.selectedRoomId ?? state.editingRoomId,
+            // While a shape is open, a tap on the plan picks a handle rather
+            // than opening another room's sheet — otherwise every miss throws
+            // the contributor out of the edit they are halfway through.
+            onRoomTap: state.editingRoomId != null
+                ? null
+                : (id) => _editRoom(context, cubit, id),
+            editingRoomId: state.editingRoomId,
+            selectedPoint: state.selectedPoint,
+            onPointSelected: cubit.selectPoint,
+            onPointMoved: (index, to) =>
+                cubit.movePoint(state.editingRoomId!, index, to),
           ),
         ),
-        _Problems(cubit: cubit, state: state),
-        _FloorControls(cubit: cubit, state: state),
+        if (state.editingRoomId != null)
+          _ShapeControls(cubit: cubit, state: state)
+        else ...[
+          _Problems(cubit: cubit, state: state),
+          _FloorControls(cubit: cubit, state: state),
+        ],
         if (state.hasWings && state.selectedWingId != null)
           _WingControls(cubit: cubit, state: state),
       ],
+    );
+  }
+}
+
+/// Controls for the shape currently open for editing.
+///
+/// Replaces the problem list and floor actions rather than sitting under them:
+/// while somebody is reshaping one corridor, "three rooms share a wall with no
+/// door" is not what they are doing, and a "Square up floor" button one thumb
+/// away from "Remove point" is an accident waiting.
+class _ShapeControls extends StatelessWidget {
+  const _ShapeControls({required this.cubit, required this.state});
+
+  final PlanEditorCubit cubit;
+  final PlanEditorState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final room = state.plan.roomOf(state.editingRoomId!);
+    if (room == null) return const SizedBox.shrink();
+
+    final isCorridor = room.hasSpine;
+    final index = state.selectedPoint;
+    final points = isCorridor ? room.spine.length : room.corners.length;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppDimens.pageGutter,
+        AppDimens.space8,
+        AppDimens.pageGutter,
+        AppDimens.space8,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  index == null
+                      ? 'Editing ${room.displayName} — $points '
+                            '${isCorridor ? "points" : "corners"}. '
+                            'Drag one, or tap it to remove or trim.'
+                      : 'Point ${index + 1} of $points selected.',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ),
+              TextButton(
+                onPressed: () => cubit.editShape(null),
+                child: const Text('Done'),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppDimens.space8),
+          Wrap(
+            spacing: AppDimens.space8,
+            runSpacing: AppDimens.space8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: index == null
+                    ? null
+                    : () => cubit.deletePoint(room.id, index),
+                icon: const Icon(PhosphorIcons.minusCircle, size: 18),
+                label: const Text('Remove point'),
+              ),
+              if (isCorridor) ...[
+                // The fix for a corridor traced past the end of the building.
+                OutlinedButton.icon(
+                  onPressed: index == null
+                      ? null
+                      : () => cubit.trimAfter(room.id, index),
+                  icon: const Icon(PhosphorIcons.scissors, size: 18),
+                  label: const Text('Trim after'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: index == null
+                      ? null
+                      : () => cubit.trimBefore(room.id, index),
+                  icon: const Icon(PhosphorIcons.scissors, size: 18),
+                  label: const Text('Trim before'),
+                ),
+              ] else
+                OutlinedButton.icon(
+                  onPressed: index == null
+                      ? null
+                      : () => cubit.addCorner(room.id, index),
+                  icon: const Icon(PhosphorIcons.plusCircle, size: 18),
+                  label: const Text('Add corner'),
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
@@ -498,6 +606,16 @@ Future<void> _editRoom(
                 Navigator.of(sheetContext).pop();
               },
               child: const Text('Save changes'),
+            ),
+            // Reshaping happens on the plan, not in a sheet, so this closes
+            // and hands the floor back with the handles showing.
+            OutlinedButton.icon(
+              onPressed: () {
+                cubit.editShape(roomId);
+                Navigator.of(sheetContext).pop();
+              },
+              icon: const Icon(PhosphorIcons.polygon, size: 18),
+              label: const Text('Edit its shape'),
             ),
             TextButton(
               onPressed: () {

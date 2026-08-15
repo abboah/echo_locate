@@ -8,6 +8,7 @@ import '../../../core/models/building.dart' show BuildingFloor;
 import '../../../core/models/room_plan.dart';
 import '../../../core/utils/logger.dart';
 import '../../../services/mapping/floor_squaring.dart';
+import '../../../services/mapping/plan_editing.dart';
 import '../../../services/mapping/room_geometry.dart';
 import '../../../services/mapping/room_graph.dart';
 import '../../buildings/building_repository.dart';
@@ -216,6 +217,96 @@ class PlanEditorCubit extends Cubit<PlanEditorState> {
       state.copyWith(
         plan: squared,
         hint: 'Floor squared up. Undo if it is not right.',
+      ),
+    );
+  }
+
+  /// Opens [roomId]'s points for dragging, or closes editing when null.
+  void editShape(String? roomId) => emit(
+    state.copyWith(
+      editingRoomId: roomId,
+      clearEditing: roomId == null,
+      hint: roomId == null
+          ? null
+          : 'Drag a point to move it. Tap one to trim or remove it.',
+    ),
+  );
+
+  void selectPoint(int? index) =>
+      emit(state.copyWith(selectedPoint: index, clearEditing: index == null &&
+          state.editingRoomId == null));
+
+  // --- reshaping what was traced ------------------------------------------
+  //
+  // Every one of these goes through [plan_editing.dart], which refuses an edit
+  // that would leave a room without a shape rather than applying it. So the
+  // "nothing moved" branch below is a real outcome and has to say why, or the
+  // contributor drags again harder and assumes the app is broken.
+
+  void movePoint(String roomId, int index, Offset to) {
+    final room = _roomOf(roomId);
+    if (room == null) return;
+    _applyEdit(
+      room.hasSpine
+          ? moveCorridorPoint(state.plan, roomId, index, to)
+          : moveRoomCorner(state.plan, roomId, index, to),
+      refused: 'That would fold the room in on itself.',
+    );
+  }
+
+  void deletePoint(String roomId, int index) {
+    final room = _roomOf(roomId);
+    if (room == null) return;
+    _applyEdit(
+      room.hasSpine
+          ? deleteCorridorPoint(state.plan, roomId, index)
+          : deleteRoomCorner(state.plan, roomId, index),
+      refused: room.hasSpine
+          ? 'A corridor needs at least two points.'
+          : 'A room needs at least three corners.',
+    );
+  }
+
+  /// Drops the run of corridor past [index] — the fix for one traced further
+  /// than the building goes.
+  void trimAfter(String roomId, int index) => _applyEdit(
+    trimCorridorAfter(state.plan, roomId, index),
+    refused: 'Nothing to trim past that point.',
+  );
+
+  void trimBefore(String roomId, int index) => _applyEdit(
+    trimCorridorBefore(state.plan, roomId, index),
+    refused: 'Nothing to trim before that point.',
+  );
+
+  /// Adds a corner halfway along the wall leaving [index], ready to be dragged.
+  void addCorner(String roomId, int index) => _applyEdit(
+    insertRoomCorner(state.plan, roomId, index),
+    refused: 'Could not add a corner there.',
+  );
+
+  Room? _roomOf(String roomId) {
+    for (final room in state.plan.rooms) {
+      if (room.id == roomId) return room;
+    }
+    return null;
+  }
+
+  void _applyEdit(EditedPlan edited, {required String refused}) {
+    if (edited.plan == state.plan) {
+      emit(state.copyWith(hint: refused));
+      return;
+    }
+    final dropped = edited.doorsDropped;
+    emit(
+      state.copyWith(
+        plan: edited.plan,
+        // Named because a door disappearing without a word is the kind of loss
+        // somebody finds weeks later, walking a route that no longer exists.
+        hint: dropped == 0
+            ? null
+            : '$dropped door${dropped == 1 ? "" : "s"} removed — '
+                  'nothing was left to open onto.',
       ),
     );
   }

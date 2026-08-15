@@ -138,6 +138,18 @@ class PlanViewport extends Equatable {
   /// useless to anybody comparing it against the building.
   double toCanvasY(double metresY) => originY - metresY * scale;
 
+  /// Canvas coordinates back to plan coordinates.
+  ///
+  /// The exact inverse of [toCanvasX] and [toCanvasY], y flip included — which
+  /// is the whole reason it is written here rather than at each call site. A
+  /// hand-rolled inverse that forgets the flip mirrors every drag about the
+  /// horizontal, and the error is invisible on a symmetrical room.
+  ///
+  /// A record rather than an `Offset`, to keep this file free of `dart:ui` —
+  /// see the note at the top. The caller is a painter and already has one.
+  ({double x, double y}) toPlan(double canvasX, double canvasY) =>
+      (x: (canvasX - originX) / scale, y: (originY - canvasY) / scale);
+
   @override
   List<Object?> get props => [scale, originX, originY];
 

@@ -172,6 +172,45 @@ class RoomTraceBloc extends Bloc<RoomTraceEvent, RoomTraceState> {
     );
   }
 
+  /// Carries on in the frame the floor was already traced in.
+  ///
+  /// The counterpart to [_openWing], and the distinction is which *photograph*
+  /// the coordinates belong to — not which visit to the screen.
+  ///
+  /// [_openWing] used to run on every start, so re-opening a finished floor to
+  /// add one corridor minted a wing and parked it half a floor east. The
+  /// corridor was then drawn into that parked frame and came out stranded in
+  /// empty space beside the building, joined to nothing — which is exactly how
+  /// a stray corridor ended up in the far east of the KNUST Library ground
+  /// floor. The contributor had done nothing wrong.
+  ///
+  /// Resuming means the same board and the same coordinates, so new rooms join
+  /// the frame the last ones were traced in and nothing is displaced.
+  RoomPlan _continueWing(RoomPlan plan) {
+    _wingId = _lastWingIn(plan);
+    return plan;
+  }
+
+  /// Warns that what is traced next lands beside the floor, not on it.
+  ///
+  /// Only when there is already a floor to be parked beside. Somebody
+  /// photographing a second board has no way to know their new rooms will
+  /// appear in empty space until they see it happen, and the first time it
+  /// happened it read as a bug rather than as a step.
+  String? _parkedNotice() => state.plan.drawableRooms.isEmpty
+      ? null
+      : 'Second board: what you trace now is parked beside the floor. '
+            'Line it up in the editor when you are done.';
+
+  /// The frame the most recently traced room belongs to.
+  String _lastWingIn(RoomPlan plan) {
+    for (final room in plan.rooms.reversed) {
+      final id = room.wingId;
+      if (id != null && id.isNotEmpty) return id;
+    }
+    return plan.wingIds.isEmpty ? 'wing-1' : plan.wingIds.last;
+  }
+
   /// How near an existing corner a tap must land to snap onto it, in plan
   /// units.
   ///
@@ -448,7 +487,7 @@ class RoomTraceBloc extends Bloc<RoomTraceEvent, RoomTraceState> {
         }
         emit(
           state.copyWith(
-            plan: _openWing(existing),
+            plan: _continueWing(existing),
             stage: RoomTraceStage.trace,
           ),
         );
@@ -467,11 +506,11 @@ class RoomTraceBloc extends Bloc<RoomTraceEvent, RoomTraceState> {
           recovered =
               'Picked up where you left off — ${draft.rooms.length} rooms '
               'from a session that was not saved.';
-          emit(state.copyWith(plan: _openWing(draft), warning: recovered));
+          emit(state.copyWith(plan: _continueWing(draft), warning: recovered));
           _nextId = _highestIdIn(draft) + 1;
         }
       } else {
-        emit(state.copyWith(plan: _openWing(state.plan)));
+        emit(state.copyWith(plan: _continueWing(state.plan)));
       }
     } catch (error) {
       AppLogger.warn('Existing room plan unavailable: $error');
@@ -564,13 +603,16 @@ class RoomTraceBloc extends Bloc<RoomTraceEvent, RoomTraceState> {
     if (isClosed) return;
     emit(
       state.copyWith(
+        // A second board is a second coordinate frame — see [_openWing]. This
+        // is the moment one begins, not the moment the screen opens.
+        plan: _openWing(state.plan),
         photoPath: path,
         photoAspect: await _aspectOf(path),
         stage: RoomTraceStage.trace,
         // A failed shot is not a failed trace — the grid still works.
         warning: path == null
             ? 'Could not take the photo. Tracing on a grid.'
-            : null,
+            : _parkedNotice(),
       ),
     );
     await _photos.stop();
@@ -592,9 +634,12 @@ class RoomTraceBloc extends Bloc<RoomTraceEvent, RoomTraceState> {
 
     emit(
       state.copyWith(
+        // Same reason as [_onPhotoTaken]: a new board is a new frame.
+        plan: _openWing(state.plan),
         photoPath: path,
         photoAspect: await _aspectOf(path),
         stage: RoomTraceStage.trace,
+        warning: _parkedNotice(),
       ),
     );
     // The camera is not needed once a photo is in hand, and holding it open
@@ -607,7 +652,18 @@ class RoomTraceBloc extends Bloc<RoomTraceEvent, RoomTraceState> {
     RoomPhotoSkipped event,
     Emitter<RoomTraceState> emit,
   ) async {
-    emit(state.copyWith(stage: RoomTraceStage.trace));
+    // Skipping is a fresh frame too: a blank grid is not the photograph the
+    // rooms already on this floor were traced against, so what follows is
+    // parked rather than laid over them. Resuming a floor whose photo is still
+    // stored never reaches here — that path continues the existing frame, which
+    // is the case that matters and the one that used to displace people's work.
+    emit(
+      state.copyWith(
+        plan: _openWing(state.plan),
+        stage: RoomTraceStage.trace,
+        warning: _parkedNotice(),
+      ),
+    );
     await _photos.stop();
   }
 

@@ -23,10 +23,14 @@ import '../../widgets/room_plan_view.dart';
 /// because ARCore's floor planes are its most reliable output and its
 /// wall-to-wall boundaries its least — see `FloorHitTester`.
 ///
-/// **Not yet run on a phone.** The team's device is not ARCore-certified. This
-/// screen is written to be tuned rather than trusted, and the honest path when
-/// the device cannot scan is the one it takes by default: it says so and offers
-/// photo tracing, which produces the same [RoomPlan] and is fully exercised.
+/// Rooms whose floors are hidden by furniture can be traced around the
+/// **ceiling** instead — the walls are vertical, so the polygon is the same one.
+/// Which surface a room is on is decided by its first corner and shown on
+/// screen; undoing back to no corners releases it.
+///
+/// The honest path when a device cannot scan at all is the one this screen
+/// takes by default: it says so and offers photo tracing, which produces the
+/// same [RoomPlan] and is fully exercised.
 class RoomCapturePage extends StatelessWidget {
   const RoomCapturePage({
     super.key,
@@ -45,7 +49,8 @@ class RoomCapturePage extends StatelessWidget {
     // The view ARCore is told it is drawing into. Measured here, before the
     // session starts, because `setDisplayGeometry` needs it at resume — and a
     // session started against the wrong viewport maps every tap wrongly with
-    // nothing on screen to suggest it.
+    // nothing on screen to suggest it. The display *rotation* is not passed:
+    // native reads it from the activity, since Dart cannot.
     final media = MediaQuery.of(context);
     final size = media.size;
     final ratio = media.devicePixelRatio;
@@ -202,8 +207,96 @@ class _Unavailable extends StatelessWidget {
   }
 }
 
-class _CaptureStep extends StatelessWidget {
+/// The live half of the screen.
+///
+/// Stateful only to report its own size. The camera area is not the whole
+/// screen — there is a mode bar above it and controls below — and **ARCore has
+/// to be told about the area taps are actually normalised against**, or every
+/// tap is mapped through a viewport taller than the one the finger is in and
+/// lands progressively further off towards the edges. It was previously handed
+/// the full screen size measured at page build.
+class _CaptureStep extends StatefulWidget {
   const _CaptureStep();
+
+  @override
+  State<_CaptureStep> createState() => _CaptureStepState();
+}
+
+class _CaptureStepState extends State<_CaptureStep>
+    with WidgetsBindingObserver {
+  /// Last size handed to ARCore, in device pixels.
+  Size? _reported;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// Hands the camera back when the app leaves, and takes it again on return.
+  ///
+  /// `MainActivity.onPause` stops the ARCore session natively whether Dart asks
+  /// or not — it has to, because ARCore holds the camera exclusively and a
+  /// backgrounded app that keeps it locked breaks every other camera on the
+  /// phone. Nothing restarted it, so coming back to this screen showed a
+  /// `Texture` pointing at a released id: a blank rectangle where the camera
+  /// was, no crash, and nothing in the log.
+  ///
+  /// `inactive` is deliberately not handled. It fires for transients — the
+  /// notification shade, a permission dialog — and tearing the session down for
+  /// those would restart tracking from nothing every time one appeared.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState lifecycle) {
+    if (!mounted) return;
+    final cubit = context.read<RoomCaptureCubit>();
+
+    switch (lifecycle) {
+      case AppLifecycleState.resumed:
+        final size = _reported;
+        if (size == null) return;
+        cubit.resumeSession(
+          viewWidth: size.width.round(),
+          viewHeight: size.height.round(),
+        );
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.detached:
+        cubit.pauseSession();
+      case AppLifecycleState.inactive:
+        break;
+    }
+  }
+
+  /// Tells the session how big the camera area is, once per real change.
+  ///
+  /// Deferred to after the frame because it runs from inside `build`, and
+  /// because the size that matters is the one the widget was actually laid out
+  /// at. Rotating the phone changes it, which is also what prompts native to
+  /// re-read the display rotation.
+  void _reportViewport(BoxConstraints constraints) {
+    final ratio = MediaQuery.devicePixelRatioOf(context);
+    final size = Size(
+      (constraints.maxWidth * ratio).roundToDouble(),
+      (constraints.maxHeight * ratio).roundToDouble(),
+    );
+    if (size.isEmpty || size == _reported) return;
+    _reported = size;
+
+    final cubit = context.read<RoomCaptureCubit>();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      cubit.setViewport(
+        viewWidth: size.width.round(),
+        viewHeight: size.height.round(),
+      );
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -234,6 +327,7 @@ class _CaptureStep extends StatelessWidget {
         Expanded(
           child: LayoutBuilder(
             builder: (context, constraints) {
+              _reportViewport(constraints);
               return GestureDetector(
                 key: RoomCaptureView.captureSurfaceKey,
                 behavior: HitTestBehavior.opaque,
@@ -253,25 +347,19 @@ class _CaptureStep extends StatelessWidget {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    if (state.preview != null)
-                      // `BoxFit.cover` deliberately: it matches what ARCore's
-                      // display geometry assumes the view is showing — the
-                      // camera filling it with the overflow cropped, the same
-                      // thing Google's own BackgroundRenderer draws. Switching
-                      // this to `contain` would letterbox the preview and every
-                      // tap would resolve a little way off.
-                      //
-                      // The rotation is display only. The sensor image is
-                      // landscape while the phone is portrait; taps are mapped
-                      // by ARCore and do not go through this.
-                      RotatedBox(
-                        quarterTurns: state.previewQuarterTurns,
-                        child: Image.memory(
-                          state.preview!,
-                          fit: BoxFit.cover,
-                          gaplessPlayback: true,
-                        ),
-                      )
+                    // The camera itself, composited straight from the GPU.
+                    //
+                    // No `BoxFit`, no `RotatedBox`, no bytes: native draws the
+                    // ARCore camera texture into this surface using ARCore's
+                    // own display transform, which is the *same* mapping
+                    // `setDisplayGeometry` uses for hit-testing. The picture and
+                    // the taps therefore come from one calculation and cannot
+                    // drift apart. The previous version decoded a throttled JPEG
+                    // here and rotated it from a separately-derived sensor
+                    // orientation, which is two calculations that only happened
+                    // to agree.
+                    if (state.textureId != null)
+                      Texture(textureId: state.textureId!)
                     else
                       const ColoredBox(color: AppColors.ink),
                     CustomPaint(
@@ -332,12 +420,12 @@ class _ModeBar extends StatelessWidget {
 /// A crosshair and the corner count, over the camera.
 ///
 /// The corners themselves are deliberately *not* drawn in place: doing that
-/// needs each captured point projected back into the current camera view every
-/// frame, which is the projection maths the offscreen-context approach
-/// specifically avoids. Showing how many have been placed, plus the plan
-/// preview a tap away, gives the same confidence for none of the risk. **This
-/// is the first thing to revisit once a device is available** — see
-/// `RoomCaptureHandler` for where the frame data would come from.
+/// needs each captured anchor projected back into the current camera view every
+/// frame. Now that there is a real GL context drawing the camera, that has
+/// become a normal thing to add rather than an architectural problem — it would
+/// live in `CameraBackgroundRenderer` beside the quad. Showing how many have
+/// been placed, plus the plan preview a tap away, gives most of the confidence
+/// for none of the work, so it stays the next thing rather than this thing.
 class _CaptureOverlay extends CustomPainter {
   const _CaptureOverlay({required this.cornerCount, required this.canPlace});
 
@@ -411,6 +499,25 @@ class _Guidance extends StatelessWidget {
             ).textTheme.bodyMedium?.copyWith(color: AppColors.white),
           ),
         ),
+        // Said out loud because nobody chose it. The first corner decides which
+        // surface a room is traced on, so a room that locked overhead by
+        // accident is otherwise invisible until the plan comes out wrong — by
+        // which time the contributor has left the building. Undo clears it.
+        if (state.isTracingCeiling) ...[
+          const SizedBox(width: AppDimens.space8),
+          const Icon(
+            PhosphorIcons.arrowUp,
+            size: 16,
+            color: AppColors.coral,
+          ),
+          const SizedBox(width: AppDimens.space4),
+          Text(
+            'Ceiling',
+            style: Theme.of(
+              context,
+            ).textTheme.labelSmall?.copyWith(color: AppColors.coral),
+          ),
+        ],
       ],
     ),
   );

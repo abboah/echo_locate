@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
@@ -130,7 +129,6 @@ class RoomCaptureCubit extends Cubit<RoomCaptureState> {
     String floorId = '',
     required int viewWidth,
     required int viewHeight,
-    int displayRotation = 0,
   }) async {
     emit(state.copyWith(buildingId: buildingId, floorId: floorId));
 
@@ -217,7 +215,6 @@ class RoomCaptureCubit extends Cubit<RoomCaptureState> {
     final failure = await _capture.start(
       viewWidth: viewWidth,
       viewHeight: viewHeight,
-      displayRotation: displayRotation,
     );
     if (isClosed) return;
     if (failure != null) {
@@ -225,6 +222,10 @@ class RoomCaptureCubit extends Cubit<RoomCaptureState> {
       return;
     }
 
+    // Only tracking facts arrive here, and only when they change — the camera
+    // itself is a texture Flutter composites, so nothing on this stream is on
+    // the hot path. The earlier JPEG stream emitted a state per frame and
+    // rebuilt this whole screen at camera rate.
     _frames = _capture.frames.listen((frame) {
       if (isClosed) return;
       emit(
@@ -233,16 +234,17 @@ class RoomCaptureCubit extends Cubit<RoomCaptureState> {
           tracking: frame.tracking,
           issue: frame.issue,
           planeLocked: frame.planeLocked,
-          // Held rather than replaced with null: previews are throttled
-          // natively, so most updates carry state and no image, and blanking
-          // the view between them would strobe.
-          preview: frame.preview ?? state.preview,
-          previewQuarterTurns: frame.quarterTurns,
+          surface: frame.surface,
         ),
       );
     });
 
-    emit(state.copyWith(stage: RoomCaptureStage.capturing));
+    emit(
+      state.copyWith(
+        stage: RoomCaptureStage.capturing,
+        textureId: _capture.textureId,
+      ),
+    );
   }
 
   /// Tries to place a corner where the user tapped.
@@ -263,9 +265,17 @@ class RoomCaptureCubit extends Cubit<RoomCaptureState> {
     if (isClosed) return;
 
     if (corner == null) {
+      // Which surface to aim at depends on what this room locked to — telling
+      // somebody tracing a cluttered room's ceiling to aim at the floor is
+      // advice they cannot follow. Phrased as where to point rather than as
+      // "wrong surface", which in a building app with storeys in it reads as
+      // being on the wrong floor of the building.
       emit(
         state.copyWith(
-          hint: 'No floor there. Aim at the floor where the wall meets it.',
+          hint: state.planeLocked
+              ? 'Aim at the ${state.surface.noun} where the wall meets it.'
+              : 'No surface there. Aim at the floor — or the ceiling, if the '
+                    'floor is cluttered.',
         ),
       );
       return;
@@ -327,19 +337,85 @@ class RoomCaptureCubit extends Cubit<RoomCaptureState> {
     );
   }
 
+  /// Releases the camera when the app leaves the foreground.
+  ///
+  /// **Not optional.** ARCore holds the camera exclusively, so a session left
+  /// running in the background keeps it locked — and `MainActivity.onPause`
+  /// tears it down natively whether Dart asks or not. Without this the Dart
+  /// side goes on believing it has a session, and on return renders a `Texture`
+  /// pointing at an id the platform has already released: a blank rectangle
+  /// where the camera was, no crash, and nothing in the log to explain it.
+  ///
+  /// The captured rooms are untouched. Only the live session goes.
+  Future<void> pauseSession() async {
+    if (state.stage != RoomCaptureStage.capturing) return;
+    await _capture.stop();
+    if (isClosed) return;
+    emit(
+      state.copyWith(
+        clearTexture: true,
+        tracking: CaptureTracking.stopped,
+        planeLocked: false,
+        surface: CaptureSurface.none,
+      ),
+    );
+  }
+
+  /// Starts a fresh session when the app comes back.
+  ///
+  /// A new session, not a resumed one: ARCore's world origin is wherever the
+  /// phone was when it started, so anything half-traced belongs to a frame that
+  /// no longer exists. The draft is dropped for the same reason `_openWing`
+  /// parks a new session's rooms clear of the old — a corner measured in one
+  /// frame and the next in another is a deformed room with nothing to say so.
+  Future<void> resumeSession({
+    required int viewWidth,
+    required int viewHeight,
+  }) async {
+    if (state.stage != RoomCaptureStage.capturing) return;
+    if (_capture.isRunning) return;
+
+    final abandoned = state.draft;
+    final failure = await _capture.start(
+      viewWidth: viewWidth,
+      viewHeight: viewHeight,
+    );
+    if (isClosed) return;
+    if (failure != null) {
+      emit(state.copyWith(stage: RoomCaptureStage.unavailable, error: failure));
+      return;
+    }
+
+    // The existing frame subscription is still good: the event channel outlives
+    // the session, and re-listening would only add a second sink.
+    emit(
+      state.copyWith(
+        textureId: _capture.textureId,
+        draft: const [],
+        hint: abandoned.isEmpty
+            ? null
+            : 'That room was dropped — scanning restarted, and its corners '
+                  'were measured against the old position.',
+      ),
+    );
+  }
+
   /// Tells ARCore the view resized or the device rotated.
   Future<void> setViewport({
     required int viewWidth,
     required int viewHeight,
-    int displayRotation = 0,
-  }) => _capture.setViewport(
-    viewWidth: viewWidth,
-    viewHeight: viewHeight,
-    displayRotation: displayRotation,
-  );
+  }) => _capture.setViewport(viewWidth: viewWidth, viewHeight: viewHeight);
 
-  void setMode(RoomCaptureMode mode) {
+  Future<void> setMode(RoomCaptureMode mode) async {
+    if (mode == state.mode) return;
+    final abandoned = state.draft;
     emit(state.copyWith(mode: mode, draft: const [], hint: null));
+    // The half-captured polygon is gone, so its surface lock goes with it —
+    // otherwise the next room inherits a lock it never chose.
+    if (abandoned.isNotEmpty) {
+      await _capture.releaseCorners(abandoned);
+      await _capture.resetPlaneLock();
+    }
   }
 
   /// Records a door where the contributor is standing.
@@ -367,7 +443,10 @@ class RoomCaptureCubit extends Cubit<RoomCaptureState> {
       return;
     }
 
-    final corner = await _capture.hitTest(u, v);
+    // Unlocked, unlike a corner. A door is one independent point in a doorway
+    // that may be a room away from the last one traced, on a plane ARCore has
+    // never merged with it — see [ArCoreCaptureService.hitTest].
+    final corner = await _capture.hitTest(u, v, lock: false);
     if (isClosed) return;
     if (corner == null) {
       emit(
@@ -482,20 +561,25 @@ class RoomCaptureCubit extends Cubit<RoomCaptureState> {
   Future<void> undoCorner() async {
     if (state.draft.isEmpty) return;
     final removed = state.draft.last;
-    emit(
-      state.copyWith(
-        draft: state.draft.sublist(0, state.draft.length - 1),
-        hint: null,
-      ),
-    );
+    final remaining = state.draft.sublist(0, state.draft.length - 1);
+    emit(state.copyWith(draft: remaining, hint: null));
     // Its anchor is no longer wanted, and anchors cost tracking work per frame.
     await _capture.releaseCorners([removed]);
+    // Undoing back to nothing releases the surface lock as well.
+    //
+    // **This is the whole recovery path for a room that locked to the wrong
+    // surface.** The first corner decides floor or ceiling, and in a room where
+    // both are in view a tap can land on the one the contributor did not mean.
+    // Without this the only way out is to leave the screen, and the lock is not
+    // something they can see well enough to know that is what went wrong.
+    if (remaining.isEmpty) await _capture.resetPlaneLock();
   }
 
   Future<void> discardRoom() async {
     final abandoned = state.draft;
     emit(state.copyWith(draft: const [], hint: null));
     await _capture.releaseCorners(abandoned);
+    await _capture.resetPlaneLock();
   }
 
   /// Closes the captured polygon into a room.

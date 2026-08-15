@@ -12,6 +12,8 @@ class PlanEditorState extends Equatable {
     this.original = RoomPlan.empty,
     this.selectedWingId,
     this.selectedRoomId,
+    this.editingRoomId,
+    this.selectedPoint,
     this.hint,
     this.error,
   });
@@ -31,6 +33,15 @@ class PlanEditorState extends Equatable {
 
   final String? selectedWingId;
   final String? selectedRoomId;
+
+  /// The room whose points are open for dragging, and which of them is picked.
+  ///
+  /// Separate from [selectedRoomId] because tapping a room to read or rename it
+  /// is not the same act as opening its geometry: with thirty-six rooms, every
+  /// tap putting handles on screen would mean a stray drag reshapes a room
+  /// somebody was only inspecting.
+  final String? editingRoomId;
+  final int? selectedPoint;
   final String? hint;
   final String? error;
 
@@ -173,6 +184,9 @@ class PlanEditorState extends Equatable {
     bool clearSelection = false,
     String? selectedRoomId,
     bool clearRoomSelection = false,
+    String? editingRoomId,
+    int? selectedPoint,
+    bool clearEditing = false,
     String? hint,
     String? error,
   }) => PlanEditorState(
@@ -188,6 +202,10 @@ class PlanEditorState extends Equatable {
     selectedRoomId: clearRoomSelection
         ? null
         : (selectedRoomId ?? this.selectedRoomId),
+    // Cleared together: a selected point belongs to the room being edited,
+    // and carrying an index into another room indexes the wrong corners.
+    editingRoomId: clearEditing ? null : (editingRoomId ?? this.editingRoomId),
+    selectedPoint: clearEditing ? null : (selectedPoint ?? this.selectedPoint),
     // Neither is sticky: a hint from one nudge must not outlive the next.
     hint: hint,
     error: error,
@@ -203,6 +221,8 @@ class PlanEditorState extends Equatable {
     original,
     selectedWingId,
     selectedRoomId,
+    editingRoomId,
+    selectedPoint,
     hint,
     error,
   ];

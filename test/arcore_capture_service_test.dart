@@ -163,7 +163,20 @@ void main() {
       await service.hitTest(0.25, 0.75);
 
       final call = channel.calls.firstWhere((c) => c.method == 'hitTest');
-      expect(call.arguments, {'u': 0.25, 'v': 0.75});
+      expect(call.arguments, {'u': 0.25, 'v': 0.75, 'lock': true});
+    });
+
+    test('a door tap is not held to the room-s locked surface', () async {
+      // A door is one independent point tapped in a doorway that may be a room
+      // away from the last one traced, on a plane ARCore has never merged with
+      // it. Locking doors rejected every doorway after the first.
+      channel.respond = (call) =>
+          call.method == 'hitTest' ? {'x': 0.0, 'z': 0.0} : null;
+
+      await service.hitTest(0.5, 0.5, lock: false);
+
+      final call = channel.calls.firstWhere((c) => c.method == 'hitTest');
+      expect((call.arguments as Map)['lock'], isFalse);
     });
 
     test('a tap that hit nothing is null, not an error', () async {
@@ -217,21 +230,24 @@ void main() {
       expect(frame.issue, CaptureTrackingIssue.none);
     });
 
-    test('carries a preview when one was sent', () {
+    test('names the surface the room locked to', () {
       final frame = CaptureFrame.fromNative({
         'trackingState': 'TRACKING',
-        'jpeg': Uint8List.fromList([1, 2, 3]),
+        'planeLocked': true,
+        'surface': 'ceiling',
       });
 
-      expect(frame.preview, hasLength(3));
+      expect(frame.surface, CaptureSurface.ceiling);
+      expect(frame.surface.noun, 'ceiling');
     });
 
-    test('a frame with no preview is normal, not empty', () {
-      // Previews are throttled natively while ARCore updates every frame, so
-      // most updates carry state and no image.
+    test('no lock yet is a surface of none, not a floor', () {
+      // The first corner of a room decides. Defaulting to floor here would put
+      // "tap the floor" on screen for a room that is about to lock overhead.
       final frame = CaptureFrame.fromNative({'trackingState': 'TRACKING'});
 
-      expect(frame.preview, isNull);
+      expect(frame.surface, CaptureSurface.none);
+      expect(frame.planeLocked, isFalse);
       expect(frame.canCapture, isTrue);
     });
 

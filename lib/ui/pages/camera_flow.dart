@@ -1,20 +1,19 @@
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/routes/app_routes.dart';
-import '../../../core/settings/settings_repository.dart';
-import '../../../services/injection_container.dart';
+import '../../core/routes/app_routes.dart';
+import '../../core/settings/settings_repository.dart';
+import '../../services/injection_container.dart';
 
-/// Entry points for the two camera experiences. Both show the camera
-/// permission primer once, then continue to their destination.
+/// Entry point for Assist Mode — the app's one camera experience.
 ///
-/// - Assist Mode (shell FAB, Home banner) — the headline experience:
-///   obstacle alerts + voice guidance while moving.
-/// - Scan (Home card, Explore CTA) — the contributor flow that maps spaces.
+/// Shows the camera permission primer once, then continues to the destination.
+///
+/// Mapping does **not** come through here. "Scan a space" and "Scan a new
+/// building" go to the building picker, which is not a camera screen itself;
+/// the tools past it ask for the camera when they actually need it.
 void openAssistFlow(BuildContext context) =>
     _viaPrimer(context, RouteNames.assist);
-
-void openScanFlow(BuildContext context) => _viaPrimer(context, RouteNames.scan);
 
 void _viaPrimer(BuildContext context, String destinationName) {
   final settings = getIt<SettingsRepository>();

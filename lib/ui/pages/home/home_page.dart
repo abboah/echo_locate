@@ -15,7 +15,7 @@ import '../../widgets/building_glyph.dart';
 import '../../widgets/percent_badge.dart';
 import '../../widgets/scan_capability_gate.dart';
 import '../../widgets/section_label.dart';
-import '../scan/camera_flow.dart';
+import '../camera_flow.dart';
 
 /// Home tab (Figma 7:488, assist-first): greeting, search, assistance
 /// banner, scan card, recently mapped.
@@ -221,6 +221,8 @@ class _TraceCard extends StatelessWidget {
         color: AppColors.coralSoft,
         borderRadius: BorderRadius.circular(AppDimens.radiusLg),
         child: InkWell(
+          // No `extra`: this card means tracing, so the picker keeps its
+          // default destination. Only the scan card asks for the hub.
           onTap: () => context.pushNamed(RouteNames.mapBuilding),
           borderRadius: BorderRadius.circular(AppDimens.radiusLg),
           child: Padding(
@@ -266,7 +268,16 @@ class _TraceCard extends StatelessWidget {
   }
 }
 
-/// Secondary contributor action: scan/map a space.
+/// The AR half of contributing: walk the rooms and tap their corners.
+///
+/// Goes through the same building picker as [_TraceCard] — the two differ in
+/// the method they set an expectation of, not the destination, and the mapping
+/// hub past the picker offers whichever the device can do.
+///
+/// It used to open the mock scan screen, which is now
+/// removed, so this is now the only thing "scan" means. Gated on ARCore
+/// because *this* card promises AR; the trace card beside it is deliberately
+/// ungated, so a phone that cannot scan still has a way to contribute.
 class _ScanCard extends StatelessWidget {
   const _ScanCard();
 
@@ -278,7 +289,10 @@ class _ScanCard extends StatelessWidget {
       color: theme.colorScheme.surface,
       borderRadius: BorderRadius.circular(AppDimens.radiusLg),
       child: InkWell(
-        onTap: () => openScanFlow(context),
+        onTap: () => context.pushNamed(
+          RouteNames.mapBuilding,
+          extra: RouteNames.buildingMapping,
+        ),
         borderRadius: BorderRadius.circular(AppDimens.radiusLg),
         child: Padding(
           padding: const EdgeInsets.all(AppDimens.space16),
@@ -296,7 +310,7 @@ class _ScanCard extends StatelessWidget {
                   children: [
                     Text('Scan a space', style: theme.textTheme.titleMedium),
                     Text(
-                      'Help map this building for others',
+                      'Walk its rooms in AR and tap the corners',
                       style: theme.textTheme.bodyMedium,
                     ),
                   ],

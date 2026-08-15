@@ -19,7 +19,6 @@ class AppRoutes {
 
   // User — full-screen flows (pushed above the shell)
   static const String assist = '/assist';
-  static const String scan = '/scan';
   static const String sonar = '/sonar';
   static const String acoustic = '/acoustic';
   static const String depthProbe = '/depth-probe';
@@ -72,7 +71,6 @@ class RouteNames {
   static const String profile = 'profile';
 
   static const String assist = 'assist';
-  static const String scan = 'scan';
   static const String sonar = 'sonar';
   static const String acoustic = 'acoustic';
   static const String depthProbe = 'depthProbe';

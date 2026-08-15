@@ -37,12 +37,17 @@ class _FakeCapture implements ArCoreCaptureService {
   int _hitIndex = 0;
 
   /// What ARCore was told it is drawing into — the thing that makes taps
-  /// land where they were made.
-  (int, int, int)? viewport;
+  /// land where they were made. The display rotation is no longer part of it:
+  /// native reads that from the activity, since Dart cannot.
+  (int, int)? viewport;
 
   int planeResets = 0;
   bool stopped = false;
   final List<(double, double)> taps = [];
+
+  /// Whether each tap asked to be held to the room's locked surface. Corners
+  /// do; doors deliberately do not.
+  final List<bool> tapLocks = [];
 
   bool _running = false;
 
@@ -52,15 +57,17 @@ class _FakeCapture implements ArCoreCaptureService {
   bool get isRunning => _running;
 
   @override
+  int? get textureId => _running ? 7 : null;
+
+  @override
   Future<ArCoreAvailability> checkAvailability() async => availability;
 
   @override
   Future<String?> start({
     required int viewWidth,
     required int viewHeight,
-    int displayRotation = 0,
   }) async {
-    viewport = (viewWidth, viewHeight, displayRotation);
+    viewport = (viewWidth, viewHeight);
     if (startFailure != null) return startFailure;
     _running = true;
     return null;
@@ -74,8 +81,13 @@ class _FakeCapture implements ArCoreCaptureService {
   }
 
   @override
-  Future<CapturedCorner?> hitTest(double u, double v) async {
+  Future<CapturedCorner?> hitTest(
+    double u,
+    double v, {
+    bool lock = true,
+  }) async {
     taps.add((u, v));
+    tapLocks.add(lock);
     if (_hitIndex >= hits.length) return null;
     return hits[_hitIndex++];
   }
@@ -84,9 +96,8 @@ class _FakeCapture implements ArCoreCaptureService {
   Future<void> setViewport({
     required int viewWidth,
     required int viewHeight,
-    int displayRotation = 0,
   }) async {
-    viewport = (viewWidth, viewHeight, displayRotation);
+    viewport = (viewWidth, viewHeight);
   }
 
   /// Positions ARCore hands back at close, keyed by anchor id — how a
@@ -155,7 +166,13 @@ CaptureFrame frame({
   CaptureTracking tracking = CaptureTracking.tracking,
   CaptureTrackingIssue issue = CaptureTrackingIssue.none,
   bool planeLocked = true,
-}) => CaptureFrame(tracking: tracking, issue: issue, planeLocked: planeLocked);
+  CaptureSurface surface = CaptureSurface.floor,
+}) => CaptureFrame(
+  tracking: tracking,
+  issue: issue,
+  planeLocked: planeLocked,
+  surface: surface,
+);
 
 void main() {
   late _FakeCapture capture;
@@ -394,6 +411,146 @@ void main() {
         await cubit.close();
       },
     );
+  });
+
+  group('leaving the app and coming back', () {
+    test('backgrounding hands the camera back and drops the texture', () async {
+      final cubit = await started();
+      expect(cubit.state.textureId, isNotNull);
+
+      await cubit.pauseSession();
+
+      // ARCore holds the camera exclusively, so the session must go.
+      expect(capture.stopped, isTrue);
+      // And the texture id with it. Found on a device: `MainActivity.onPause`
+      // tore the session down natively whether Dart asked or not, nothing
+      // restarted it, and returning to the screen rendered a `Texture` pointing
+      // at a released id — a blank rectangle where the camera was, no crash,
+      // and nothing in the log to explain it.
+      expect(cubit.state.textureId, isNull);
+      expect(cubit.state.tracking, CaptureTracking.stopped);
+      await cubit.close();
+    });
+
+    test('returning starts a fresh session and a new texture', () async {
+      final cubit = await started();
+      await cubit.pauseSession();
+
+      await cubit.resumeSession(viewWidth: 1080, viewHeight: 1800);
+
+      expect(capture.isRunning, isTrue);
+      expect(cubit.state.textureId, isNotNull);
+      // The camera area, not the whole screen — taps are normalised against it.
+      expect(capture.viewport, (1080, 1800));
+      await cubit.close();
+    });
+
+    test('a half-traced room is dropped, and said to be', () async {
+      final cubit = await started();
+      capture.hits.addAll([corner(0, 0), corner(3, 0)]);
+      await cubit.tapCorner(0.5, 0.5);
+      await cubit.tapCorner(0.5, 0.5);
+
+      await cubit.pauseSession();
+      await cubit.resumeSession(viewWidth: 1080, viewHeight: 1800);
+
+      // ARCore's world origin is wherever the phone was when the session
+      // started, so corners measured before the break are in a frame that no
+      // longer exists. Keeping them silently is a deformed room with nothing to
+      // say so.
+      expect(cubit.state.draft, isEmpty);
+      expect(cubit.state.guidance, contains('dropped'));
+      await cubit.close();
+    });
+
+    test('resuming twice does not start two sessions', () async {
+      final cubit = await started();
+      await cubit.pauseSession();
+      await cubit.resumeSession(viewWidth: 1080, viewHeight: 1800);
+
+      await cubit.resumeSession(viewWidth: 999, viewHeight: 999);
+
+      // The second is a no-op: `inactive` and `resumed` can arrive in quick
+      // succession, and two sessions cannot both hold the camera.
+      expect(capture.viewport, (1080, 1800));
+      await cubit.close();
+    });
+  });
+
+  group('floor or ceiling — spec §2, for rooms the furniture hides', () {
+    test('says which surface the room is being traced on', () async {
+      final cubit = await started();
+
+      capture.emit(frame(surface: CaptureSurface.ceiling));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.surface, CaptureSurface.ceiling);
+      expect(cubit.state.isTracingCeiling, isTrue);
+      // Nobody *chose* the ceiling — the first corner decided it — so it has
+      // to be on screen, or a room that locked overhead by accident is
+      // invisible until the plan comes out misshapen.
+      expect(cubit.state.guidance, contains('ceiling'));
+      await cubit.close();
+    });
+
+    test('a missed tap tells you to aim at the surface in use', () async {
+      final cubit = await started();
+      capture.emit(frame(surface: CaptureSurface.ceiling));
+      await Future<void>.delayed(Duration.zero);
+
+      // "Aim at the floor" is advice somebody tracing a cluttered store room's
+      // ceiling cannot act on.
+      await cubit.tapCorner(0.5, 0.5);
+
+      expect(cubit.state.guidance, contains('Aim at the ceiling'));
+      await cubit.close();
+    });
+
+    test('before anything is locked, both surfaces are offered', () async {
+      final cubit = await started();
+      capture.emit(frame(planeLocked: false, surface: CaptureSurface.none));
+      await Future<void>.delayed(Duration.zero);
+
+      // Offered up front rather than kept as a fix for a failure: the rooms it
+      // helps with are recognisable on sight, and discovering it after ten
+      // minutes of failing to tap a floor behind a filing cabinet is
+      // discovering it too late.
+      expect(cubit.state.guidance, contains('ceiling'));
+      await cubit.close();
+    });
+
+    test('undoing back to no corners releases the surface lock', () async {
+      final cubit = await started();
+      capture.hits.addAll([corner(0, 0), corner(3, 0)]);
+      await cubit.tapCorner(0.5, 0.5);
+      await cubit.tapCorner(0.5, 0.5);
+
+      await cubit.undoCorner();
+      // Still one corner in, so the room keeps the surface it started on.
+      expect(capture.planeResets, 0);
+
+      await cubit.undoCorner();
+
+      // **The whole recovery path for a room that locked to the wrong
+      // surface.** Without it the only way out is to leave the screen, and the
+      // lock is not something a contributor can see well enough to know that is
+      // what went wrong.
+      expect(capture.planeResets, 1);
+      await cubit.close();
+    });
+
+    test('abandoning a half-traced room releases the lock too', () async {
+      final cubit = await started();
+      capture.hits.add(corner(0, 0));
+      await cubit.tapCorner(0.5, 0.5);
+
+      await cubit.setMode(RoomCaptureMode.doors);
+
+      expect(cubit.state.draft, isEmpty);
+      expect(capture.planeResets, 1);
+      await cubit.close();
+    });
+
 
     test('allocates sequential codes across rooms', () async {
       final cubit = await started();
@@ -496,6 +653,24 @@ void main() {
         await cubit.close();
       },
     );
+
+    test('a corner is held to the locked surface and a door is not', () async {
+      final cubit = await twoRooms();
+      // Every tap so far has been a corner, and every one asked to be held to
+      // the room's surface — that is what rejects a corner placed on a desk.
+      expect(capture.tapLocks, everyElement(isTrue));
+
+      // A door is one independent point tapped in a doorway that may be a room
+      // away from the last one traced, on a plane ARCore has never merged with
+      // it. Holding doors to the lock rejected every doorway after the first —
+      // and with ceilings it would reject a door at the contributor's feet in a
+      // room traced overhead.
+      capture.hits.add(corner(4, 1.5));
+      await cubit.tapDoor(0.5, 0.8);
+
+      expect(capture.tapLocks.last, isFalse);
+      await cubit.close();
+    });
 
     test('standing in the doorway joins the two rooms either side', () async {
       final cubit = await twoRooms();
@@ -948,10 +1123,9 @@ void main() {
 
         // This is what makes a tap land where it was made: ARCore does the
         // camera-to-view mapping itself, given the view it is drawing into.
-        // Passing the camera image's own size and rotation 0 instead — which is
-        // what the first version did — is right only on a square screen held
-        // sideways.
-        expect(capture.viewport, (1080, 2400, 0));
+        // Passing the camera image's own size instead — which is what the
+        // first version did — is right only on a square screen held sideways.
+        expect(capture.viewport, (1080, 2400));
         await cubit.close();
       },
     );
@@ -959,13 +1133,9 @@ void main() {
     test('is updated when the view resizes or the device turns', () async {
       final cubit = await started();
 
-      await cubit.setViewport(
-        viewWidth: 2400,
-        viewHeight: 1080,
-        displayRotation: 1,
-      );
+      await cubit.setViewport(viewWidth: 2400, viewHeight: 1080);
 
-      expect(capture.viewport, (2400, 1080, 1));
+      expect(capture.viewport, (2400, 1080));
       await cubit.close();
     });
   });

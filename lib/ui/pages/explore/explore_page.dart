@@ -12,7 +12,6 @@ import '../../../services/injection_container.dart';
 import '../../widgets/app_search_field.dart';
 import '../../widgets/building_list_tile.dart';
 import '../../widgets/scan_capability_gate.dart';
-import '../scan/camera_flow.dart';
 
 /// Explore tab (Figma 7:372): search, category chips, nearby buildings,
 /// pinned "Scan a new building" CTA.
@@ -136,8 +135,16 @@ class _ExploreView extends StatelessWidget {
                   top: false,
                   child: Padding(
                     padding: const EdgeInsets.only(bottom: AppDimens.space12),
+                    // The building picker, not the old mock scan screen —
+                    // which is now "Detect environment" and has nothing to do
+                    // with mapping. A contributor standing in a building
+                    // nobody has listed has to be able to add it, which is
+                    // exactly what the picker is for.
                     child: ElevatedButton.icon(
-                      onPressed: () => openScanFlow(context),
+                      onPressed: () => context.pushNamed(
+                        RouteNames.mapBuilding,
+                        extra: RouteNames.buildingMapping,
+                      ),
                       icon: const Icon(PhosphorIconsBold.plus, size: 18),
                       label: const Text('Scan a new building'),
                     ),

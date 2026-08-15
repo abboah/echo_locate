@@ -70,48 +70,76 @@ enum CaptureTrackingIssue {
   };
 }
 
+/// Which horizontal surface a room is being traced against.
+///
+/// A furnished room hides its own floor — desks, stacked chairs and boxes sit
+/// in exactly the corners that define the shape — while the ceiling above those
+/// corners is almost always clear. Walls are vertical, so a ceiling corner is
+/// directly above its floor corner and the two differ only in height, which
+/// [ArCoreCaptureService.toPlan] drops. **Tracing a room around its ceiling
+/// therefore produces the same polygon**, which is what makes this a fallback
+/// rather than a second coordinate system.
+enum CaptureSurface {
+  /// Nothing locked yet — the first corner of a room decides.
+  none,
+  floor,
+  ceiling;
+
+  static CaptureSurface fromName(String? value) => switch (value) {
+    'floor' => CaptureSurface.floor,
+    'ceiling' => CaptureSurface.ceiling,
+    _ => CaptureSurface.none,
+  };
+
+  /// What to call it on screen, mid-sentence.
+  String get noun => switch (this) {
+    CaptureSurface.ceiling => 'ceiling',
+    _ => 'floor',
+  };
+
+  /// Where on a corner to aim, as a phrase.
+  ///
+  /// **Load-bearing wording, not decoration.** You tap the *surface* at the
+  /// corner — never the wall-to-wall junction itself, which is where ARCore's
+  /// plane boundaries are least reliable and where a hit-test most often
+  /// returns nothing or the wrong plane. See `SurfaceHitTester`. Dropping this
+  /// phrase leaves "tap the floor at each corner", which reads as an
+  /// instruction to tap the corner.
+  String get cornerAim => switch (this) {
+    CaptureSurface.ceiling => 'at the top of each corner',
+    _ => 'at the base of each corner',
+  };
+}
+
 /// One update from the capture session.
+///
+/// Arrives **on change**, not per frame: the camera reaches the screen as a
+/// texture Flutter composites directly, so this stream carries only the handful
+/// of facts the UI renders, and they change a few times a minute.
 class CaptureFrame {
   const CaptureFrame({
     required this.tracking,
     required this.issue,
     required this.planeLocked,
-    this.preview,
-    this.imageRotation = 90,
+    this.surface = CaptureSurface.none,
   });
 
   final CaptureTracking tracking;
   final CaptureTrackingIssue issue;
 
-  /// Whether a floor plane has been locked for the room being traced.
+  /// Whether a surface has been locked for the room being traced.
   final bool planeLocked;
 
-  /// JPEG bytes of the camera image, when this update carried one.
-  ///
-  /// Null on most updates: preview frames are throttled natively while ARCore
-  /// itself is still updated every frame. A UI holding the last non-null
-  /// preview is showing the right thing.
-  final Uint8List? preview;
-
-  /// Quarter turns the preview must be rotated to appear upright.
-  ///
-  /// The JPEG is the raw sensor image, which on essentially every phone is
-  /// landscape while the phone is held portrait. **Hit-testing does not depend
-  /// on this** — taps go through ARCore's own view geometry — so a wrong value
-  /// here makes the picture look odd without moving where corners land.
-  final int imageRotation;
+  /// Floor or ceiling, once the room's first corner has landed on one.
+  final CaptureSurface surface;
 
   bool get canCapture => tracking.canCapture;
-
-  /// For `RotatedBox`, which counts in quarter turns.
-  int get quarterTurns => (imageRotation ~/ 90) % 4;
 
   static CaptureFrame fromNative(Map<Object?, Object?> map) => CaptureFrame(
     tracking: CaptureTracking.fromName(map['trackingState'] as String?),
     issue: CaptureTrackingIssue.fromName(map['failureReason'] as String?),
     planeLocked: map['planeLocked'] as bool? ?? false,
-    preview: map['jpeg'] as Uint8List?,
-    imageRotation: map['imageRotation'] as int? ?? 90,
+    surface: CaptureSurface.fromName(map['surface'] as String?),
   );
 }
 
@@ -121,7 +149,13 @@ class CapturedCorner {
     required this.position,
     required this.confidence,
     this.anchorId,
+    this.surface = CaptureSurface.none,
   });
+
+  /// Which surface this corner was taken from. Every corner of one room shares
+  /// it — the hit tester rejects a tap on the other one — so it is really a
+  /// property of the room, kept here because this is where it arrives.
+  final CaptureSurface surface;
 
   /// ARCore's handle on this point, when the platform gave one.
   ///
@@ -179,8 +213,20 @@ class ArCoreCaptureService {
 
   Stream<CaptureFrame>? _frames;
   bool _running = false;
+  int? _textureId;
 
   bool get isRunning => _running;
+
+  /// The Flutter texture the camera is being drawn into, once [start] has
+  /// succeeded.
+  ///
+  /// The camera image never crosses the platform channel: ARCore renders into a
+  /// GL texture, native blits that into a surface Flutter registered, and the
+  /// screen shows it with a `Texture` widget. The earlier version shipped
+  /// throttled JPEG frames over the event channel instead, which cost enough
+  /// per frame — subsample, encode, marshal, decode — to starve the tracking
+  /// loop it shared a thread with.
+  int? get textureId => _textureId;
 
   /// ARCore world space to the plan frame.
   ///
@@ -222,31 +268,37 @@ class ArCoreCaptureService {
   ///
   /// Camera permission must already be granted — the existing camera primer
   /// flow stays the single place that asks for it.
-  /// Starts the session for a view [viewWidth] x [viewHeight] logical pixels
-  /// at [displayRotation] (Android's `Surface.ROTATION_*`, 0–3).
+  /// Starts the session for a view [viewWidth] x [viewHeight] device pixels.
   ///
-  /// **These are what make hit-testing correct.** ARCore is handed the view it
+  /// **This is what makes hit-testing correct.** ARCore is handed the view it
   /// is notionally drawing into and does the camera-to-view mapping itself —
   /// sensor orientation, aspect mismatch and all — so nothing here has to
   /// reason about how a landscape sensor image lands in a portrait widget.
-  /// Its mapping assumes the view shows the camera filling it and cropping the
-  /// overflow, which is why the preview uses `BoxFit.cover`; change one and the
-  /// other must change too.
+  ///
+  /// The display rotation is **not** passed: Flutter has no portable way to
+  /// report Android's `Surface.ROTATION_*`, so this used to send a hardcoded
+  /// zero that was right only in portrait. Native reads it from the activity
+  /// instead, on every call, which is both shorter and always right.
+  /// The same geometry drives the preview — the renderer asks ARCore for its
+  /// texture coordinates rather than deriving them — so the picture and the
+  /// taps are mapped by one calculation and cannot disagree.
+  ///
+  /// On success [textureId] is set to the Flutter texture the camera is being
+  /// drawn into.
   Future<String?> start({
     required int viewWidth,
     required int viewHeight,
-    int displayRotation = 0,
   }) async {
     if (_running) return null;
     if (!_platformSupported) return 'AR capture is Android-only';
 
     try {
-      await _method.invokeMethod<void>('start', {
+      final result = await _method.invokeMethod<Map<Object?, Object?>>('start', {
         'width': viewWidth,
         'height': viewHeight,
-        'rotation': displayRotation,
       });
       _running = true;
+      _textureId = (result?['textureId'] as num?)?.toInt();
       return null;
     } on PlatformException catch (e) {
       AppLogger.warn('AR capture start failed: ${e.code} ${e.message}');
@@ -267,18 +319,20 @@ class ArCoreCaptureService {
   /// Cheap, and skipping it leaves ARCore mapping taps against a viewport that
   /// no longer exists — which shows up as corners landing progressively further
   /// from the finger after a rotation, rather than as anything that looks like
-  /// an error.
+  /// an error. It also resizes the preview texture and rebuilds the GL surface
+  /// drawn into it, both of which are bound to the old size.
+  ///
+  /// A size change is the only signal Dart has that the device rotated, so this
+  /// is what prompts native to re-read the display rotation.
   Future<void> setViewport({
     required int viewWidth,
     required int viewHeight,
-    int displayRotation = 0,
   }) async {
     if (!_running) return;
     try {
       await _method.invokeMethod<void>('setViewport', {
         'width': viewWidth,
         'height': viewHeight,
-        'rotation': displayRotation,
       });
     } on PlatformException catch (e) {
       AppLogger.warn('Viewport update failed: ${e.message}');
@@ -290,6 +344,9 @@ class ArCoreCaptureService {
   Future<void> stop() async {
     if (!_running) return;
     _running = false;
+    // Cleared with the session: the texture is released natively, and a screen
+    // still holding the id would show a `Texture` widget over nothing.
+    _textureId = null;
     try {
       await _method.invokeMethod<void>('stop');
     } on PlatformException catch (e) {
@@ -306,15 +363,20 @@ class ArCoreCaptureService {
   /// same place.
   ///
   /// Null means the tap hit nothing usable — no tracking, no plane there, a
-  /// point beyond what ARCore has actually seen, or a surface that is not this
-  /// room's floor. That is a normal outcome, and the screen says "aim at the
-  /// floor" rather than reporting a failure.
-  Future<CapturedCorner?> hitTest(double u, double v) async {
+  /// point beyond what ARCore has actually seen, or a surface that is not the
+  /// one this room locked to. That is a normal outcome, and the screen says
+  /// where to aim rather than reporting a failure.
+  /// [lock] ties this tap to the surface the room is being traced on, and is
+  /// what rejects a corner placed on a desk. Doors pass false: a door is a
+  /// single point tapped in a doorway elsewhere in the building, on a plane
+  /// ARCore may never have merged with the last room's, and holding it to the
+  /// lock rejected every doorway after the first.
+  Future<CapturedCorner?> hitTest(double u, double v, {bool lock = true}) async {
     if (!_running) return null;
     try {
       final result = await _method.invokeMethod<Map<Object?, Object?>>(
         'hitTest',
-        {'u': u, 'v': v},
+        {'u': u, 'v': v, 'lock': lock},
       );
       if (result == null) return null;
 
@@ -326,6 +388,7 @@ class ArCoreCaptureService {
         position: toPlan(x, z),
         confidence: (result['confidence'] as num?)?.toDouble() ?? 1,
         anchorId: result['id'] as String?,
+        surface: CaptureSurface.fromName(result['surface'] as String?),
       );
     } on PlatformException catch (e) {
       AppLogger.warn('Hit test failed: ${e.message}');
@@ -372,6 +435,7 @@ class ArCoreCaptureService {
               ),
               confidence: corner.confidence,
               anchorId: corner.anchorId,
+              surface: corner.surface,
             )
           else
             corner,
@@ -420,7 +484,11 @@ class ArCoreCaptureService {
     }
   }
 
-  /// Tracking state and throttled preview frames.
+  /// Tracking state, pushed when it changes.
+  ///
+  /// Not per frame. The camera is a texture Flutter composites, so nothing here
+  /// is on the hot path, and native suppresses repeats — otherwise every screen
+  /// listening rebuilt at camera rate for facts that had not moved.
   ///
   /// Broadcast and cached, so the Bloc and any diagnostic view can both listen
   /// without starting two sessions.

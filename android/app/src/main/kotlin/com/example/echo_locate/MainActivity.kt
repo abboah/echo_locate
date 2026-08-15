@@ -26,7 +26,10 @@ class MainActivity : FlutterActivity() {
             ArCoreDepthHandler.EVENT_CHANNEL,
         ).setStreamHandler(handler)
 
-        val capture = RoomCaptureHandler(this)
+        // The renderer *is* the texture registry. Capture draws the camera into
+        // a texture it registers here rather than shipping frames to Dart, so
+        // it needs the registry, not just a messenger.
+        val capture = RoomCaptureHandler(this, flutterEngine.renderer)
         captureHandler = capture
 
         MethodChannel(

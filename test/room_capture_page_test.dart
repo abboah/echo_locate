@@ -29,6 +29,11 @@ class _FakeCapture implements ArCoreCaptureService {
   @override
   bool get isRunning => true;
 
+  /// Any id will do — the widget test only checks that a `Texture` is asked
+  /// for, since there is no platform side to render into one.
+  @override
+  int? get textureId => 7;
+
   @override
   Future<ArCoreAvailability> checkAvailability() async => availability;
 
@@ -36,14 +41,12 @@ class _FakeCapture implements ArCoreCaptureService {
   Future<String?> start({
     required int viewWidth,
     required int viewHeight,
-    int displayRotation = 0,
   }) async => null;
 
   @override
   Future<void> setViewport({
     required int viewWidth,
     required int viewHeight,
-    int displayRotation = 0,
   }) async {}
 
   @override
@@ -52,8 +55,11 @@ class _FakeCapture implements ArCoreCaptureService {
   }
 
   @override
-  Future<CapturedCorner?> hitTest(double u, double v) async =>
-      _index >= hits.length ? null : hits[_index++];
+  Future<CapturedCorner?> hitTest(
+    double u,
+    double v, {
+    bool lock = true,
+  }) async => _index >= hits.length ? null : hits[_index++];
 
   @override
   Future<List<CapturedCorner>> resolveCorners(
@@ -129,6 +135,35 @@ void main() {
 
     expect(find.byKey(RoomCaptureView.captureSurfaceKey), findsOneWidget);
     expect(find.textContaining('Tap the floor'), findsOneWidget);
+    // The camera is a texture Flutter composites, not decoded bytes. The
+    // earlier version drew `Image.memory` over throttled JPEG frames, which
+    // cost enough per frame — subsample, encode, marshal, decode — to starve
+    // the tracking loop it shared a thread with.
+    expect(find.byType(Texture), findsOneWidget);
+    expect(find.byType(Image), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a room traced overhead says so', (tester) async {
+    await tester.pumpWidget(host());
+    await tester.pumpAndSettle();
+
+    capture.emit(
+      const CaptureFrame(
+        tracking: CaptureTracking.tracking,
+        issue: CaptureTrackingIssue.none,
+        planeLocked: true,
+        surface: CaptureSurface.ceiling,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Nobody chose the ceiling — the first corner decided it — so a room that
+    // locked overhead by accident is otherwise invisible until the finished
+    // plan comes out misshapen, by which time the contributor has left the
+    // building.
+    expect(find.text('Ceiling'), findsOneWidget);
+    expect(find.textContaining('Tap the ceiling'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

@@ -35,7 +35,6 @@ import '../ui/pages/room_plan/room_plan_probe_page.dart';
 import '../ui/pages/room_trace/room_trace_page.dart';
 import '../ui/pages/primers/location_primer_page.dart';
 import '../ui/pages/profile/profile_page.dart';
-import '../ui/pages/scan/scan_page.dart';
 import '../ui/pages/shell/app_shell.dart';
 import '../ui/pages/acoustic/acoustic_page.dart';
 import '../ui/pages/sonar/sonar_page.dart';
@@ -131,12 +130,6 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const AssistPage(),
     ),
     GoRoute(
-      path: AppRoutes.scan,
-      name: RouteNames.scan,
-      parentNavigatorKey: _rootNavigatorKey,
-      builder: (context, state) => const ScanPage(),
-    ),
-    GoRoute(
       path: AppRoutes.sonar,
       name: RouteNames.sonar,
       parentNavigatorKey: _rootNavigatorKey,
@@ -204,7 +197,13 @@ final GoRouter appRouter = GoRouter(
       path: AppRoutes.mapBuilding,
       name: RouteNames.mapBuilding,
       parentNavigatorKey: _rootNavigatorKey,
-      builder: (context, state) => const MapBuildingPage(),
+      builder: (context, state) => MapBuildingPage(
+        // Where the chosen building goes next. "Map a building" means tracing;
+        // "Scan a space" means the per-floor hub, which is the only place
+        // "Scan in AR" exists. Without this the scan entry could never reach
+        // AR at all — every path out of the picker ended in tracing.
+        nextRoute: state.extra as String? ?? RouteNames.roomTrace,
+      ),
     ),
     GoRoute(
       path: AppRoutes.planTrace,

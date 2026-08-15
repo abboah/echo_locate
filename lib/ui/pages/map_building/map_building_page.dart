@@ -18,19 +18,33 @@ import '../../widgets/section_label.dart';
 /// be able to add it. Sending them to Explore only ever offers buildings
 /// somebody already thought of, which is the one case mapping is not for.
 class MapBuildingPage extends StatelessWidget {
-  const MapBuildingPage({super.key});
+  const MapBuildingPage({super.key, this.nextRoute = RouteNames.roomTrace});
+
+  /// Where a chosen building goes next.
+  ///
+  /// This picker serves two entry points that mean different things.
+  /// "Map a building" means tracing, and goes straight to the tool.
+  /// **"Scan a space" means AR**, and the only place "Scan in AR" exists is the
+  /// per-floor hub — so it goes there instead. Before this existed, every path
+  /// out of this screen ended in tracing, and the scan entry point could not
+  /// reach AR at all no matter what its card promised.
+  final String nextRoute;
 
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
       create: (_) => getIt<MapBuildingCubit>()..load(),
-      child: const _MapBuildingView(),
+      child: _MapBuildingView(nextRoute: nextRoute),
     );
   }
 }
 
 class _MapBuildingView extends StatelessWidget {
-  const _MapBuildingView();
+  const _MapBuildingView({required this.nextRoute});
+
+  final String nextRoute;
+
+  bool get _isScanning => nextRoute == RouteNames.buildingMapping;
 
   @override
   Widget build(BuildContext context) {
@@ -47,18 +61,15 @@ class _MapBuildingView extends StatelessWidget {
         }
         final created = state.created;
         if (state.status == MapBuildingStatus.created && created != null) {
-          // Straight into room tracing, replacing this screen: coming "back"
-          // to a chooser you have already answered is a dead end. The tool
-          // rather than the hub, because tracing the rooms off the posted
-          // plan *is* what mapping a building means now — the hub existed to
-          // choose between methods that are no longer equals.
+          // Replacing this screen rather than stacking on it: coming "back"
+          // to a chooser you have already answered is a dead end.
           //
-          // Deliberately no `extra`: roomTrace reads it as a floor id, and a
-          // building's name arriving there would be taken for one. Left off,
-          // the screen opens the building's first floor, which is where a
-          // building that has just been created has to start anyway.
+          // Deliberately no `extra`: roomTrace reads it as a floor id and the
+          // hub reads it as a building name, so anything passed here is
+          // misread by one of them. Left off, each opens its own sensible
+          // default, which for a building just created is its first floor.
           context.pushReplacementNamed(
-            RouteNames.roomTrace,
+            nextRoute,
             pathParameters: {'id': created.id},
           );
         }
@@ -84,8 +95,14 @@ class _MapBuildingView extends StatelessWidget {
                       ),
                       const SizedBox(height: AppDimens.space4),
                       Text(
-                        'Add it if nobody has yet. You will photograph the '
-                        'floor plan on its wall and trace its rooms onto it.',
+                        // Says what actually happens next, which now depends
+                        // on which card opened this picker.
+                        _isScanning
+                            ? 'Add it if nobody has yet. Then pick a floor and '
+                                  'walk its rooms in AR, tapping each corner.'
+                            : 'Add it if nobody has yet. You will photograph '
+                                  'the floor plan on its wall and trace its '
+                                  'rooms onto it.',
                         style: theme.textTheme.bodySmall,
                       ),
                       const SizedBox(height: AppDimens.space20),
@@ -95,7 +112,10 @@ class _MapBuildingView extends StatelessWidget {
                         const SectionLabel('Or add to one already listed'),
                         const SizedBox(height: AppDimens.space8),
                         for (final building in state.listed)
-                          _ListedBuilding(building: building),
+                          _ListedBuilding(
+                            building: building,
+                            nextRoute: nextRoute,
+                          ),
                       ],
                     ],
                   ),
@@ -208,9 +228,10 @@ class _NewBuildingFormState extends State<_NewBuildingForm> {
 }
 
 class _ListedBuilding extends StatelessWidget {
-  const _ListedBuilding({required this.building});
+  const _ListedBuilding({required this.building, required this.nextRoute});
 
   final Building building;
+  final String nextRoute;
 
   @override
   Widget build(BuildContext context) {
@@ -229,11 +250,12 @@ class _ListedBuilding extends StatelessWidget {
         size: 18,
         color: AppColors.coral,
       ),
-      // Straight at room tracing rather than the hub — see the note on the
-      // created-building branch above. No `extra`, for the same reason: that
-      // slot is a floor id here, not a name.
+      // Wherever this picker was opened to go — tracing for "Map a building",
+      // the per-floor hub for "Scan a space". No `extra`: that slot is a floor
+      // id for tracing and a building name for the hub, and guessing wrong
+      // sends one of them a string it will misread.
       onTap: () => context.pushReplacementNamed(
-        RouteNames.roomTrace,
+        nextRoute,
         pathParameters: {'id': building.id},
       ),
     );
