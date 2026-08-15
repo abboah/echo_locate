@@ -44,8 +44,10 @@ class CameraPrimerPage extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: AppDimens.space24),
-              Text('Allow camera access',
-                  style: theme.textTheme.headlineMedium),
+              Text(
+                'Allow camera access',
+                style: theme.textTheme.headlineMedium,
+              ),
               const SizedBox(height: AppDimens.space12),
               Text(
                 'EchoLocate uses your camera to detect obstacles and read '
@@ -69,10 +71,7 @@ class CameraPrimerPage extends StatelessWidget {
               ),
               TextButton(
                 onPressed: () => context.pop(),
-                child: Text(
-                  'Not now',
-                  style: theme.textTheme.labelLarge,
-                ),
+                child: Text('Not now', style: theme.textTheme.labelLarge),
               ),
             ],
           ),

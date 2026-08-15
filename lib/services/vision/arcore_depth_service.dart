@@ -16,11 +16,9 @@ import 'depth_frame.dart';
 /// large share of budget Android hardware (and on all iOS/desktop targets), so
 /// "cannot scan" is a normal state this app has to render, not an exception.
 class ArCoreDepthService {
-  ArCoreDepthService({
-    MethodChannel? methodChannel,
-    EventChannel? eventChannel,
-  })  : _method = methodChannel ?? const MethodChannel(_methodChannelName),
-        _events = eventChannel ?? const EventChannel(_eventChannelName);
+  ArCoreDepthService({MethodChannel? methodChannel, EventChannel? eventChannel})
+    : _method = methodChannel ?? const MethodChannel(_methodChannelName),
+      _events = eventChannel ?? const EventChannel(_eventChannelName);
 
   static const String _methodChannelName = 'echo_locate/arcore_depth';
   static const String _eventChannelName = 'echo_locate/arcore_depth/frames';
@@ -117,9 +115,11 @@ class ArCoreDepthService {
   Stream<DepthFrame> get frames {
     return _frames ??= _events
         .receiveBroadcastStream()
-        .map((event) => event is Map
-            ? DepthFrame.fromNative(event)
-            : const DepthFrame.untracked(DepthTrackingState.stopped))
+        .map(
+          (event) => event is Map
+              ? DepthFrame.fromNative(event)
+              : const DepthFrame.untracked(DepthTrackingState.stopped),
+        )
         .handleError((Object e) => AppLogger.warn('ARCore frame error: $e'))
         .asBroadcastStream();
   }

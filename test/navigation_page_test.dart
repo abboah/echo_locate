@@ -30,13 +30,13 @@ Future<void> settle(WidgetTester tester) async {
 }
 
 Widget page(ThemeData theme, {String? room}) => MaterialApp(
-      theme: theme,
-      home: NavigationPage(
-        buildingId: _library.id,
-        building: _library,
-        destinationRoomId: room,
-      ),
-    );
+  theme: theme,
+  home: NavigationPage(
+    buildingId: _library.id,
+    building: _library,
+    destinationRoomId: room,
+  ),
+);
 
 void main() {
   setUpAll(() {
@@ -74,8 +74,9 @@ void main() {
     }
   });
 
-  testWidgets('the floor switcher names only the floors that were walked',
-      (tester) async {
+  testWidgets('the floor switcher names only the floors that were walked', (
+    tester,
+  ) async {
     await tester.pumpWidget(page(AppTheme.light));
     await settle(tester);
 
@@ -92,10 +93,7 @@ void main() {
     await settle(tester);
 
     final ground = tester.widget<FloorPlanView>(find.byType(FloorPlanView));
-    expect(
-      ground.nodes.map((n) => n.landmarkId),
-      contains('lm-entrance'),
-    );
+    expect(ground.nodes.map((n) => n.landmarkId), contains('lm-entrance'));
 
     await tester.tap(find.text('2'));
     await settle(tester);
@@ -126,8 +124,9 @@ void main() {
     expect(plan.landmarkIds.last, 'lm-reading-hall');
   });
 
-  testWidgets('opening cold plans nothing until both ends are picked',
-      (tester) async {
+  testWidgets('opening cold plans nothing until both ends are picked', (
+    tester,
+  ) async {
     await tester.pumpWidget(page(AppTheme.light));
     await settle(tester);
 

@@ -79,6 +79,7 @@ dependencies:
   # directory, which Android evicts under pressure — so a plan re-opened days
   # later lost the backdrop its landmarks were tapped onto. Documents survive.
   path_provider: ^2.1.4
+  image_picker: ^1.2.3
 
 dev_dependencies:
   flutter_test:

@@ -64,31 +64,31 @@ abstract class RouteDraft with _$RouteDraft {
   /// Payload for the `save_route` RPC. Keys are snake_case to match the SQL
   /// function; the repository is the only place that knows this shape.
   Map<String, dynamic> toRpcPayload() => {
-        'building_id': buildingId,
-        'destination_room_id': destinationRoomId,
-        'landmarks': [
-          for (final l in landmarks)
-            {
-              'ref': l.ref,
-              'floor_id': l.floorId,
-              'kind': l.kind.name,
-              'label_text': l.labelText,
-              'display_name': l.displayName,
-              'aliases': l.aliases,
-              'room_id': l.roomId,
-            },
-        ],
-        'steps': [
-          for (final s in steps)
-            {
-              'seq': s.seq,
-              'from': s.fromRef,
-              'to': s.toRef,
-              'instruction': s.instruction,
-              'distance_m': s.distanceM,
-              'steps_recorded': s.stepsRecorded,
-              'turn_deg': s.turnDeg,
-            },
-        ],
-      };
+    'building_id': buildingId,
+    'destination_room_id': destinationRoomId,
+    'landmarks': [
+      for (final l in landmarks)
+        {
+          'ref': l.ref,
+          'floor_id': l.floorId,
+          'kind': l.kind.name,
+          'label_text': l.labelText,
+          'display_name': l.displayName,
+          'aliases': l.aliases,
+          'room_id': l.roomId,
+        },
+    ],
+    'steps': [
+      for (final s in steps)
+        {
+          'seq': s.seq,
+          'from': s.fromRef,
+          'to': s.toRef,
+          'instruction': s.instruction,
+          'distance_m': s.distanceM,
+          'steps_recorded': s.stepsRecorded,
+          'turn_deg': s.turnDeg,
+        },
+    ],
+  };
 }

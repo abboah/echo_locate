@@ -55,8 +55,16 @@ class PlanPoint extends Equatable {
   }
 
   @override
-  List<Object?> get props =>
-      [ref, u, v, floorId, kind, labelText, displayName, roomId];
+  List<Object?> get props => [
+    ref,
+    u,
+    v,
+    floorId,
+    kind,
+    labelText,
+    displayName,
+    roomId,
+  ];
 }
 
 /// A join between two placed points, in plan units.
@@ -129,8 +137,10 @@ class PlanTraceState extends Equatable {
   /// What is drawn and tapped: this floor only. A corridor on the floor above
   /// is still in [points], but painting it over this floor's plan would be a
   /// lie about where it is.
-  List<PlanPoint> get pointsOnFloor =>
-      [for (final point in points) if (point.floorId == floorId) point];
+  List<PlanPoint> get pointsOnFloor => [
+    for (final point in points)
+      if (point.floorId == floorId) point,
+  ];
 
   /// Corridors with both ends on this floor. A stairwell join leaves the floor
   /// and has nothing sensible to draw here, so it stays in the data and off
@@ -175,33 +185,32 @@ class PlanTraceState extends Equatable {
     String? selectedRef,
     bool clearSelection = false,
     String? error,
-  }) =>
-      PlanTraceState(
-        stage: stage ?? this.stage,
-        buildingId: buildingId ?? this.buildingId,
-        floorId: floorId ?? this.floorId,
-        photos: photos ?? this.photos,
-        cameraReady: cameraReady ?? this.cameraReady,
-        floors: floors ?? this.floors,
-        points: points ?? this.points,
-        links: links ?? this.links,
-        selectedRef: clearSelection ? null : (selectedRef ?? this.selectedRef),
-        // Never sticky: a message from a refused save must not outlive the
-        // save that worked.
-        error: error,
-      );
+  }) => PlanTraceState(
+    stage: stage ?? this.stage,
+    buildingId: buildingId ?? this.buildingId,
+    floorId: floorId ?? this.floorId,
+    photos: photos ?? this.photos,
+    cameraReady: cameraReady ?? this.cameraReady,
+    floors: floors ?? this.floors,
+    points: points ?? this.points,
+    links: links ?? this.links,
+    selectedRef: clearSelection ? null : (selectedRef ?? this.selectedRef),
+    // Never sticky: a message from a refused save must not outlive the
+    // save that worked.
+    error: error,
+  );
 
   @override
   List<Object?> get props => [
-        stage,
-        buildingId,
-        floorId,
-        photos,
-        cameraReady,
-        floors,
-        points,
-        links,
-        selectedRef,
-        error,
-      ];
+    stage,
+    buildingId,
+    floorId,
+    photos,
+    cameraReady,
+    floors,
+    points,
+    links,
+    selectedRef,
+    error,
+  ];
 }

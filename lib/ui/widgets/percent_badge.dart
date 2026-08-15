@@ -16,7 +16,9 @@ class PercentBadge extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final highlighted = percent >= 50;
     final background = highlighted
-        ? (isDark ? AppColors.coral.withValues(alpha: 0.18) : AppColors.coralSoft)
+        ? (isDark
+              ? AppColors.coral.withValues(alpha: 0.18)
+              : AppColors.coralSoft)
         : Theme.of(context).colorScheme.surface;
     final foreground = highlighted
         ? AppColors.coral
@@ -34,9 +36,9 @@ class PercentBadge extends StatelessWidget {
       child: Text(
         '$percent%',
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: foreground,
-              fontWeight: FontWeight.w700,
-            ),
+          color: foreground,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }

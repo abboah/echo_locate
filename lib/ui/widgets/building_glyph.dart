@@ -12,12 +12,12 @@ class BuildingGlyph extends StatelessWidget {
   final double size;
 
   static IconData iconFor(String glyph) => switch (glyph) {
-        'door' => PhosphorIconsRegular.doorOpen,
-        'home' => PhosphorIconsRegular.houseLine,
-        'hall' => PhosphorIconsRegular.bank,
-        'book' => PhosphorIconsRegular.books,
-        _ => PhosphorIconsRegular.buildings,
-      };
+    'door' => PhosphorIconsRegular.doorOpen,
+    'home' => PhosphorIconsRegular.houseLine,
+    'hall' => PhosphorIconsRegular.bank,
+    'book' => PhosphorIconsRegular.books,
+    _ => PhosphorIconsRegular.buildings,
+  };
 
   @override
   Widget build(BuildContext context) {

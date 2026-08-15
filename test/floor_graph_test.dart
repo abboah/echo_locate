@@ -7,32 +7,30 @@ import 'package:flutter_test/flutter_test.dart';
 WalkRoute routeOf(
   String id,
   List<({String from, String to, double distanceM, int turnDeg})> legs,
-) =>
-    WalkRoute(
-      id: id,
-      buildingId: 'b1',
-      startLandmarkId: legs.isEmpty ? '' : legs.first.from,
-      destinationRoomId: 'room-$id',
-      steps: [
-        for (var i = 0; i < legs.length; i++)
-          RouteStep(
-            seq: i + 1,
-            fromLandmarkId: legs[i].from,
-            toLandmarkId: legs[i].to,
-            instruction: 'walk to ${legs[i].to}',
-            distanceM: legs[i].distanceM,
-            turnDeg: legs[i].turnDeg,
-          ),
-      ],
-    );
+) => WalkRoute(
+  id: id,
+  buildingId: 'b1',
+  startLandmarkId: legs.isEmpty ? '' : legs.first.from,
+  destinationRoomId: 'room-$id',
+  steps: [
+    for (var i = 0; i < legs.length; i++)
+      RouteStep(
+        seq: i + 1,
+        fromLandmarkId: legs[i].from,
+        toLandmarkId: legs[i].to,
+        instruction: 'walk to ${legs[i].to}',
+        distanceM: legs[i].distanceM,
+        turnDeg: legs[i].turnDeg,
+      ),
+  ],
+);
 
 ({String from, String to, double distanceM, int turnDeg}) leg(
   String from,
   String to, {
   double distanceM = 10,
   int turnDeg = 0,
-}) =>
-    (from: from, to: to, distanceM: distanceM, turnDeg: turnDeg);
+}) => (from: from, to: to, distanceM: distanceM, turnDeg: turnDeg);
 
 void main() {
   test('no routes make an empty graph', () {
@@ -44,15 +42,15 @@ void main() {
 
   test('one route becomes nodes and weighted edges', () {
     final graph = FloorGraph.merge([
-      routeOf('r1', [leg('a', 'b', distanceM: 10), leg('b', 'c', distanceM: 18)]),
+      routeOf('r1', [
+        leg('a', 'b', distanceM: 10),
+        leg('b', 'c', distanceM: 18),
+      ]),
     ]);
 
     expect(graph.nodes.keys, containsAll(['a', 'b', 'c']));
     expect(graph.edges.length, 2);
-    expect(
-      graph.edges.firstWhere((e) => e.toId == 'c').distanceM,
-      18,
-    );
+    expect(graph.edges.firstWhere((e) => e.toId == 'c').distanceM, 18);
   });
 
   test('edges are walkable in both directions', () {
@@ -171,36 +169,32 @@ void main() {
     TracedPlan planOf(
       List<TracedNode> nodes,
       List<({String from, String to})> edges,
-    ) =>
-        TracedPlan(
-          buildingId: 'b1',
-          nodes: nodes,
-          edges: [
-            for (final e in edges) TracedEdge(fromRef: e.from, toRef: e.to),
-          ],
+    ) => TracedPlan(
+      buildingId: 'b1',
+      nodes: nodes,
+      edges: [for (final e in edges) TracedEdge(fromRef: e.from, toRef: e.to)],
+    );
+
+    test(
+      'keeps the coordinates that were tapped, without laying anything out',
+      () {
+        final graph = FloorGraph.fromPlan(
+          planOf(
+            [nodeOf('a', 0, 0), nodeOf('b', 3, 4)],
+            [(from: 'a', to: 'b')],
+          ),
         );
 
-    test('keeps the coordinates that were tapped, without laying anything out',
-        () {
-      final graph = FloorGraph.fromPlan(
-        planOf(
-          [nodeOf('a', 0, 0), nodeOf('b', 3, 4)],
-          [(from: 'a', to: 'b')],
-        ),
-      );
-
-      expect(graph.nodeOf('a'), isNotNull);
-      expect(graph.nodeOf('b')!.x, closeTo(3, 0.001));
-      expect(graph.nodeOf('b')!.y, closeTo(4, 0.001));
-    });
+        expect(graph.nodeOf('a'), isNotNull);
+        expect(graph.nodeOf('b')!.x, closeTo(3, 0.001));
+        expect(graph.nodeOf('b')!.y, closeTo(4, 0.001));
+      },
+    );
 
     test('an edge is as long as the gap between the two ends it was drawn '
         'between', () {
       final graph = FloorGraph.fromPlan(
-        planOf(
-          [nodeOf('a', 0, 0), nodeOf('b', 3, 4)],
-          [(from: 'a', to: 'b')],
-        ),
+        planOf([nodeOf('a', 0, 0), nodeOf('b', 3, 4)], [(from: 'a', to: 'b')]),
       );
 
       // 3-4-5: the length is geometry, never a separately stored number that
@@ -361,13 +355,13 @@ void main() {
 
   group('floors', () {
     Landmark mark(String id, String floorId) => Landmark(
-          id: id,
-          buildingId: 'b1',
-          floorId: floorId,
-          kind: LandmarkKind.sign,
-          labelText: id.toUpperCase(),
-          displayName: id,
-        );
+      id: id,
+      buildingId: 'b1',
+      floorId: floorId,
+      kind: LandmarkKind.sign,
+      labelText: id.toUpperCase(),
+      displayName: id,
+    );
 
     test('a climb does not displace the upper floor along the corridor', () {
       // The stairs leg is real distance, but it is vertical. Spending it

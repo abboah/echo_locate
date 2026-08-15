@@ -65,8 +65,14 @@ class GraphEdge extends Equatable {
       origin == fromId ? instruction : reverseInstruction;
 
   @override
-  List<Object?> get props =>
-      [fromId, toId, distanceM, instruction, reverseInstruction, turnDeg];
+  List<Object?> get props => [
+    fromId,
+    toId,
+    distanceM,
+    instruction,
+    reverseInstruction,
+    turnDeg,
+  ];
 
   @override
   String toString() => 'GraphEdge($fromId <-> $toId, ${distanceM}m)';
@@ -129,7 +135,7 @@ class MergeResult {
 /// they are the numbers that must be right.
 class FloorGraph {
   FloorGraph({required this.nodes, required this.edges, this.metric = true})
-      : _adjacency = _buildAdjacency(edges);
+    : _adjacency = _buildAdjacency(edges);
 
   /// Landmark id → position, relative to the first route's start.
   final Map<String, MapNode> nodes;
@@ -151,10 +157,10 @@ class FloorGraph {
   static const FloorGraph empty = FloorGraph._empty();
 
   const FloorGraph._empty()
-      : nodes = const {},
-        edges = const [],
-        metric = true,
-        _adjacency = const {};
+    : nodes = const {},
+      edges = const [],
+      metric = true,
+      _adjacency = const {};
 
   bool get isEmpty => nodes.isEmpty;
 
@@ -174,10 +180,10 @@ class FloorGraph {
   /// Edges with both ends on [floorId]. A stairs leg is deliberately excluded:
   /// drawing it on either floor would imply a corridor that is not there.
   Iterable<GraphEdge> edgesOn(String floorId) => edges.where((e) {
-        final from = nodes[e.fromId];
-        final to = nodes[e.toId];
-        return from?.floorId == floorId && to?.floorId == floorId;
-      });
+    final from = nodes[e.fromId];
+    final to = nodes[e.toId];
+    return from?.floorId == floorId && to?.floorId == floorId;
+  });
 
   Iterable<GraphEdge> edgesFrom(String landmarkId) =>
       edges.where((e) => e.touches(landmarkId));
@@ -214,8 +220,7 @@ class FloorGraph {
   static FloorGraph merge(
     List<WalkRoute> routes, [
     Map<String, Landmark> landmarks = const {},
-  ]) =>
-      mergeWithDiagnostics(routes, landmarks).graph;
+  ]) => mergeWithDiagnostics(routes, landmarks).graph;
 
   /// [merge], keeping the error measurements it computes along the way.
   ///
@@ -280,8 +285,7 @@ class FloorGraph {
       var bestOverlap = 0;
 
       for (final index in pending) {
-        final overlap = frames[index]
-            .nodes
+        final overlap = frames[index].nodes
             .map((n) => n.landmarkId)
             .toSet()
             .where(placements.containsKey)
@@ -462,7 +466,8 @@ class FloorGraph {
       final pivotPlaced = placedPosition(pivot.landmarkId)!;
       final placedSpan = pivotPlaced.distanceTo(anchorPlaced);
       if (placedSpan > 0.5) {
-        rotation = math.atan2(
+        rotation =
+            math.atan2(
               pivotPlaced.y - anchorPlaced.y,
               pivotPlaced.x - anchorPlaced.x,
             ) -
@@ -520,7 +525,8 @@ class FloorGraph {
         GraphEdge(
           fromId: entry.value.from,
           toId: entry.value.to,
-          distanceM: distances[entry.key]!.reduce((a, b) => a + b) /
+          distanceM:
+              distances[entry.key]!.reduce((a, b) => a + b) /
               distances[entry.key]!.length,
           instruction: wording['${entry.value.from} ${entry.value.to}'],
           reverseInstruction: wording['${entry.value.to} ${entry.value.from}'],

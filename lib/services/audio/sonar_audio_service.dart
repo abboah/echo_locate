@@ -95,13 +95,13 @@ class SonarAudioService {
     ReverbAnalyzer reverbAnalyzer = const ReverbAnalyzer(),
     Box<dynamic>? calibrationBox,
     AudioArbiter? arbiter,
-  })  : _arbiter = arbiter,
-        _calibrationBox = calibrationBox,
-        _params = params,
-        _generator = generator,
-        _correlator = correlator,
-        _reverbAnalyzer = reverbAnalyzer,
-        _calculator = calculator;
+  }) : _arbiter = arbiter,
+       _calibrationBox = calibrationBox,
+       _params = params,
+       _generator = generator,
+       _correlator = correlator,
+       _reverbAnalyzer = reverbAnalyzer,
+       _calculator = calculator;
 
   final ChirpParams _params;
   final ChirpGenerator _generator;
@@ -131,12 +131,13 @@ class SonarAudioService {
 
   /// Round-trip flight time of the furthest echo still worth recording.
   Duration get _maxEchoDelay => Duration(
-        microseconds: (2 *
+    microseconds:
+        (2 *
                 _calculator.maxRangeMeters /
                 _calculator.speedOfSoundMps *
                 Duration.microsecondsPerSecond)
             .round(),
-      );
+  );
 
   /// Settle time after the recorder's first chunk arrives, before the chirp
   /// fires. One chunk is ~80ms on this hardware; this keeps the chirp off the
@@ -211,7 +212,8 @@ class SonarAudioService {
   /// Subtracting it would then corrupt every reading rather than clean it,
   /// and silently, so a profile whose fingerprint does not match is
   /// discarded instead of used.
-  String get _paramsFingerprint => '${_params.startFrequencyHz}-'
+  String get _paramsFingerprint =>
+      '${_params.startFrequencyHz}-'
       '${_params.endFrequencyHz}-${_params.sampleRate}-'
       '${_params.duration.inMicroseconds}-$pulseCount-$_pulseGapSamples';
 
@@ -328,12 +330,16 @@ class SonarAudioService {
       (await _capture()).response;
 
   Future<({Float64List? response, ReverbFailure? failure})> _capture() async {
-    if (!_ready) return (response: null, failure: ReverbFailure.audioUnavailable);
+    if (!_ready) {
+      return (response: null, failure: ReverbFailure.audioUnavailable);
+    }
     if (_busy) return (response: null, failure: ReverbFailure.audioBusy);
 
     final lease = await _arbiter?.acquire(AudioUse.ranging);
     if (_arbiter != null && lease == null) {
-      AppLogger.debug('SONAR-REVERB skipped :: audio in use by something louder');
+      AppLogger.debug(
+        'SONAR-REVERB skipped :: audio in use by something louder',
+      );
       return (response: null, failure: ReverbFailure.audioBusy);
     }
 
@@ -515,8 +521,7 @@ class SonarAudioService {
 
     results.sort((a, b) => a.distanceMeters.compareTo(b.distanceMeters));
     final median = results[results.length ~/ 2];
-    final spread =
-        results.last.distanceMeters - results.first.distanceMeters;
+    final spread = results.last.distanceMeters - results.first.distanceMeters;
     AppLogger.info(
       'SONAR-MEASURE median=${median.distanceMeters.toStringAsFixed(3)}m '
       'from ${results.length}/$sweeps sweeps '
@@ -560,10 +565,10 @@ class SonarAudioService {
         debug == null
             ? 'SONAR-PING no echo :: no in-range peak at all'
             : 'SONAR-PING no echo :: best candidate '
-                'distance=${debug.distanceMeters.toStringAsFixed(3)}m '
-                'peakToNoiseRatio=${debug.peakToNoiseRatio.toStringAsFixed(2)} '
-                '(gate=${_calculator.noiseGateRatio}) '
-                'clutter=${_clutterProfile == null ? "none" : "applied"}',
+                  'distance=${debug.distanceMeters.toStringAsFixed(3)}m '
+                  'peakToNoiseRatio=${debug.peakToNoiseRatio.toStringAsFixed(2)} '
+                  '(gate=${_calculator.noiseGateRatio}) '
+                  'clutter=${_clutterProfile == null ? "none" : "applied"}',
       );
       return null;
     }
@@ -772,7 +777,8 @@ class SonarAudioService {
       await Future<void>.delayed(_captureSettle);
 
       final trainDuration = Duration(
-        microseconds: (_params.duration.inMicroseconds * pulseCount) +
+        microseconds:
+            (_params.duration.inMicroseconds * pulseCount) +
             (pulseGap.inMicroseconds * (pulseCount - 1)),
       );
       // One sweep owns this much of the timeline: long enough for its train to
@@ -911,8 +917,9 @@ class SonarAudioService {
     var remaining = total;
     while (remaining > Duration.zero) {
       if (lease.isCancelled) return false;
-      final slice =
-          remaining < _cancelPollInterval ? remaining : _cancelPollInterval;
+      final slice = remaining < _cancelPollInterval
+          ? remaining
+          : _cancelPollInterval;
       await Future<void>.delayed(slice);
       remaining -= slice;
     }
@@ -921,7 +928,8 @@ class SonarAudioService {
 
   /// Samples of audio spanned by [elapsed].
   int _samplesSince(Duration elapsed) =>
-      elapsed.inMicroseconds * _params.sampleRate ~/
+      elapsed.inMicroseconds *
+      _params.sampleRate ~/
       Duration.microsecondsPerSecond;
 
   /// Derives this device's audio latencies from a capture that just happened,
@@ -955,7 +963,8 @@ class SonarAudioService {
     final observed = SonarLatencyProfile(
       recorderStartup: recorderStartup,
       playbackLatency: Duration(
-        microseconds: breakthroughSample *
+        microseconds:
+            breakthroughSample *
             Duration.microsecondsPerSecond ~/
             _params.sampleRate,
       ),
@@ -979,8 +988,8 @@ class SonarAudioService {
             recorderStartup: observed.recorderStartup,
             playbackLatency:
                 observed.playbackLatency > _latency!.playbackLatency
-                    ? observed.playbackLatency
-                    : _latency!.playbackLatency,
+                ? observed.playbackLatency
+                : _latency!.playbackLatency,
           );
 
     final changed = merged.playbackLatency != _latency?.playbackLatency;
@@ -1021,5 +1030,4 @@ class SonarAudioService {
     final rms = math.sqrt(sumSquares / samples.length);
     return 'peak=${peak.toStringAsFixed(3)} rms=${rms.toStringAsFixed(4)}';
   }
-
 }

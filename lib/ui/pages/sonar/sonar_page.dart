@@ -66,8 +66,11 @@ class _SonarView extends StatelessWidget {
                                 child: const SizedBox(
                                   width: 42,
                                   height: 42,
-                                  child: Icon(PhosphorIconsRegular.x,
-                                      color: Colors.white, size: 20),
+                                  child: Icon(
+                                    PhosphorIconsRegular.x,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
                                 ),
                               ),
                             ),
@@ -125,8 +128,7 @@ class _StatusPill extends StatelessWidget {
             decoration: BoxDecoration(
               color: switch (state.status) {
                 SonarStatus.measuring ||
-                SonarStatus.calibrating =>
-                  AppColors.coral,
+                SonarStatus.calibrating => AppColors.coral,
                 _ => Colors.white54,
               },
               shape: BoxShape.circle,
@@ -209,8 +211,9 @@ class _SonarSheet extends StatelessWidget {
               const SizedBox(height: AppDimens.space4),
               Text(
                 state.error!,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: AppColors.error),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: AppColors.error,
+                ),
               ),
             ],
             if (!state.isCalibrated) ...[
@@ -234,17 +237,17 @@ class _SonarSheet extends StatelessWidget {
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: canMeasure
-                        ? () => context
-                            .read<SonarBloc>()
-                            .add(const SonarCalibrateRequested())
+                        ? () => context.read<SonarBloc>().add(
+                            const SonarCalibrateRequested(),
+                          )
                         : null,
                     icon: const Icon(PhosphorIconsRegular.crosshair, size: 20),
                     label: Text(
                       state.status == SonarStatus.calibrating
                           ? 'Calibrating…'
                           : state.isCalibrated
-                              ? 'Recalibrate'
-                              : 'Calibrate',
+                          ? 'Recalibrate'
+                          : 'Calibrate',
                     ),
                   ),
                 ),
@@ -252,9 +255,9 @@ class _SonarSheet extends StatelessWidget {
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: canMeasure
-                        ? () => context
-                            .read<SonarBloc>()
-                            .add(const SonarMeasureRequested())
+                        ? () => context.read<SonarBloc>().add(
+                            const SonarMeasureRequested(),
+                          )
                         : null,
                     icon: const Icon(PhosphorIconsFill.broadcast, size: 20),
                     label: Text(

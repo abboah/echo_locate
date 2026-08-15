@@ -918,6 +918,88 @@ begin
 end $$;
 
 -- ===========================================================================
+-- 8b · Traced room plans
+--
+-- Room *areas* traced off a building's posted floor plan: polygons, what each
+-- room is for, and the doors between them. What the areas buy is the one
+-- sentence a point-based map cannot produce — "your destination is the second
+-- door on your left" — which needs to know which wall a door is in and what
+-- else is on that wall.
+--
+-- One jsonb document per floor: written and read whole, never queried into, so
+-- one row makes "replace this floor" a single statement that cannot half-apply.
+-- Per floor rather than per building because each floor has its own board on
+-- its own wall and is traced in its own sitting.
+--
+-- NOTE: `traced_plans` (migration 20260810090000) is NOT in this file and was
+-- already missing before this section was added. Anyone setting a project up
+-- from setup_all.sql alone gets no landmark-tracing table. Worth reconciling.
+-- ===========================================================================
+
+create table if not exists public.room_plans (
+  building_id text not null
+    references public.buildings (id) on delete cascade,
+  floor_id    text        not null,
+  plan        jsonb       not null,
+  traced_by   uuid        references auth.users (id) on delete set null,
+  updated_at  timestamptz not null default now(),
+  primary key (building_id, floor_id)
+);
+
+create index if not exists room_plans_building_idx
+  on public.room_plans (building_id);
+
+alter table public.room_plans enable row level security;
+
+drop policy if exists room_plans_read on public.room_plans;
+create policy room_plans_read
+  on public.room_plans for select
+  using (true);
+
+drop policy if exists room_plans_write on public.room_plans;
+create policy room_plans_write
+  on public.room_plans for all
+  using (public.can_edit_building(building_id))
+  with check (public.can_edit_building(building_id));
+
+drop trigger if exists room_plans_touch on public.room_plans;
+create trigger room_plans_touch
+  before update on public.room_plans
+  for each row execute function public.touch_updated_at();
+
+create or replace function public.save_room_plan(p_plan jsonb)
+returns jsonb
+language plpgsql
+security invoker
+set search_path = public as $$
+declare
+  v_building text := p_plan ->> 'buildingId';
+  v_floor    text := p_plan ->> 'floorId';
+begin
+  if v_building is null or v_building = '' then
+    raise exception 'save_room_plan: buildingId is required';
+  end if;
+
+  if v_floor is null or v_floor = '' then
+    raise exception 'save_room_plan: floorId is required';
+  end if;
+
+  if jsonb_array_length(coalesce(p_plan -> 'rooms', '[]'::jsonb)) = 0 then
+    raise exception 'save_room_plan: a plan needs at least one room';
+  end if;
+
+  insert into public.room_plans (building_id, floor_id, plan, traced_by)
+  values (v_building, v_floor, p_plan, auth.uid())
+  on conflict (building_id, floor_id) do update
+    set plan       = excluded.plan,
+        traced_by  = excluded.traced_by,
+        updated_at = now();
+
+  return p_plan;
+end;
+$$;
+
+-- ===========================================================================
 -- 9 · Verification
 --
 -- The seed blocks above bail out quietly when a prerequisite is missing, and
@@ -987,7 +1069,14 @@ from (
            where schemaname = 'public' and rowsecurity
              and tablename in ('profiles','buildings','floors','rooms',
                                'building_contributors','saved_maps',
-                               'landmarks','routes','route_steps'))::text,
-         '9'
+                               'landmarks','routes','route_steps',
+                               'room_plans'))::text,
+         '10'
+  union all
+  select 10, 'save_room_plan function',
+         (select count(*) from pg_proc p
+            join pg_namespace n on n.oid = p.pronamespace
+           where p.proname = 'save_room_plan' and n.nspname = 'public')::text,
+         '1'
 ) t
 order by t.ord;

@@ -20,8 +20,9 @@ Map<Object?, Object?> _payload({
     'grid': cells,
     'minMillimeters': valid.isEmpty ? 0 : valid.reduce((a, b) => a < b ? a : b),
     'maxMillimeters': valid.isEmpty ? 0 : valid.reduce((a, b) => a > b ? a : b),
-    'meanMillimeters':
-        valid.isEmpty ? 0 : valid.reduce((a, b) => a + b) ~/ valid.length,
+    'meanMillimeters': valid.isEmpty
+        ? 0
+        : valid.reduce((a, b) => a + b) ~/ valid.length,
     'validSamples': valid.length,
     'timestampNs': 123456789,
     'translation': [1.0, 2.0, 3.0],
@@ -32,33 +33,54 @@ Map<Object?, Object?> _payload({
 void main() {
   group('ArCoreAvailability', () {
     test('maps every native string the handler can emit', () {
-      expect(ArCoreAvailability.fromNative('supported'),
-          ArCoreAvailability.supported);
-      expect(ArCoreAvailability.fromNative('supportedNotInstalled'),
-          ArCoreAvailability.supportedNotInstalled);
-      expect(ArCoreAvailability.fromNative('supportedApkTooOld'),
-          ArCoreAvailability.supportedApkTooOld);
-      expect(ArCoreAvailability.fromNative('unsupported'),
-          ArCoreAvailability.unsupported);
       expect(
-          ArCoreAvailability.fromNative('checking'), ArCoreAvailability.checking);
+        ArCoreAvailability.fromNative('supported'),
+        ArCoreAvailability.supported,
+      );
+      expect(
+        ArCoreAvailability.fromNative('supportedNotInstalled'),
+        ArCoreAvailability.supportedNotInstalled,
+      );
+      expect(
+        ArCoreAvailability.fromNative('supportedApkTooOld'),
+        ArCoreAvailability.supportedApkTooOld,
+      );
+      expect(
+        ArCoreAvailability.fromNative('unsupported'),
+        ArCoreAvailability.unsupported,
+      );
+      expect(
+        ArCoreAvailability.fromNative('checking'),
+        ArCoreAvailability.checking,
+      );
     });
 
-    test('unrecognised and null values fall back to unknown, not supported', () {
-      // Failing closed matters: treating an unparsed value as supported would
-      // start a session on a device that cannot run one.
-      expect(ArCoreAvailability.fromNative('error'), ArCoreAvailability.unknown);
-      expect(ArCoreAvailability.fromNative('timedOut'),
-          ArCoreAvailability.unknown);
-      expect(ArCoreAvailability.fromNative(null), ArCoreAvailability.unknown);
-      expect(ArCoreAvailability.fromNative('nonsense'),
-          ArCoreAvailability.unknown);
-    });
+    test(
+      'unrecognised and null values fall back to unknown, not supported',
+      () {
+        // Failing closed matters: treating an unparsed value as supported would
+        // start a session on a device that cannot run one.
+        expect(
+          ArCoreAvailability.fromNative('error'),
+          ArCoreAvailability.unknown,
+        );
+        expect(
+          ArCoreAvailability.fromNative('timedOut'),
+          ArCoreAvailability.unknown,
+        );
+        expect(ArCoreAvailability.fromNative(null), ArCoreAvailability.unknown);
+        expect(
+          ArCoreAvailability.fromNative('nonsense'),
+          ArCoreAvailability.unknown,
+        );
+      },
+    );
 
     test('only "supported" is ready; install/update states are user-fixable', () {
       expect(ArCoreAvailability.supported.isReady, isTrue);
-      for (final other in ArCoreAvailability.values
-          .where((v) => v != ArCoreAvailability.supported)) {
+      for (final other in ArCoreAvailability.values.where(
+        (v) => v != ArCoreAvailability.supported,
+      )) {
         expect(other.isReady, isFalse, reason: '$other must not be ready');
       }
 

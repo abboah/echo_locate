@@ -11,25 +11,22 @@ RouteStep leg(
   required double distanceM,
   int turnDeg = 0,
   int seq = 1,
-}) =>
-    RouteStep(
-      seq: seq,
-      fromLandmarkId: from,
-      toLandmarkId: to,
-      instruction: 'walk',
-      distanceM: distanceM,
-      turnDeg: turnDeg,
-    );
+}) => RouteStep(
+  seq: seq,
+  fromLandmarkId: from,
+  toLandmarkId: to,
+  instruction: 'walk',
+  distanceM: distanceM,
+  turnDeg: turnDeg,
+);
 
 WalkRoute routeOf(List<RouteStep> steps) => WalkRoute(
-      id: 'r1',
-      buildingId: 'b1',
-      startLandmarkId: steps.isEmpty ? '' : steps.first.fromLandmarkId,
-      destinationRoomId: 'room',
-      steps: [
-        for (var i = 0; i < steps.length; i++) steps[i].copyWith(seq: i + 1),
-      ],
-    );
+  id: 'r1',
+  buildingId: 'b1',
+  startLandmarkId: steps.isEmpty ? '' : steps.first.fromLandmarkId,
+  destinationRoomId: 'room',
+  steps: [for (var i = 0; i < steps.length; i++) steps[i].copyWith(seq: i + 1)],
+);
 
 void main() {
   test('a route with no legs lays out nothing', () {

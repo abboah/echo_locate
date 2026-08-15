@@ -23,25 +23,25 @@ class ExploreBloc extends Bloc<ExploreEvent, ExploreState> {
   Future<void> _onCategory(
     ExploreCategoryChanged event,
     Emitter<ExploreState> emit,
-  ) =>
-      _load(emit, category: event.category, query: state.query);
+  ) => _load(emit, category: event.category, query: state.query);
 
   Future<void> _onQuery(
     ExploreQueryChanged event,
     Emitter<ExploreState> emit,
-  ) =>
-      _load(emit, category: state.category, query: event.query);
+  ) => _load(emit, category: state.category, query: event.query);
 
   Future<void> _load(
     Emitter<ExploreState> emit, {
     required String category,
     required String query,
   }) async {
-    emit(state.copyWith(
-      status: ExploreStatus.loading,
-      category: category,
-      query: query,
-    ));
+    emit(
+      state.copyWith(
+        status: ExploreStatus.loading,
+        category: category,
+        query: query,
+      ),
+    );
     try {
       final results = await _buildings.nearby(category: category, query: query);
       emit(state.copyWith(status: ExploreStatus.success, buildings: results));
@@ -49,10 +49,12 @@ class ExploreBloc extends Bloc<ExploreEvent, ExploreState> {
       // Broad on purpose: a narrow catch let Supabase, socket and
       // Hive errors escape, and a Bloc that never emits leaves the
       // screen spinning forever.
-      emit(state.copyWith(
-        status: ExploreStatus.failure,
-        error: OperationFailure.from(error).message,
-      ));
+      emit(
+        state.copyWith(
+          status: ExploreStatus.failure,
+          error: OperationFailure.from(error).message,
+        ),
+      );
     }
   }
 }

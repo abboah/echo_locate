@@ -17,7 +17,6 @@ class ThemeCubit extends Cubit<ThemeMode> {
   }
 
   /// Convenience toggle between light and dark.
-  Future<void> toggle() => setMode(
-        state == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark,
-      );
+  Future<void> toggle() =>
+      setMode(state == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark);
 }

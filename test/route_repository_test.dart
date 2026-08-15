@@ -7,36 +7,36 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   RouteDraft draft() => const RouteDraft(
-        buildingId: 'cabs-block',
-        destinationRoomId: 'room-1',
-        landmarks: [
-          DraftLandmark(
-            ref: 'L1',
-            floorId: 'floor-g',
-            kind: LandmarkKind.entrance,
-            labelText: 'CABS BLOCK',
-            displayName: 'Main entrance',
-          ),
-          DraftLandmark(
-            ref: 'L2',
-            floorId: 'floor-g',
-            kind: LandmarkKind.door,
-            labelText: 'ROOM 101',
-            displayName: 'Room 101 door',
-            roomId: 'room-1',
-          ),
-        ],
-        steps: [
-          DraftStep(
-            seq: 1,
-            fromRef: 'L1',
-            toRef: 'L2',
-            instruction: 'Turn right and follow the corridor',
-            distanceM: 14,
-            stepsRecorded: 20,
-          ),
-        ],
-      );
+    buildingId: 'cabs-block',
+    destinationRoomId: 'room-1',
+    landmarks: [
+      DraftLandmark(
+        ref: 'L1',
+        floorId: 'floor-g',
+        kind: LandmarkKind.entrance,
+        labelText: 'CABS BLOCK',
+        displayName: 'Main entrance',
+      ),
+      DraftLandmark(
+        ref: 'L2',
+        floorId: 'floor-g',
+        kind: LandmarkKind.door,
+        labelText: 'ROOM 101',
+        displayName: 'Room 101 door',
+        roomId: 'room-1',
+      ),
+    ],
+    steps: [
+      DraftStep(
+        seq: 1,
+        fromRef: 'L1',
+        toRef: 'L2',
+        instruction: 'Turn right and follow the corridor',
+        distanceM: 14,
+        stepsRecorded: 20,
+      ),
+    ],
+  );
 
   test('a saved capture puts its landmarks on the building map', () async {
     // The server's save_route upserts landmarks and hands back real ids; the
@@ -51,8 +51,10 @@ void main() {
       landmarks.map((l) => l.displayName),
       containsAll(['Main entrance', 'Room 101 door']),
     );
-    expect(landmarks.firstWhere((l) => l.roomId == 'room-1').displayName,
-        'Room 101 door');
+    expect(
+      landmarks.firstWhere((l) => l.roomId == 'room-1').displayName,
+      'Room 101 door',
+    );
   });
 
   test('saved legs reference landmark ids, not client-side refs', () async {
@@ -97,30 +99,30 @@ void main() {
 
   group('traced plans', () {
     TracedPlan plan({String building = 'cabs-block'}) => TracedPlan(
-          buildingId: building,
-          nodes: const [
-            TracedNode(
-              ref: 'n1',
-              x: 0,
-              y: 0,
-              floorId: 'floor-g',
-              kind: LandmarkKind.entrance,
-              labelText: 'CABS BLOCK',
-              displayName: 'Front door',
-            ),
-            TracedNode(
-              ref: 'n2',
-              x: 0,
-              y: 24,
-              floorId: 'floor-g',
-              kind: LandmarkKind.door,
-              labelText: '101',
-              displayName: 'Room 101',
-              roomId: 'room-1',
-            ),
-          ],
-          edges: const [TracedEdge(fromRef: 'n1', toRef: 'n2')],
-        );
+      buildingId: building,
+      nodes: const [
+        TracedNode(
+          ref: 'n1',
+          x: 0,
+          y: 0,
+          floorId: 'floor-g',
+          kind: LandmarkKind.entrance,
+          labelText: 'CABS BLOCK',
+          displayName: 'Front door',
+        ),
+        TracedNode(
+          ref: 'n2',
+          x: 0,
+          y: 24,
+          floorId: 'floor-g',
+          kind: LandmarkKind.door,
+          labelText: '101',
+          displayName: 'Room 101',
+          roomId: 'room-1',
+        ),
+      ],
+      edges: const [TracedEdge(fromRef: 'n1', toRef: 'n2')],
+    );
 
     test('a building nobody has traced has no plan', () async {
       final repository = MockRouteRepository();
@@ -159,10 +161,14 @@ void main() {
       final reloaded = await repository.tracedPlanOf('cabs-block');
 
       expect(reloaded, isNotNull);
-      expect(FloorGraph.fromPlan(reloaded!).nodes.keys,
-          FloorGraph.fromPlan(saved).nodes.keys);
-      expect(FloorGraph.fromPlan(reloaded).edges.single.distanceM,
-          closeTo(24, 0.001));
+      expect(
+        FloorGraph.fromPlan(reloaded!).nodes.keys,
+        FloorGraph.fromPlan(saved).nodes.keys,
+      );
+      expect(
+        FloorGraph.fromPlan(reloaded).edges.single.distanceM,
+        closeTo(24, 0.001),
+      );
     });
 
     test('re-tracing a floor reuses the landmarks already there', () async {
@@ -175,29 +181,28 @@ void main() {
       // A* gets a choice that does not exist and OCR two things to match.
       expect(second.nodes.map((n) => n.ref), first.nodes.map((n) => n.ref));
       final landmarks = await repository.landmarksOf('cabs-block');
-      expect(
-        landmarks.where((l) => l.displayName == 'Room 101'),
-        hasLength(1),
-      );
+      expect(landmarks.where((l) => l.displayName == 'Room 101'), hasLength(1));
     });
 
-    test('saving replaces the building\'s plan rather than appending to it',
-        () async {
-      final repository = MockRouteRepository();
+    test(
+      'saving replaces the building\'s plan rather than appending to it',
+      () async {
+        final repository = MockRouteRepository();
 
-      await repository.saveTracedPlan(plan());
-      await repository.saveTracedPlan(
-        TracedPlan(
-          buildingId: 'cabs-block',
-          nodes: plan().nodes.take(1).toList(),
-          edges: const [],
-        ),
-      );
+        await repository.saveTracedPlan(plan());
+        await repository.saveTracedPlan(
+          TracedPlan(
+            buildingId: 'cabs-block',
+            nodes: plan().nodes.take(1).toList(),
+            edges: const [],
+          ),
+        );
 
-      final reloaded = await repository.tracedPlanOf('cabs-block');
-      expect(reloaded!.nodes, hasLength(1));
-      expect(reloaded.edges, isEmpty);
-    });
+        final reloaded = await repository.tracedPlanOf('cabs-block');
+        expect(reloaded!.nodes, hasLength(1));
+        expect(reloaded.edges, isEmpty);
+      },
+    );
 
     test('one building\'s plan is not another\'s', () async {
       final repository = MockRouteRepository();

@@ -14,9 +14,9 @@ enum LandmarkKind {
   sign;
 
   static LandmarkKind fromName(String? value) => LandmarkKind.values.firstWhere(
-        (k) => k.name == value,
-        orElse: () => LandmarkKind.sign,
-      );
+    (k) => k.name == value,
+    orElse: () => LandmarkKind.sign,
+  );
 
   /// Legs into stairs and lifts cannot be step-counted — the pedometer does
   /// not measure climbing — so guidance falls back to landmark-only for them.

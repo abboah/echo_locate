@@ -15,22 +15,71 @@ class PlanViewport extends Equatable {
     required this.originY,
   });
 
+  /// The zoom cap for a plan whose coordinates are metres.
+  ///
+  /// It stops a two-node plan from being blown up until a 7 m corridor fills a
+  /// phone screen — past a point, zooming in stops adding information and just
+  /// looks broken.
+  static const double maxPixelsPerMetre = 22;
+
+  /// How wide a floor a plan with no declared scale is assumed to be.
+  ///
+  /// A traced plan is unitless: one unit is the width of the photographed
+  /// board, and nobody was asked what that is in metres. Some figure is needed
+  /// to turn [maxPixelsPerMetre] into a cap, and a board on a wall almost
+  /// always shows a whole floor, so a floor's width is the honest guess. It
+  /// only ever bounds the zoom — it never reaches a spoken distance, which
+  /// stays suppressed until somebody sets a real scale.
+  static const double assumedFloorMetres = 50;
+
+  /// The zoom cap in **plan units**, which is what [fitPoints] wants.
+  ///
+  /// Pass a plan's `metresPerUnit`, or null when it has no scale.
+  ///
+  /// This exists because the cap used to be a bare `maxScale = 22` default,
+  /// which is pixels per *metre* — correct for a captured plan and wrong by a
+  /// factor of about fifty for a traced one. A traced floor rendered as a
+  /// nine-pixel smudge in the middle of an empty sheet, with no error and
+  /// nothing to suggest the scale was the problem.
+  static double maxScaleFor(double? metresPerUnit) =>
+      maxPixelsPerMetre * (metresPerUnit ?? assumedFloorMetres);
+
   /// Fits every node in [nodes] inside a [width] × [height] canvas.
   ///
-  /// [maxScale] stops a two-node plan from being blown up until a 7 m corridor
-  /// fills a phone screen — past a point, zooming in stops adding information
-  /// and just looks broken.
+  /// [maxScale] is in pixels per plan unit and is required, not defaulted:
+  /// see [maxScaleFor].
   factory PlanViewport.fit(
     Iterable<MapNode> nodes, {
     required double width,
     required double height,
+    required double maxScale,
     double padding = 32,
-    double maxScale = 22,
+  }) => PlanViewport.fitPoints(
+    [for (final node in nodes) (x: node.x, y: node.y)],
+    width: width,
+    height: height,
+    padding: padding,
+    maxScale: maxScale,
+  );
+
+  /// [fit] for any plan coordinates, not only landmarks.
+  ///
+  /// Room polygons are fitted by their corners rather than their centres — a
+  /// plan scaled to fit the middles of its rooms crops half of every room at
+  /// the edge of the floor. Kept as a record rather than an `Offset` so this
+  /// file stays free of `dart:ui` and unit-testable, which is the whole reason
+  /// it was split out of the painter.
+  factory PlanViewport.fitPoints(
+    Iterable<({double x, double y})> points, {
+    required double width,
+    required double height,
+    required double maxScale,
+    double padding = 32,
   }) {
     final usableWidth = width - padding * 2;
     final usableHeight = height - padding * 2;
 
-    if (nodes.isEmpty || usableWidth <= 0 || usableHeight <= 0) {
+    if (points.isEmpty || usableWidth <= 0 || usableHeight <= 0) {
       return PlanViewport(
         scale: maxScale,
         originX: width / 2,
@@ -43,11 +92,11 @@ class PlanViewport extends Equatable {
     var minY = double.infinity;
     var maxY = double.negativeInfinity;
 
-    for (final node in nodes) {
-      if (node.x < minX) minX = node.x;
-      if (node.x > maxX) maxX = node.x;
-      if (node.y < minY) minY = node.y;
-      if (node.y > maxY) maxY = node.y;
+    for (final point in points) {
+      if (point.x < minX) minX = point.x;
+      if (point.x > maxX) maxX = point.x;
+      if (point.y < minY) minY = point.y;
+      if (point.y > maxY) maxY = point.y;
     }
 
     final spanX = maxX - minX;
@@ -88,6 +137,18 @@ class PlanViewport extends Equatable {
   /// plan renders mirrored, which is subtle enough to ship unnoticed and
   /// useless to anybody comparing it against the building.
   double toCanvasY(double metresY) => originY - metresY * scale;
+
+  /// Canvas coordinates back to plan coordinates.
+  ///
+  /// The exact inverse of [toCanvasX] and [toCanvasY], y flip included — which
+  /// is the whole reason it is written here rather than at each call site. A
+  /// hand-rolled inverse that forgets the flip mirrors every drag about the
+  /// horizontal, and the error is invisible on a symmetrical room.
+  ///
+  /// A record rather than an `Offset`, to keep this file free of `dart:ui` —
+  /// see the note at the top. The caller is a painter and already has one.
+  ({double x, double y}) toPlan(double canvasX, double canvasY) =>
+      (x: (canvasX - originX) / scale, y: (originY - canvasY) / scale);
 
   @override
   List<Object?> get props => [scale, originX, originY];

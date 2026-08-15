@@ -38,12 +38,12 @@ class CaptureBloc extends Bloc<CaptureEvent, CaptureState> {
     required StepService steps,
     required RouteRepository routes,
     LandmarkMatcher matcher = const LandmarkMatcher(),
-  })  : _detection = detection,
-        _textRecognition = textRecognition,
-        _steps = steps,
-        _routes = routes,
-        _matcher = matcher,
-        super(const CaptureState()) {
+  }) : _detection = detection,
+       _textRecognition = textRecognition,
+       _steps = steps,
+       _routes = routes,
+       _matcher = matcher,
+       super(const CaptureState()) {
     on<CaptureStarted>(_onStarted);
     on<CaptureLandmarkAccepted>(_onLandmarkAccepted);
     on<CaptureLegDescribed>(_onLegDescribed);
@@ -117,8 +117,7 @@ class CaptureBloc extends Bloc<CaptureEvent, CaptureState> {
       final text = line.trim();
       if (text.length < 2) continue;
       final normalised = Landmark.normalise(text);
-      if (proposals
-          .any((p) => Landmark.normalise(p.text) == normalised)) {
+      if (proposals.any((p) => Landmark.normalise(p.text) == normalised)) {
         continue;
       }
       proposals.insert(
@@ -177,17 +176,16 @@ class CaptureBloc extends Bloc<CaptureEvent, CaptureState> {
     );
   }
 
-  void _onLegDescribed(
-    CaptureLegDescribed event,
-    Emitter<CaptureState> emit,
-  ) {
+  void _onLegDescribed(CaptureLegDescribed event, Emitter<CaptureState> emit) {
     final pending = state.pendingLandmark;
     if (pending == null || state.landmarks.isEmpty) return;
 
-    final counted =
-        state.stepCounting && state.pendingSteps > 0 ? state.pendingSteps : null;
+    final counted = state.stepCounting && state.pendingSteps > 0
+        ? state.pendingSteps
+        : null;
     final distanceM =
-        event.distanceM ?? (counted == null ? 0.0 : state.stride.distanceFor(counted));
+        event.distanceM ??
+        (counted == null ? 0.0 : state.stride.distanceFor(counted));
 
     // A zero-length leg is not a leg. Refusing it keeps the walk intact — the
     // contributor types the distance and saves again — rather than quietly
@@ -195,7 +193,8 @@ class CaptureBloc extends Bloc<CaptureEvent, CaptureState> {
     if (distanceM <= 0) {
       emit(
         state.copyWith(
-          error: 'No steps were counted for this leg. Enter how far you '
+          error:
+              'No steps were counted for this leg. Enter how far you '
               'walked, in metres.',
         ),
       );
@@ -242,8 +241,9 @@ class CaptureBloc extends Bloc<CaptureEvent, CaptureState> {
     // The last landmark is the destination door, so it is the one that carries
     // the room — that link is what lets guidance answer "take me to room 204".
     final landmarks = [...state.landmarks];
-    landmarks[landmarks.length - 1] =
-        landmarks.last.copyWith(roomId: event.destinationRoomId);
+    landmarks[landmarks.length - 1] = landmarks.last.copyWith(
+      roomId: event.destinationRoomId,
+    );
 
     final draft = RouteDraft(
       buildingId: state.buildingId,
@@ -270,7 +270,8 @@ class CaptureBloc extends Bloc<CaptureEvent, CaptureState> {
       emit(
         state.copyWith(
           status: CaptureStatus.failed,
-          error: 'Could not upload the route. Check your connection and '
+          error:
+              'Could not upload the route. Check your connection and '
               'try again — nothing you recorded has been lost.',
         ),
       );

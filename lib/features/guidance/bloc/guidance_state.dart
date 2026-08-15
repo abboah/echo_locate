@@ -118,33 +118,32 @@ final class GuidanceState extends Equatable {
     AssistCallout? callout,
     bool? askForHelp,
     bool? voiceOn,
-  }) =>
-      GuidanceState(
-        status: status ?? this.status,
-        session: session ?? this.session,
-        legIndex: legIndex ?? this.legIndex,
-        stepsThisLeg: stepsThisLeg ?? this.stepsThisLeg,
-        stepCounting: stepCounting ?? this.stepCounting,
-        signReading: signReading ?? this.signReading,
-        instruction: instruction ?? this.instruction,
-        lastLandmarkName: lastLandmarkName ?? this.lastLandmarkName,
-        callout: callout ?? this.callout,
-        askForHelp: askForHelp ?? this.askForHelp,
-        voiceOn: voiceOn ?? this.voiceOn,
-      );
+  }) => GuidanceState(
+    status: status ?? this.status,
+    session: session ?? this.session,
+    legIndex: legIndex ?? this.legIndex,
+    stepsThisLeg: stepsThisLeg ?? this.stepsThisLeg,
+    stepCounting: stepCounting ?? this.stepCounting,
+    signReading: signReading ?? this.signReading,
+    instruction: instruction ?? this.instruction,
+    lastLandmarkName: lastLandmarkName ?? this.lastLandmarkName,
+    callout: callout ?? this.callout,
+    askForHelp: askForHelp ?? this.askForHelp,
+    voiceOn: voiceOn ?? this.voiceOn,
+  );
 
   @override
   List<Object?> get props => [
-        status,
-        session,
-        legIndex,
-        stepsThisLeg,
-        stepCounting,
-        signReading,
-        instruction,
-        lastLandmarkName,
-        callout,
-        askForHelp,
-        voiceOn,
-      ];
+    status,
+    session,
+    legIndex,
+    stepsThisLeg,
+    stepCounting,
+    signReading,
+    instruction,
+    lastLandmarkName,
+    callout,
+    askForHelp,
+    voiceOn,
+  ];
 }

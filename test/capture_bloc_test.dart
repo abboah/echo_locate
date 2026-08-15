@@ -54,13 +54,13 @@ void main() {
   const stride = StrideProfile(metres: 0.5, source: StrideSource.calibrated);
 
   Landmark known(String id, String label, String name) => Landmark(
-        id: id,
-        buildingId: 'knust-library',
-        floorId: 'floor-g',
-        kind: LandmarkKind.sign,
-        labelText: label,
-        displayName: name,
-      );
+    id: id,
+    buildingId: 'knust-library',
+    floorId: 'floor-g',
+    kind: LandmarkKind.sign,
+    labelText: label,
+    displayName: name,
+  );
 
   Future<void> pump() async {
     for (var i = 0; i < 6; i++) {
@@ -137,8 +137,7 @@ void main() {
       await bloc.close();
     });
 
-    test('a read that matches a recorded landmark proposes its name',
-        () async {
+    test('a read that matches a recorded landmark proposes its name', () async {
       final bloc = await started(
         knownLandmarks: [known('lm-desk', 'HELP DESK', 'Help desk')],
       );
@@ -155,25 +154,27 @@ void main() {
   });
 
   group('capturing legs', () {
-    test('the opening landmark starts the walk with a zeroed counter',
-        () async {
-      final bloc = await started();
+    test(
+      'the opening landmark starts the walk with a zeroed counter',
+      () async {
+        final bloc = await started();
 
-      bloc.add(
-        const CaptureLandmarkAccepted(
-          labelText: 'KNUST LIBRARY',
-          displayName: 'Main entrance',
-          kind: LandmarkKind.entrance,
-        ),
-      );
-      await pump();
+        bloc.add(
+          const CaptureLandmarkAccepted(
+            labelText: 'KNUST LIBRARY',
+            displayName: 'Main entrance',
+            kind: LandmarkKind.entrance,
+          ),
+        );
+        await pump();
 
-      expect(bloc.state.status, CaptureStatus.walking);
-      expect(bloc.state.landmarks, hasLength(1));
-      expect(bloc.state.landmarks.single.ref, 'L1');
-      verify(() => steps.reset()).called(greaterThanOrEqualTo(1));
-      await bloc.close();
-    });
+        expect(bloc.state.status, CaptureStatus.walking);
+        expect(bloc.state.landmarks, hasLength(1));
+        expect(bloc.state.landmarks.single.ref, 'L1');
+        verify(() => steps.reset()).called(greaterThanOrEqualTo(1));
+        await bloc.close();
+      },
+    );
 
     test('sighting the next landmark asks how the leg went', () async {
       final bloc = await started();
@@ -196,37 +197,39 @@ void main() {
       await bloc.close();
     });
 
-    test('a described leg is stored in metres, with the count as evidence',
-        () async {
-      final bloc = await started();
-      bloc.add(
-        const CaptureLandmarkAccepted(
-          labelText: 'KNUST LIBRARY',
-          displayName: 'Main entrance',
-          kind: LandmarkKind.entrance,
-        ),
-      );
-      await pump();
-      await walkTo(bloc, 'Help desk', walkedSteps: 24);
+    test(
+      'a described leg is stored in metres, with the count as evidence',
+      () async {
+        final bloc = await started();
+        bloc.add(
+          const CaptureLandmarkAccepted(
+            labelText: 'KNUST LIBRARY',
+            displayName: 'Main entrance',
+            kind: LandmarkKind.entrance,
+          ),
+        );
+        await pump();
+        await walkTo(bloc, 'Help desk', walkedSteps: 24);
 
-      bloc.add(
-        const CaptureLegDescribed(
-          turnDeg: 0,
-          instruction: 'Straight ahead, past the entrance desk',
-        ),
-      );
-      await pump();
+        bloc.add(
+          const CaptureLegDescribed(
+            turnDeg: 0,
+            instruction: 'Straight ahead, past the entrance desk',
+          ),
+        );
+        await pump();
 
-      final step = bloc.state.steps.single;
-      // 24 steps at half a metre. Metres are canonical (spec §4): a user with
-      // a different stride must not inherit this contributor's count.
-      expect(step.distanceM, closeTo(12, 0.001));
-      expect(step.stepsRecorded, 24);
-      expect(step.fromRef, 'L1');
-      expect(step.toRef, 'L2');
-      expect(bloc.state.status, CaptureStatus.walking);
-      await bloc.close();
-    });
+        final step = bloc.state.steps.single;
+        // 24 steps at half a metre. Metres are canonical (spec §4): a user with
+        // a different stride must not inherit this contributor's count.
+        expect(step.distanceM, closeTo(12, 0.001));
+        expect(step.stepsRecorded, 24);
+        expect(step.fromRef, 'L1');
+        expect(step.toRef, 'L2');
+        expect(bloc.state.status, CaptureStatus.walking);
+        await bloc.close();
+      },
+    );
 
     test('the turn the contributor tapped is what gets stored', () async {
       final bloc = await started();
@@ -249,40 +252,42 @@ void main() {
       await bloc.close();
     });
 
-    test('with no step counter the contributor supplies the distance',
-        () async {
-      final bloc = await started(stepCounter: false);
-      bloc.add(
-        const CaptureLandmarkAccepted(
-          labelText: 'A',
-          displayName: 'Start',
-          kind: LandmarkKind.entrance,
-        ),
-      );
-      await pump();
-      bloc.add(
-        const CaptureLandmarkAccepted(
-          labelText: 'B',
-          displayName: 'Help desk',
-          kind: LandmarkKind.sign,
-        ),
-      );
-      await pump();
+    test(
+      'with no step counter the contributor supplies the distance',
+      () async {
+        final bloc = await started(stepCounter: false);
+        bloc.add(
+          const CaptureLandmarkAccepted(
+            labelText: 'A',
+            displayName: 'Start',
+            kind: LandmarkKind.entrance,
+          ),
+        );
+        await pump();
+        bloc.add(
+          const CaptureLandmarkAccepted(
+            labelText: 'B',
+            displayName: 'Help desk',
+            kind: LandmarkKind.sign,
+          ),
+        );
+        await pump();
 
-      bloc.add(
-        const CaptureLegDescribed(
-          turnDeg: 0,
-          instruction: 'Straight on',
-          distanceM: 15,
-        ),
-      );
-      await pump();
+        bloc.add(
+          const CaptureLegDescribed(
+            turnDeg: 0,
+            instruction: 'Straight on',
+            distanceM: 15,
+          ),
+        );
+        await pump();
 
-      expect(bloc.state.stepCounting, isFalse);
-      expect(bloc.state.steps.single.distanceM, 15);
-      expect(bloc.state.steps.single.stepsRecorded, isNull);
-      await bloc.close();
-    });
+        expect(bloc.state.stepCounting, isFalse);
+        expect(bloc.state.steps.single.distanceM, 15);
+        expect(bloc.state.steps.single.stepsRecorded, isNull);
+        await bloc.close();
+      },
+    );
 
     test('a leg the counter did not measure asks for the distance', () async {
       // Found on the emulator: its step counter never ticks, so the leg was
@@ -356,11 +361,7 @@ void main() {
       expect(bloc.state.error, isNotNull);
 
       bloc.add(
-        const CaptureLegDescribed(
-          turnDeg: 0,
-          instruction: 'On',
-          distanceM: 15,
-        ),
+        const CaptureLegDescribed(turnDeg: 0, instruction: 'On', distanceM: 15),
       );
       await pump();
 
@@ -418,9 +419,9 @@ void main() {
       bloc.add(const CaptureFinished(destinationRoomId: 'room-1'));
       await pump();
 
-      final draft = verify(() => routes.saveRoute(captureAny()))
-          .captured
-          .single as RouteDraft;
+      final draft =
+          verify(() => routes.saveRoute(captureAny())).captured.single
+              as RouteDraft;
       expect(draft.buildingId, 'knust-library');
       expect(draft.destinationRoomId, 'room-1');
       expect(draft.landmarks, hasLength(2));
@@ -430,19 +431,21 @@ void main() {
       await bloc.close();
     });
 
-    test('the destination landmark is tied to the room it opens onto',
-        () async {
-      final bloc = await withOneLeg();
+    test(
+      'the destination landmark is tied to the room it opens onto',
+      () async {
+        final bloc = await withOneLeg();
 
-      bloc.add(const CaptureFinished(destinationRoomId: 'room-1'));
-      await pump();
+        bloc.add(const CaptureFinished(destinationRoomId: 'room-1'));
+        await pump();
 
-      final draft = verify(() => routes.saveRoute(captureAny()))
-          .captured
-          .single as RouteDraft;
-      expect(draft.landmarks.last.roomId, 'room-1');
-      await bloc.close();
-    });
+        final draft =
+            verify(() => routes.saveRoute(captureAny())).captured.single
+                as RouteDraft;
+        expect(draft.landmarks.last.roomId, 'room-1');
+        await bloc.close();
+      },
+    );
 
     test('a failed upload keeps the capture so it can be retried', () async {
       when(() => routes.saveRoute(any())).thenThrow(Exception('offline'));

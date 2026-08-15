@@ -49,6 +49,10 @@ class ChirpParams extends Equatable {
       duration.inMicroseconds / Duration.microsecondsPerSecond;
 
   @override
-  List<Object?> get props =>
-      [startFrequencyHz, endFrequencyHz, duration, sampleRate];
+  List<Object?> get props => [
+    startFrequencyHz,
+    endFrequencyHz,
+    duration,
+    sampleRate,
+  ];
 }

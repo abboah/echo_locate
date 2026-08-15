@@ -29,10 +29,9 @@ class _SignInPageState extends State<SignInPage> {
   }
 
   void _submit() {
-    context.read<AuthBloc>().add(AuthSignInSubmitted(
-          email: _email.text.trim(),
-          password: _password.text,
-        ));
+    context.read<AuthBloc>().add(
+      AuthSignInSubmitted(email: _email.text.trim(), password: _password.text),
+    );
   }
 
   @override
@@ -43,8 +42,7 @@ class _SignInPageState extends State<SignInPage> {
       body: SafeArea(
         child: BlocBuilder<AuthBloc, AuthState>(
           builder: (context, state) {
-            final unauthenticated =
-                state is AuthUnauthenticated ? state : null;
+            final unauthenticated = state is AuthUnauthenticated ? state : null;
             final busy = unauthenticated?.inProgress ?? false;
             final error = unauthenticated?.error;
 
@@ -68,8 +66,10 @@ class _SignInPageState extends State<SignInPage> {
                   autofillHints: const [AutofillHints.email],
                   decoration: const InputDecoration(
                     hintText: 'you@example.com',
-                    prefixIcon:
-                        Icon(PhosphorIconsRegular.envelopeSimple, size: 20),
+                    prefixIcon: Icon(
+                      PhosphorIconsRegular.envelopeSimple,
+                      size: 20,
+                    ),
                   ),
                 ),
                 const SizedBox(height: AppDimens.space16),
@@ -82,8 +82,10 @@ class _SignInPageState extends State<SignInPage> {
                   onSubmitted: (_) => _submit(),
                   decoration: InputDecoration(
                     hintText: 'Your password',
-                    prefixIcon:
-                        const Icon(PhosphorIconsRegular.lockSimple, size: 20),
+                    prefixIcon: const Icon(
+                      PhosphorIconsRegular.lockSimple,
+                      size: 20,
+                    ),
                     suffixIcon: IconButton(
                       icon: Icon(
                         _obscure
@@ -100,8 +102,7 @@ class _SignInPageState extends State<SignInPage> {
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
-                    onPressed: () =>
-                        ScaffoldMessenger.of(context).showSnackBar(
+                    onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
                         content: Text(
                           'Password reset arrives with Supabase auth',
@@ -110,8 +111,9 @@ class _SignInPageState extends State<SignInPage> {
                     ),
                     child: Text(
                       'Forgot password?',
-                      style: theme.textTheme.labelLarge
-                          ?.copyWith(color: AppColors.coral),
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: AppColors.coral,
+                      ),
                     ),
                   ),
                 ),
@@ -138,12 +140,13 @@ class _SignInPageState extends State<SignInPage> {
                       children: [
                         WidgetSpan(
                           child: GestureDetector(
-                            onTap: () => context
-                                .pushReplacementNamed(RouteNames.signUp),
+                            onTap: () =>
+                                context.pushReplacementNamed(RouteNames.signUp),
                             child: Text(
                               'Create account',
-                              style: theme.textTheme.labelLarge
-                                  ?.copyWith(color: AppColors.coral),
+                              style: theme.textTheme.labelLarge?.copyWith(
+                                color: AppColors.coral,
+                              ),
                             ),
                           ),
                         ),

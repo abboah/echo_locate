@@ -280,7 +280,8 @@ class MockRouteRepository with RepositoryMixin implements RouteRepository {
     if (existing.isNotEmpty) return existing.first.id;
 
     final landmark = Landmark(
-      id: 'lm-${_captured.length + 1}-'
+      id:
+          'lm-${_captured.length + 1}-'
           '${displayName.toLowerCase().replaceAll(RegExp(r'\s+'), '-')}',
       buildingId: buildingId,
       floorId: floorId,
@@ -392,8 +393,7 @@ class MockRouteRepository with RepositoryMixin implements RouteRepository {
             ? ''
             : idOfRef[draft.steps.first.fromRef] ?? '',
         destinationRoomId: draft.destinationRoomId,
-        totalDistanceM:
-            draft.steps.fold(0, (sum, s) => sum + s.distanceM),
+        totalDistanceM: draft.steps.fold(0, (sum, s) => sum + s.distanceM),
         steps: [
           for (final s in draft.steps)
             RouteStep(

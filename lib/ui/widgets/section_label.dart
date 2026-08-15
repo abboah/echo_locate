@@ -12,9 +12,9 @@ class SectionLabel extends StatelessWidget {
     final label = Text(
       text.toUpperCase(),
       style: Theme.of(context).textTheme.labelSmall?.copyWith(
-            letterSpacing: 1.1,
-            fontWeight: FontWeight.w600,
-          ),
+        letterSpacing: 1.1,
+        fontWeight: FontWeight.w600,
+      ),
     );
     if (trailing == null) return label;
     return Row(

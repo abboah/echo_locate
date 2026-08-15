@@ -67,8 +67,7 @@ class _GuidancePageState extends State<GuidancePage> {
           );
         }
         return BlocProvider(
-          create: (_) =>
-              getIt<GuidanceBloc>()..add(GuidanceStarted(session)),
+          create: (_) => getIt<GuidanceBloc>()..add(GuidanceStarted(session)),
           child: const _GuidanceView(),
         );
       },
@@ -101,9 +100,7 @@ class _GuidanceView extends StatelessWidget {
                       horizontal: AppDimens.space16,
                     ),
                     child: state.status == GuidanceStatus.arrived
-                        ? _Arrived(
-                            destination: session?.destinationName ?? '',
-                          )
+                        ? _Arrived(destination: session?.destinationName ?? '')
                         : _Walking(state: state),
                   ),
                 ),
@@ -175,8 +172,7 @@ class _Walking extends StatelessWidget {
     final theme = Theme.of(context);
     final session = state.session;
     final leg = state.currentLeg;
-    final nextName =
-        leg == null ? '' : session?.nameOf(leg.toLandmarkId) ?? '';
+    final nextName = leg == null ? '' : session?.nameOf(leg.toLandmarkId) ?? '';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -188,7 +184,7 @@ class _Walking extends StatelessWidget {
                 : PhosphorIconsFill.magnifyingGlass,
             text: state.askForHelp
                 ? 'Ask someone nearby for '
-                    '${session?.destinationName ?? 'your destination'}.'
+                      '${session?.destinationName ?? 'your destination'}.'
                 : 'Sweep the phone slowly left to right to find a sign.',
           ),
         const SizedBox(height: AppDimens.space16),
@@ -196,10 +192,7 @@ class _Walking extends StatelessWidget {
           // Announced by TalkBack whenever the instruction changes, so the
           // screen reader and the app's own voice say the same thing.
           liveRegion: true,
-          child: Text(
-            state.instruction,
-            style: theme.textTheme.headlineSmall,
-          ),
+          child: Text(state.instruction, style: theme.textTheme.headlineSmall),
         ),
         const SizedBox(height: AppDimens.space24),
         if (state.expectedSteps > 0) ...[
@@ -214,8 +207,7 @@ class _Walking extends StatelessWidget {
               value: state.legProgress,
               minHeight: 8,
               backgroundColor: theme.colorScheme.surface,
-              valueColor:
-                  const AlwaysStoppedAnimation<Color>(AppColors.coral),
+              valueColor: const AlwaysStoppedAnimation<Color>(AppColors.coral),
             ),
           ),
         ] else
@@ -229,8 +221,11 @@ class _Walking extends StatelessWidget {
         if (nextName.isNotEmpty)
           Row(
             children: [
-              const Icon(PhosphorIconsFill.signpost,
-                  size: 18, color: AppColors.coral),
+              const Icon(
+                PhosphorIconsFill.signpost,
+                size: 18,
+                color: AppColors.coral,
+              ),
               const SizedBox(width: AppDimens.space8),
               Expanded(
                 child: Text(
@@ -271,9 +266,9 @@ class _Controls extends StatelessWidget {
             child: SizedBox(
               height: 64,
               child: ElevatedButton.icon(
-                onPressed: () => context
-                    .read<GuidanceBloc>()
-                    .add(const GuidanceLandmarkConfirmed()),
+                onPressed: () => context.read<GuidanceBloc>().add(
+                  const GuidanceLandmarkConfirmed(),
+                ),
                 icon: const Icon(PhosphorIconsFill.check),
                 label: const Text("I'm at the sign"),
               ),
@@ -284,9 +279,9 @@ class _Controls extends StatelessWidget {
             child: SizedBox(
               height: 64,
               child: OutlinedButton.icon(
-                onPressed: () => context
-                    .read<GuidanceBloc>()
-                    .add(const GuidanceLostReported()),
+                onPressed: () => context.read<GuidanceBloc>().add(
+                  const GuidanceLostReported(),
+                ),
                 icon: const Icon(PhosphorIconsRegular.question),
                 label: const Text("I'm lost"),
               ),
@@ -311,8 +306,11 @@ class _Arrived extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(PhosphorIconsFill.checkCircle,
-              size: 64, color: AppColors.coral),
+          const Icon(
+            PhosphorIconsFill.checkCircle,
+            size: 64,
+            color: AppColors.coral,
+          ),
           const SizedBox(height: AppDimens.space16),
           Semantics(
             liveRegion: true,
@@ -334,11 +332,7 @@ class _Arrived extends StatelessWidget {
 }
 
 class _Banner extends StatelessWidget {
-  const _Banner({
-    required this.icon,
-    required this.text,
-    this.urgent = false,
-  });
+  const _Banner({required this.icon, required this.text, this.urgent = false});
 
   final IconData icon;
   final String text;
@@ -363,9 +357,7 @@ class _Banner extends StatelessWidget {
         children: [
           Icon(icon, size: 20, color: tint),
           const SizedBox(width: AppDimens.space12),
-          Expanded(
-            child: Text(text, style: theme.textTheme.bodyMedium),
-          ),
+          Expanded(child: Text(text, style: theme.textTheme.bodyMedium)),
         ],
       ),
     );

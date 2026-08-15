@@ -63,11 +63,16 @@ class AcousticRange extends Equatable {
   final bool calibrated;
 
   @override
-  List<Object?> get props =>
-      [distanceMeters, confidence, capturedAt, calibrated];
+  List<Object?> get props => [
+    distanceMeters,
+    confidence,
+    capturedAt,
+    calibrated,
+  ];
 
   @override
-  String toString() => 'AcousticRange('
+  String toString() =>
+      'AcousticRange('
       '${distanceMeters.toStringAsFixed(2)}m '
       'confidence=${confidence.toStringAsFixed(2)} '
       '${calibrated ? "calibrated" : "uncalibrated"})';
@@ -90,6 +95,7 @@ class AcousticRangeResult extends Equatable {
   List<Object?> get props => [range, refusal];
 
   @override
-  String toString() =>
-      succeeded ? 'AcousticRangeResult($range)' : 'AcousticRangeResult(${refusal!.name})';
+  String toString() => succeeded
+      ? 'AcousticRangeResult($range)'
+      : 'AcousticRangeResult(${refusal!.name})';
 }

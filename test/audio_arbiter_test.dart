@@ -12,10 +12,7 @@ void main() {
     });
 
     test('urgent speech outranks routine speech', () {
-      expect(
-        AudioUse.urgentSpeech.rank,
-        greaterThan(AudioUse.speech.rank),
-      );
+      expect(AudioUse.urgentSpeech.rank, greaterThan(AudioUse.speech.rank));
     });
 
     test('guidance is ordered urgent > landmark > progress > routine', () {
@@ -30,10 +27,7 @@ void main() {
         AudioUse.landmarkReached.rank,
         greaterThan(AudioUse.guidanceProgress.rank),
       );
-      expect(
-        AudioUse.guidanceProgress.rank,
-        greaterThan(AudioUse.speech.rank),
-      );
+      expect(AudioUse.guidanceProgress.rank, greaterThan(AudioUse.speech.rank));
     });
 
     test('a landmark confirmation cuts off a progress update', () async {
@@ -46,13 +40,15 @@ void main() {
       expect(progress!.isCancelled, isTrue);
     });
 
-    test('a progress update never talks over a landmark confirmation',
-        () async {
-      final arbiter = AudioArbiter();
-      await arbiter.acquire(AudioUse.landmarkReached);
+    test(
+      'a progress update never talks over a landmark confirmation',
+      () async {
+        final arbiter = AudioArbiter();
+        await arbiter.acquire(AudioUse.landmarkReached);
 
-      expect(await arbiter.acquire(AudioUse.guidanceProgress), isNull);
-    });
+        expect(await arbiter.acquire(AudioUse.guidanceProgress), isNull);
+      },
+    );
   });
 
   group('acquire', () {
@@ -81,8 +77,11 @@ void main() {
       // Sonar's loop polls isCancelled and releases; stand in for that.
       final speech = arbiter.acquire(AudioUse.speech);
       await Future<void>.delayed(Duration.zero);
-      expect(ranging!.isCancelled, isTrue,
-          reason: 'the holder must be told to stop');
+      expect(
+        ranging!.isCancelled,
+        isTrue,
+        reason: 'the holder must be told to stop',
+      );
       ranging.release();
 
       expect(await speech, isNotNull);
@@ -131,29 +130,34 @@ void main() {
       final speech = await arbiter.acquire(AudioUse.speech);
 
       expect(stuck!.isCancelled, isTrue);
-      expect(speech, isNotNull,
-          reason: 'speech must proceed even if ranging never lets go');
-    });
-
-    test('a holder that releases promptly is waited for, not timed out',
-        () async {
-      final arbiter = AudioArbiter(
-        preemptionTimeout: const Duration(seconds: 5),
+      expect(
+        speech,
+        isNotNull,
+        reason: 'speech must proceed even if ranging never lets go',
       );
-      final ranging = await arbiter.acquire(AudioUse.ranging);
-
-      var releasedBeforeSpeechStarted = false;
-      final speech = arbiter.acquire(AudioUse.speech).then((lease) {
-        expect(releasedBeforeSpeechStarted, isTrue);
-        return lease;
-      });
-
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-      releasedBeforeSpeechStarted = true;
-      ranging!.release();
-
-      expect(await speech, isNotNull);
     });
+
+    test(
+      'a holder that releases promptly is waited for, not timed out',
+      () async {
+        final arbiter = AudioArbiter(
+          preemptionTimeout: const Duration(seconds: 5),
+        );
+        final ranging = await arbiter.acquire(AudioUse.ranging);
+
+        var releasedBeforeSpeechStarted = false;
+        final speech = arbiter.acquire(AudioUse.speech).then((lease) {
+          expect(releasedBeforeSpeechStarted, isTrue);
+          return lease;
+        });
+
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        releasedBeforeSpeechStarted = true;
+        ranging!.release();
+
+        expect(await speech, isNotNull);
+      },
+    );
   });
 
   group('onCancelled', () {
@@ -204,19 +208,21 @@ void main() {
   });
 
   group('lease.done', () {
-    test('completes on release so a pre-empter knows the hardware is idle',
-        () async {
-      final arbiter = AudioArbiter();
-      final lease = await arbiter.acquire(AudioUse.ranging);
+    test(
+      'completes on release so a pre-empter knows the hardware is idle',
+      () async {
+        final arbiter = AudioArbiter();
+        final lease = await arbiter.acquire(AudioUse.ranging);
 
-      var done = false;
-      unawaited(lease!.done.then((_) => done = true));
-      expect(done, isFalse);
+        var done = false;
+        unawaited(lease!.done.then((_) => done = true));
+        expect(done, isFalse);
 
-      lease.release();
-      await Future<void>.delayed(Duration.zero);
-      expect(done, isTrue);
-    });
+        lease.release();
+        await Future<void>.delayed(Duration.zero);
+        expect(done, isTrue);
+      },
+    );
 
     test('a double release is harmless', () async {
       final arbiter = AudioArbiter();

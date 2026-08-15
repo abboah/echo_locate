@@ -46,33 +46,37 @@ void main() {
       );
     });
 
-    test('an uncached offline-first query fails as an OperationFailure',
-        () async {
-      expect(
-        () => repo.runOfflineFirstQuery<int>(
-          'k',
-          () => throw const SocketException('no route to host'),
-          encode: (v) => v,
-          decode: (c) => c as int,
-        ),
-        throwsA(isA<OperationFailure>()),
-      );
-    });
-
-    test('a connection failure says so, rather than "something went wrong"',
-        () async {
-      try {
-        await repo.runOfflineFirstQuery<int>(
-          'k',
-          () => throw const SocketException('Failed host lookup'),
-          encode: (v) => v,
-          decode: (c) => c as int,
+    test(
+      'an uncached offline-first query fails as an OperationFailure',
+      () async {
+        expect(
+          () => repo.runOfflineFirstQuery<int>(
+            'k',
+            () => throw const SocketException('no route to host'),
+            encode: (v) => v,
+            decode: (c) => c as int,
+          ),
+          throwsA(isA<OperationFailure>()),
         );
-        fail('should have thrown');
-      } on OperationFailure catch (failure) {
-        expect(failure.message.toLowerCase(), contains('connect'));
-      }
-    });
+      },
+    );
+
+    test(
+      'a connection failure says so, rather than "something went wrong"',
+      () async {
+        try {
+          await repo.runOfflineFirstQuery<int>(
+            'k',
+            () => throw const SocketException('Failed host lookup'),
+            encode: (v) => v,
+            decode: (c) => c as int,
+          );
+          fail('should have thrown');
+        } on OperationFailure catch (failure) {
+          expect(failure.message.toLowerCase(), contains('connect'));
+        }
+      },
+    );
 
     test('the original error is kept for the log', () async {
       try {
@@ -83,18 +87,20 @@ void main() {
       }
     });
 
-    test('an OperationFailure from the fetch is passed through unchanged',
-        () async {
-      try {
-        await repo.runEphemeralQuery<int>(
-          'k',
-          () => throw const OperationFailure('Not signed in'),
-        );
-        fail('should have thrown');
-      } on OperationFailure catch (failure) {
-        expect(failure.message, 'Not signed in');
-      }
-    });
+    test(
+      'an OperationFailure from the fetch is passed through unchanged',
+      () async {
+        try {
+          await repo.runEphemeralQuery<int>(
+            'k',
+            () => throw const OperationFailure('Not signed in'),
+          );
+          fail('should have thrown');
+        } on OperationFailure catch (failure) {
+          expect(failure.message, 'Not signed in');
+        }
+      },
+    );
   });
 
   group('a hung request gives up', () {
@@ -102,10 +108,12 @@ void main() {
     // forty seconds before Android's resolver gave up. The error did arrive,
     // but nobody waits that long — to the user it is indistinguishable from
     // the app being broken, which is exactly the complaint.
-    setUp(() => RepositoryMixin.requestTimeout =
-        const Duration(milliseconds: 50));
-    tearDown(() =>
-        RepositoryMixin.requestTimeout = RepositoryMixin.defaultTimeout);
+    setUp(
+      () => RepositoryMixin.requestTimeout = const Duration(milliseconds: 50),
+    );
+    tearDown(
+      () => RepositoryMixin.requestTimeout = RepositoryMixin.defaultTimeout,
+    );
 
     test('a query that never answers fails as a connection problem', () async {
       final stopwatch = Stopwatch()..start();
@@ -164,23 +172,25 @@ void main() {
       expect(calls, 1);
     });
 
-    test('offline-first falls back to the cache when the fetch fails',
-        () async {
-      await repo.runOfflineFirstQuery<int>(
-        'rooms',
-        () async => 3,
-        encode: (v) => v,
-        decode: (c) => c as int,
-      );
+    test(
+      'offline-first falls back to the cache when the fetch fails',
+      () async {
+        await repo.runOfflineFirstQuery<int>(
+          'rooms',
+          () async => 3,
+          encode: (v) => v,
+          decode: (c) => c as int,
+        );
 
-      final offline = await repo.runOfflineFirstQuery<int>(
-        'rooms',
-        () => throw const SocketException('offline'),
-        encode: (v) => v,
-        decode: (c) => c as int,
-      );
+        final offline = await repo.runOfflineFirstQuery<int>(
+          'rooms',
+          () => throw const SocketException('offline'),
+          encode: (v) => v,
+          decode: (c) => c as int,
+        );
 
-      expect(offline, 3);
-    });
+        expect(offline, 3);
+      },
+    );
   });
 }

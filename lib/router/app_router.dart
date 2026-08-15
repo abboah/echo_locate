@@ -26,9 +26,15 @@ import '../ui/pages/navigate/navigation_page.dart';
 import '../ui/pages/onboarding/onboarding_page.dart';
 import '../ui/pages/primers/camera_primer_page.dart';
 import '../ui/pages/depth/depth_probe_page.dart';
+import '../ui/pages/building_mapping/building_mapping_page.dart';
+import '../ui/pages/evaluation/plan_evaluation_page.dart';
+import '../ui/pages/plan_editor/plan_editor_page.dart';
+import '../ui/pages/room_capture/room_capture_page.dart';
+import '../ui/pages/room_navigate/room_navigate_page.dart';
+import '../ui/pages/room_plan/room_plan_probe_page.dart';
+import '../ui/pages/room_trace/room_trace_page.dart';
 import '../ui/pages/primers/location_primer_page.dart';
 import '../ui/pages/profile/profile_page.dart';
-import '../ui/pages/scan/scan_page.dart';
 import '../ui/pages/shell/app_shell.dart';
 import '../ui/pages/acoustic/acoustic_page.dart';
 import '../ui/pages/sonar/sonar_page.dart';
@@ -77,34 +83,42 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state, navigationShell) =>
           AppShell(navigationShell: navigationShell),
       branches: [
-        StatefulShellBranch(routes: [
-          GoRoute(
-            path: AppRoutes.home,
-            name: RouteNames.home,
-            builder: (context, state) => const HomePage(),
-          ),
-        ]),
-        StatefulShellBranch(routes: [
-          GoRoute(
-            path: AppRoutes.explore,
-            name: RouteNames.explore,
-            builder: (context, state) => const ExplorePage(),
-          ),
-        ]),
-        StatefulShellBranch(routes: [
-          GoRoute(
-            path: AppRoutes.maps,
-            name: RouteNames.maps,
-            builder: (context, state) => const MapsPage(),
-          ),
-        ]),
-        StatefulShellBranch(routes: [
-          GoRoute(
-            path: AppRoutes.profile,
-            name: RouteNames.profile,
-            builder: (context, state) => const ProfilePage(),
-          ),
-        ]),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: AppRoutes.home,
+              name: RouteNames.home,
+              builder: (context, state) => const HomePage(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: AppRoutes.explore,
+              name: RouteNames.explore,
+              builder: (context, state) => const ExplorePage(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: AppRoutes.maps,
+              name: RouteNames.maps,
+              builder: (context, state) => const MapsPage(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: AppRoutes.profile,
+              name: RouteNames.profile,
+              builder: (context, state) => const ProfilePage(),
+            ),
+          ],
+        ),
       ],
     ),
 
@@ -114,12 +128,6 @@ final GoRouter appRouter = GoRouter(
       name: RouteNames.assist,
       parentNavigatorKey: _rootNavigatorKey,
       builder: (context, state) => const AssistPage(),
-    ),
-    GoRoute(
-      path: AppRoutes.scan,
-      name: RouteNames.scan,
-      parentNavigatorKey: _rootNavigatorKey,
-      builder: (context, state) => const ScanPage(),
     ),
     GoRoute(
       path: AppRoutes.sonar,
@@ -138,6 +146,12 @@ final GoRouter appRouter = GoRouter(
       name: RouteNames.depthProbe,
       parentNavigatorKey: _rootNavigatorKey,
       builder: (context, state) => const DepthProbePage(),
+    ),
+    GoRoute(
+      path: AppRoutes.roomPlanProbe,
+      name: RouteNames.roomPlanProbe,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const RoomPlanProbePage(),
     ),
     GoRoute(
       path: AppRoutes.cameraPrimer,
@@ -176,15 +190,20 @@ final GoRouter appRouter = GoRouter(
       path: AppRoutes.capture,
       name: RouteNames.capture,
       parentNavigatorKey: _rootNavigatorKey,
-      builder: (context, state) => CapturePage(
-        buildingId: state.pathParameters['id']!,
-      ),
+      builder: (context, state) =>
+          CapturePage(buildingId: state.pathParameters['id']!),
     ),
     GoRoute(
       path: AppRoutes.mapBuilding,
       name: RouteNames.mapBuilding,
       parentNavigatorKey: _rootNavigatorKey,
-      builder: (context, state) => const MapBuildingPage(),
+      builder: (context, state) => MapBuildingPage(
+        // Where the chosen building goes next. "Map a building" means tracing;
+        // "Scan a space" means the per-floor hub, which is the only place
+        // "Scan in AR" exists. Without this the scan entry could never reach
+        // AR at all — every path out of the picker ended in tracing.
+        nextRoute: state.extra as String? ?? RouteNames.roomTrace,
+      ),
     ),
     GoRoute(
       path: AppRoutes.planTrace,
@@ -194,6 +213,67 @@ final GoRouter appRouter = GoRouter(
         buildingId: state.pathParameters['id']!,
         // Which floor the trace starts on. Changeable on the screen itself,
         // since one plan can span a building.
+        floorId: state.extra as String? ?? 'floor-g',
+      ),
+    ),
+    GoRoute(
+      path: AppRoutes.roomTrace,
+      name: RouteNames.roomTrace,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => RoomTracePage(
+        buildingId: state.pathParameters['id']!,
+        // Which floor the mapping hub sent us to. Empty when opened cold, in
+        // which case the screen falls back to the building's first floor.
+        floorId: state.extra as String? ?? '',
+      ),
+    ),
+    GoRoute(
+      path: AppRoutes.roomNavigate,
+      name: RouteNames.roomNavigate,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => RoomNavigatePage(
+        buildingId: state.pathParameters['id']!,
+        floorId: state.extra as String? ?? '',
+      ),
+    ),
+    GoRoute(
+      path: AppRoutes.buildingMapping,
+      name: RouteNames.buildingMapping,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => BuildingMappingPage(
+        buildingId: state.pathParameters['id']!,
+        // The building's name, so the hub can title itself without a second
+        // fetch. Absent when the route is opened cold.
+        buildingName: state.extra as String?,
+      ),
+    ),
+    GoRoute(
+      path: AppRoutes.roomCapture,
+      name: RouteNames.roomCapture,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => RoomCapturePage(
+        buildingId: state.pathParameters['id']!,
+        floorId: state.extra as String? ?? '',
+      ),
+    ),
+    GoRoute(
+      path: AppRoutes.planEditor,
+      name: RouteNames.planEditor,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => PlanEditorPage(
+        buildingId: state.pathParameters['id']!,
+        floorId: state.extra as String? ?? 'floor-g',
+      ),
+    ),
+    GoRoute(
+      path: AppRoutes.planEvaluation,
+      name: RouteNames.planEvaluation,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => PlanEvaluationPage(
+        buildingId: state.pathParameters['id']!,
+        // Which floor's trace to measure. Passed as `extra` rather than in the
+        // path because a floor id is a uuid and does not belong in a URL a
+        // person might read out.
         floorId: state.extra as String? ?? 'floor-g',
       ),
     ),
@@ -226,17 +306,17 @@ class _MissingRoute extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text(
-              'Pick a destination on the building map to start guidance.',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyLarge,
-            ),
-          ),
+    body: Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          'Pick a destination on the building map to start guidance.',
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodyLarge,
         ),
-      );
+      ),
+    ),
+  );
 }
 
 String? _redirect(BuildContext context, GoRouterState state) {

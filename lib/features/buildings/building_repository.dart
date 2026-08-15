@@ -54,7 +54,9 @@ String slugify(String name) {
   return slug.isEmpty ? 'building' : slug;
 }
 
-class MockBuildingRepository with RepositoryMixin implements BuildingRepository {
+class MockBuildingRepository
+    with RepositoryMixin
+    implements BuildingRepository {
   static const _latency = Duration(milliseconds: 350);
 
   /// The one building the offline path knows about.
@@ -230,16 +232,41 @@ class MockBuildingRepository with RepositoryMixin implements BuildingRepository 
     // The library's floor 2 mirrors the Figma Building Detail screen (7:301).
     if (buildingId == 'knust-library' && floorIndex == 2) {
       return const [
-        Room(id: 'reading-hall', name: 'Reading Hall', distanceM: 40, kind: 'hall'),
-        Room(id: 'study-2b', name: 'Study Room 2B', distanceM: 65, kind: 'room'),
+        Room(
+          id: 'reading-hall',
+          name: 'Reading Hall',
+          distanceM: 40,
+          kind: 'hall',
+        ),
+        Room(
+          id: 'study-2b',
+          name: 'Study Room 2B',
+          distanceM: 65,
+          kind: 'room',
+        ),
         Room(id: 'help-desk', name: 'Help Desk', distanceM: 20, kind: 'desk'),
       ];
     }
     final label = floorIndex == 0 ? 'G' : '$floorIndex';
     return [
-      Room(id: '$buildingId-$floorIndex-01', name: 'Room ${label}01', distanceM: 25, kind: 'room'),
-      Room(id: '$buildingId-$floorIndex-02', name: 'Room ${label}02', distanceM: 45, kind: 'room'),
-      Room(id: '$buildingId-$floorIndex-wash', name: 'Washroom', distanceM: 30, kind: 'desk'),
+      Room(
+        id: '$buildingId-$floorIndex-01',
+        name: 'Room ${label}01',
+        distanceM: 25,
+        kind: 'room',
+      ),
+      Room(
+        id: '$buildingId-$floorIndex-02',
+        name: 'Room ${label}02',
+        distanceM: 45,
+        kind: 'room',
+      ),
+      Room(
+        id: '$buildingId-$floorIndex-wash',
+        name: 'Washroom',
+        distanceM: 30,
+        kind: 'desk',
+      ),
     ];
   }
 }

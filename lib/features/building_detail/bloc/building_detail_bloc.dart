@@ -26,24 +26,29 @@ class BuildingDetailBloc
     try {
       // Prefer the object passed via route `extra` (instant nav from a list);
       // fall back to fetching by id (deep link / restart).
-      final building = event.building ?? await _buildings.byId(event.buildingId);
+      final building =
+          event.building ?? await _buildings.byId(event.buildingId);
       final floors = await _buildings.floorsOf(building.id);
       final saved = await _buildings.isSaved(building.id);
-      emit(state.copyWith(
-        status: BuildingDetailStatus.success,
-        building: building,
-        floors: floors,
-        selectedFloor: floors.length > 1 ? 1 : 0,
-        saved: saved,
-      ));
+      emit(
+        state.copyWith(
+          status: BuildingDetailStatus.success,
+          building: building,
+          floors: floors,
+          selectedFloor: floors.length > 1 ? 1 : 0,
+          saved: saved,
+        ),
+      );
     } catch (error) {
       // Broad on purpose: catching only OperationFailure let a Hive cache
       // error escape, and this screen sat on its spinner with the floors
       // already fetched and sitting in memory.
-      emit(state.copyWith(
-        status: BuildingDetailStatus.failure,
-        error: OperationFailure.from(error).message,
-      ));
+      emit(
+        state.copyWith(
+          status: BuildingDetailStatus.failure,
+          error: OperationFailure.from(error).message,
+        ),
+      );
     }
   }
 
@@ -67,10 +72,12 @@ class BuildingDetailBloc
     try {
       await _buildings.setSaved(building.id, next);
     } catch (error) {
-      emit(state.copyWith(
-        saved: !next,
-        error: OperationFailure.from(error).message,
-      ));
+      emit(
+        state.copyWith(
+          saved: !next,
+          error: OperationFailure.from(error).message,
+        ),
+      );
     }
   }
 }

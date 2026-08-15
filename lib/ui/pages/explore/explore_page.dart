@@ -12,7 +12,6 @@ import '../../../services/injection_container.dart';
 import '../../widgets/app_search_field.dart';
 import '../../widgets/building_list_tile.dart';
 import '../../widgets/scan_capability_gate.dart';
-import '../scan/camera_flow.dart';
 
 /// Explore tab (Figma 7:372): search, category chips, nearby buildings,
 /// pinned "Scan a new building" CTA.
@@ -55,9 +54,7 @@ class _ExploreView extends StatelessWidget {
     return Scaffold(
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppDimens.pageGutter,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: AppDimens.pageGutter),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -80,9 +77,9 @@ class _ExploreView extends StatelessWidget {
                         _FilterChip(
                           label: label,
                           selected: state.category == id,
-                          onTap: () => context
-                              .read<ExploreBloc>()
-                              .add(ExploreCategoryChanged(id)),
+                          onTap: () => context.read<ExploreBloc>().add(
+                            ExploreCategoryChanged(id),
+                          ),
                         ),
                         const SizedBox(width: AppDimens.space8),
                       ],
@@ -94,15 +91,14 @@ class _ExploreView extends StatelessWidget {
               Expanded(
                 child: BlocBuilder<ExploreBloc, ExploreState>(
                   builder: (context, state) => switch (state.status) {
-                    ExploreStatus.initial ||
-                    ExploreStatus.loading =>
+                    ExploreStatus.initial || ExploreStatus.loading =>
                       const Center(child: CircularProgressIndicator()),
                     ExploreStatus.failure => Center(
-                        child: Text(
-                          state.error ?? 'Could not load buildings',
-                          style: theme.textTheme.bodyMedium,
-                        ),
+                      child: Text(
+                        state.error ?? 'Could not load buildings',
+                        style: theme.textTheme.bodyMedium,
                       ),
+                    ),
                     ExploreStatus.success when state.buildings.isEmpty =>
                       Center(
                         child: Text(
@@ -111,24 +107,24 @@ class _ExploreView extends StatelessWidget {
                         ),
                       ),
                     ExploreStatus.success => ListView.separated(
-                        padding: const EdgeInsets.only(
-                          top: AppDimens.space8,
-                          bottom: AppDimens.space24,
-                        ),
-                        itemCount: state.buildings.length,
-                        separatorBuilder: (_, __) => Divider(
-                          height: AppDimens.space24,
-                          color: theme.dividerColor,
-                        ),
-                        itemBuilder: (context, index) {
-                          final building = state.buildings[index];
-                          return BuildingListTile(
-                            building: building,
-                            metaSuffix:
-                                ' · ${building.distanceKm.toStringAsFixed(1)} km',
-                          );
-                        },
+                      padding: const EdgeInsets.only(
+                        top: AppDimens.space8,
+                        bottom: AppDimens.space24,
                       ),
+                      itemCount: state.buildings.length,
+                      separatorBuilder: (_, __) => Divider(
+                        height: AppDimens.space24,
+                        color: theme.dividerColor,
+                      ),
+                      itemBuilder: (context, index) {
+                        final building = state.buildings[index];
+                        return BuildingListTile(
+                          building: building,
+                          metaSuffix:
+                              ' · ${building.distanceKm.toStringAsFixed(1)} km',
+                        );
+                      },
+                    ),
                   },
                 ),
               ),
@@ -138,10 +134,17 @@ class _ExploreView extends StatelessWidget {
                 child: SafeArea(
                   top: false,
                   child: Padding(
-                    padding:
-                        const EdgeInsets.only(bottom: AppDimens.space12),
+                    padding: const EdgeInsets.only(bottom: AppDimens.space12),
+                    // The building picker, not the old mock scan screen —
+                    // which is now "Detect environment" and has nothing to do
+                    // with mapping. A contributor standing in a building
+                    // nobody has listed has to be able to add it, which is
+                    // exactly what the picker is for.
                     child: ElevatedButton.icon(
-                      onPressed: () => openScanFlow(context),
+                      onPressed: () => context.pushNamed(
+                        RouteNames.mapBuilding,
+                        extra: RouteNames.buildingMapping,
+                      ),
                       icon: const Icon(PhosphorIconsBold.plus, size: 18),
                       label: const Text('Scan a new building'),
                     ),

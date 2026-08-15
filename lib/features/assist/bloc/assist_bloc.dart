@@ -32,13 +32,29 @@ class AssistBloc extends Bloc<AssistEvent, AssistState> {
 
   static const _demoCallouts = [
     AssistCallout(
-        title: 'Door ahead', detail: 'about 3 steps', urgent: false, label: 'doorway'),
+      title: 'Door ahead',
+      detail: 'about 3 steps',
+      urgent: false,
+      label: 'doorway',
+    ),
     AssistCallout(
-        title: 'Chair on your left', detail: 'close', urgent: false, label: 'furniture'),
+      title: 'Chair on your left',
+      detail: 'close',
+      urgent: false,
+      label: 'furniture',
+    ),
     AssistCallout(
-        title: 'Path bends right', detail: 'in 5 steps', urgent: false, label: 'path'),
+      title: 'Path bends right',
+      detail: 'in 5 steps',
+      urgent: false,
+      label: 'path',
+    ),
     AssistCallout(
-        title: 'Sign: "Room 204"', detail: 'on your right', urgent: false, label: 'sign'),
+      title: 'Sign: "Room 204"',
+      detail: 'on your right',
+      urgent: false,
+      label: 'sign',
+    ),
   ];
 
   Future<void> _onStarted(
@@ -52,8 +68,9 @@ class AssistBloc extends Bloc<AssistEvent, AssistState> {
       emit(state.copyWith(status: AssistStatus.live));
       _speak('Assistance started. I will call out what I see.');
       await _subscription?.cancel();
-      _subscription = _detection.obstacles
-          .listen((obstacles) => add(_ObstaclesArrived(obstacles)));
+      _subscription = _detection.obstacles.listen(
+        (obstacles) => add(_ObstaclesArrived(obstacles)),
+      );
     } else {
       // No camera — scripted loop so the flow stays demonstrable.
       emit(state.copyWith(status: AssistStatus.demo));

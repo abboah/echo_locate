@@ -10,9 +10,9 @@ void main() {
   tearDown(() => hardware.close());
 
   StepService service({Future<bool> Function()? permission}) => StepService(
-        cumulativeSteps: hardware.stream,
-        requestPermission: permission ?? () async => true,
-      );
+    cumulativeSteps: hardware.stream,
+    requestPermission: permission ?? () async => true,
+  );
 
   group('counting from where the user is now', () {
     test('the first hardware reading is the zero point', () async {
@@ -68,8 +68,11 @@ void main() {
       hardware.add(4);
       await pumpEventQueue();
 
-      expect(seen.every((v) => v >= 0), isTrue,
-          reason: 'never reports a negative walk');
+      expect(
+        seen.every((v) => v >= 0),
+        isTrue,
+        reason: 'never reports a negative walk',
+      );
       expect(s.stepsSinceReset, 2);
     });
   });

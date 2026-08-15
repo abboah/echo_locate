@@ -8,6 +8,7 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
 
     private var depthHandler: ArCoreDepthHandler? = null
+    private var captureHandler: RoomCaptureHandler? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -24,6 +25,22 @@ class MainActivity : FlutterActivity() {
             flutterEngine.dartExecutor.binaryMessenger,
             ArCoreDepthHandler.EVENT_CHANNEL,
         ).setStreamHandler(handler)
+
+        // The renderer *is* the texture registry. Capture draws the camera into
+        // a texture it registers here rather than shipping frames to Dart, so
+        // it needs the registry, not just a messenger.
+        val capture = RoomCaptureHandler(this, flutterEngine.renderer)
+        captureHandler = capture
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            RoomCaptureHandler.METHOD_CHANNEL,
+        ).setMethodCallHandler(capture)
+
+        EventChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            RoomCaptureHandler.EVENT_CHANNEL,
+        ).setStreamHandler(capture)
     }
 
     /**
@@ -34,6 +51,10 @@ class MainActivity : FlutterActivity() {
      */
     override fun onPause() {
         depthHandler?.stop()
+        // Both sessions, and for the same reason: two ARCore sessions cannot
+        // hold the camera at once either, so leaving one running is also what
+        // makes the *other* fail to start.
+        captureHandler?.stop()
         super.onPause()
     }
 }

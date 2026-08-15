@@ -53,8 +53,7 @@ class SpeechService {
     bool interrupt = false,
     AudioUse? use,
   }) async {
-    final claim =
-        use ?? (interrupt ? AudioUse.urgentSpeech : AudioUse.speech);
+    final claim = use ?? (interrupt ? AudioUse.urgentSpeech : AudioUse.speech);
     final lease = await _arbiter?.acquire(claim);
     if (_arbiter != null && lease == null) {
       // A routine callout refused by another utterance: the running one is at
@@ -73,10 +72,17 @@ class SpeechService {
     try {
       await _ensureConfigured();
       if (interrupt) await _tts.stop();
-      await _tts.speak(text).timeout(_maxUtterance, onTimeout: () {
-        AppLogger.warn('TTS did not report completion within $_maxUtterance');
-        return null;
-      });
+      await _tts
+          .speak(text)
+          .timeout(
+            _maxUtterance,
+            onTimeout: () {
+              AppLogger.warn(
+                'TTS did not report completion within $_maxUtterance',
+              );
+              return null;
+            },
+          );
     } catch (e) {
       // No TTS engine (some emulators) — the visual callout still shows.
       AppLogger.warn('TTS unavailable: $e');

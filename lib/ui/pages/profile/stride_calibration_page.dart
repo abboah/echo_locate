@@ -67,8 +67,9 @@ class _CalibrationView extends StatelessWidget {
                   Center(
                     child: Text(
                       '${state.steps}',
-                      style: theme.textTheme.displayMedium
-                          ?.copyWith(color: AppColors.coral),
+                      style: theme.textTheme.displayMedium?.copyWith(
+                        color: AppColors.coral,
+                      ),
                     ),
                   ),
                   Center(
@@ -92,7 +93,8 @@ class _CalibrationView extends StatelessWidget {
                   if (state.status == CalibrationStatus.unavailable)
                     _Result(
                       warning: true,
-                      text: state.error ??
+                      text:
+                          state.error ??
                           'This phone has no step counter, so the walk cannot '
                               'be measured. Give your height instead — '
                               'guidance will lean on landmarks rather than '

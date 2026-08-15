@@ -103,10 +103,7 @@ class PlanTracePainter extends CustomPainter {
       textDirection: TextDirection.ltr,
     )..layout();
 
-    painter.paint(
-      canvas,
-      centre + Offset(nodeRadius + 6, -painter.height / 2),
-    );
+    painter.paint(canvas, centre + Offset(nodeRadius + 6, -painter.height / 2));
   }
 
   PlanPoint? _find(String ref) {

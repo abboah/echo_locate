@@ -43,8 +43,13 @@ class PlannedLeg extends Equatable {
   final int turnDeg;
 
   @override
-  List<Object?> get props =>
-      [fromLandmarkId, toLandmarkId, distanceM, instruction, turnDeg];
+  List<Object?> get props => [
+    fromLandmarkId,
+    toLandmarkId,
+    distanceM,
+    instruction,
+    turnDeg,
+  ];
 }
 
 /// A route to walk, whether recorded whole or assembled from several walks.
@@ -85,9 +90,9 @@ class PlannedRoute extends Equatable {
 
   /// Landmarks in walking order, start included.
   List<String> get landmarkIds => [
-        if (legs.isNotEmpty) legs.first.fromLandmarkId,
-        for (final leg in legs) leg.toLandmarkId,
-      ];
+    if (legs.isNotEmpty) legs.first.fromLandmarkId,
+    for (final leg in legs) leg.toLandmarkId,
+  ];
 
   @override
   List<Object?> get props => [legs, synthesised];

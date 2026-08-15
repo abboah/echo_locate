@@ -35,17 +35,17 @@ class SupabaseBuildingRepository
   }
 
   Building _buildingFrom(Map<String, dynamic> row) => Building(
-        id: row['id'] as String,
-        name: row['name'] as String,
-        area: row['area'] as String? ?? '',
-        floorsCount: (row['floors_count'] as num?)?.toInt() ?? 0,
-        mappers: (row['mappers'] as num?)?.toInt() ?? 0,
-        mappedPercent: (row['mapped_percent'] as num?)?.toInt() ?? 0,
-        distanceKm: (row['distance_km'] as num?)?.toDouble() ?? 0,
-        category: row['category'] as String? ?? 'campus',
-        glyph: row['glyph'] as String? ?? 'building',
-        updatedLabel: row['updated_label'] as String? ?? 'updated recently',
-      );
+    id: row['id'] as String,
+    name: row['name'] as String,
+    area: row['area'] as String? ?? '',
+    floorsCount: (row['floors_count'] as num?)?.toInt() ?? 0,
+    mappers: (row['mappers'] as num?)?.toInt() ?? 0,
+    mappedPercent: (row['mapped_percent'] as num?)?.toInt() ?? 0,
+    distanceKm: (row['distance_km'] as num?)?.toDouble() ?? 0,
+    category: row['category'] as String? ?? 'campus',
+    glyph: row['glyph'] as String? ?? 'building',
+    updatedLabel: row['updated_label'] as String? ?? 'updated recently',
+  );
 
   List<Building> _buildingsFrom(List<dynamic> rows) => rows
       .cast<Map<String, dynamic>>()
@@ -129,16 +129,19 @@ class SupabaseBuildingRepository
             .order('ordinal');
 
         return rows.map((row) {
-          final rooms = (row['rooms'] as List<dynamic>? ?? [])
-              .cast<Map<String, dynamic>>()
-              .map((r) => Room(
-                    id: r['id'] as String,
-                    name: r['name'] as String,
-                    distanceM: (r['distance_m'] as num?)?.toInt() ?? 0,
-                    kind: r['kind'] as String? ?? 'room',
-                  ))
-              .toList()
-            ..sort((a, b) => a.distanceM.compareTo(b.distanceM));
+          final rooms =
+              (row['rooms'] as List<dynamic>? ?? [])
+                  .cast<Map<String, dynamic>>()
+                  .map(
+                    (r) => Room(
+                      id: r['id'] as String,
+                      name: r['name'] as String,
+                      distanceM: (r['distance_m'] as num?)?.toInt() ?? 0,
+                      kind: r['kind'] as String? ?? 'room',
+                    ),
+                  )
+                  .toList()
+                ..sort((a, b) => a.distanceM.compareTo(b.distanceM));
           return BuildingFloor(
             id: row['id'] as String,
             label: row['label'] as String,
@@ -148,7 +151,9 @@ class SupabaseBuildingRepository
       },
       encode: (floors) => floors.map((f) => f.toJson()).toList(),
       decode: (cached) => (cached as List)
-          .map((e) => BuildingFloor.fromJson(Map<String, dynamic>.from(e as Map)))
+          .map(
+            (e) => BuildingFloor.fromJson(Map<String, dynamic>.from(e as Map)),
+          )
           .toList(),
     );
   }
@@ -166,8 +171,9 @@ class SupabaseBuildingRepository
             .eq('user_id', _userId)
             .order('saved_at', ascending: false);
 
-        final ids =
-            saved.map((r) => r['building_id'] as String).toList(growable: false);
+        final ids = saved
+            .map((r) => r['building_id'] as String)
+            .toList(growable: false);
         if (ids.isEmpty) return <Building>[];
 
         final rows = await _client
@@ -269,11 +275,7 @@ class SupabaseBuildingRepository
       // record them.
       await _client.from('floors').insert([
         for (var i = 0; i < floors; i++)
-          {
-            'building_id': id,
-            'label': i == 0 ? 'G' : '$i',
-            'ordinal': i,
-          },
+          {'building_id': id, 'label': i == 0 ? 'G' : '$i', 'ordinal': i},
       ]);
 
       // Explore and Home read cached lists, so a new building would not appear

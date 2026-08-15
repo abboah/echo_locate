@@ -79,43 +79,43 @@ class _NavigationView extends StatelessWidget {
                 ),
                 Expanded(
                   child: switch (state.status) {
-                    FloorMapStatus.loading =>
-                      const Center(child: CircularProgressIndicator()),
+                    FloorMapStatus.loading => const Center(
+                      child: CircularProgressIndicator(),
+                    ),
                     FloorMapStatus.failure => _Message(
-                        icon: PhosphorIconsRegular.cloudSlash,
-                        title: state.error ?? 'Map unavailable',
-                        detail:
-                            'Open this building once with a connection and '
-                            'its map is kept for offline use.',
-                        action: Padding(
-                          padding:
-                              const EdgeInsets.only(top: AppDimens.space16),
-                          child: OutlinedButton.icon(
-                            onPressed: () => context
-                                .read<FloorMapBloc>()
-                                .add(FloorMapRequested(buildingId)),
-                            icon: const Icon(
-                              PhosphorIconsRegular.arrowClockwise,
-                              size: 18,
-                            ),
-                            label: const Text('Try again'),
+                      icon: PhosphorIconsRegular.cloudSlash,
+                      title: state.error ?? 'Map unavailable',
+                      detail:
+                          'Open this building once with a connection and '
+                          'its map is kept for offline use.',
+                      action: Padding(
+                        padding: const EdgeInsets.only(top: AppDimens.space16),
+                        child: OutlinedButton.icon(
+                          onPressed: () => context.read<FloorMapBloc>().add(
+                            FloorMapRequested(buildingId),
                           ),
+                          icon: const Icon(
+                            PhosphorIconsRegular.arrowClockwise,
+                            size: 18,
+                          ),
+                          label: const Text('Try again'),
                         ),
                       ),
+                    ),
                     FloorMapStatus.empty => _Message(
-                        icon: PhosphorIconsRegular.mapTrifold,
-                        title: 'Nobody has mapped this building yet',
-                        detail:
-                            'Trace the floor plan posted on its wall, or walk '
-                            'it and record a route. Either becomes this '
-                            'building’s first map — and its first directions.',
-                        action: Column(
-                          children: [
-                            _TraceButton(buildingId: buildingId),
-                            _RecordButton(buildingId: buildingId, compact: true),
-                          ],
-                        ),
+                      icon: PhosphorIconsRegular.mapTrifold,
+                      title: 'Nobody has mapped this building yet',
+                      detail:
+                          'Trace the floor plan posted on its wall, or walk '
+                          'it and record a route. Either becomes this '
+                          'building’s first map — and its first directions.',
+                      action: Column(
+                        children: [
+                          _TraceButton(buildingId: buildingId),
+                          _RecordButton(buildingId: buildingId, compact: true),
+                        ],
                       ),
+                    ),
                     FloorMapStatus.ready => _Schematic(state: state),
                   },
                 ),
@@ -223,9 +223,9 @@ class _FloorSwitcher extends StatelessWidget {
                 button: true,
                 child: InkWell(
                   borderRadius: BorderRadius.circular(AppDimens.radiusSm),
-                  onTap: () => context
-                      .read<FloorMapBloc>()
-                      .add(FloorMapFloorSelected(floorId)),
+                  onTap: () => context.read<FloorMapBloc>().add(
+                    FloorMapFloorSelected(floorId),
+                  ),
                   child: Container(
                     width: 36,
                     height: 36,
@@ -268,7 +268,8 @@ class _SpreadNote extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final text = 'Schematic — landmarks placed within about '
+    final text =
+        'Schematic — landmarks placed within about '
         '${metres.toStringAsFixed(1)} m';
 
     return Semantics(
@@ -307,7 +308,8 @@ class _Schematic extends StatelessWidget {
       // what a user meets first — an unlabelled rectangle says nothing.
       container: true,
       explicitChildNodes: true,
-      label: 'Schematic map of the building, drawn from recorded walks. '
+      label:
+          'Schematic map of the building, drawn from recorded walks. '
           'Choose a start and a destination below to plan a route.',
       child: Stack(
         children: [
@@ -317,6 +319,9 @@ class _Schematic extends StatelessWidget {
               edges: state.edgesOnActiveFloor,
               landmarks: state.landmarksById,
               route: state.plan,
+              // A graph built from a traced plan is in plan units, not metres,
+              // and the zoom cap has to know which.
+              metric: state.graph.metric,
               // Tapping a landmark sets where the walk starts from. On the
               // field that claim comes from OCR; here somebody says it by hand.
               onLandmarkTap: (id) =>
@@ -385,8 +390,11 @@ class _RoutePicker extends StatelessWidget {
           if (plan != null)
             Row(
               children: [
-                const Icon(PhosphorIconsFill.path,
-                    size: 18, color: AppColors.coral),
+                const Icon(
+                  PhosphorIconsFill.path,
+                  size: 18,
+                  color: AppColors.coral,
+                ),
                 const SizedBox(width: AppDimens.space8),
                 Expanded(
                   child: Text(
@@ -402,8 +410,9 @@ class _RoutePicker extends StatelessWidget {
           else if (bothPicked)
             Text(
               'No recorded walk connects these two yet.',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: AppColors.warning),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: AppColors.warning,
+              ),
             )
           else
             Text(
@@ -436,8 +445,8 @@ class _RoutePicker extends StatelessWidget {
       extra: GuidanceSession(
         plan: plan,
         landmarks: state.landmarks,
-        destinationName: state.landmarkOf(destinationId)?.displayName ??
-            'your destination',
+        destinationName:
+            state.landmarkOf(destinationId)?.displayName ?? 'your destination',
         // The whole building, so a lost user can be relocated against any sign
         // in it, not just the ones on this route.
         graph: state.graph,
@@ -577,7 +586,11 @@ class _Message extends StatelessWidget {
           children: [
             Icon(icon, size: 40, color: theme.textTheme.labelSmall?.color),
             const SizedBox(height: AppDimens.space16),
-            Text(title, textAlign: TextAlign.center, style: theme.textTheme.titleMedium),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleMedium,
+            ),
             const SizedBox(height: AppDimens.space8),
             Text(
               detail,

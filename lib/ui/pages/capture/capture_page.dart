@@ -13,6 +13,7 @@ import '../../../features/profile/profile_repository.dart';
 import '../../../features/routing/route_repository.dart';
 import '../../../services/injection_container.dart';
 import '../../../services/motion/stride_profile.dart';
+import '../../widgets/sheet_body.dart';
 
 /// Recording a building by walking it once.
 ///
@@ -49,7 +50,9 @@ class _CapturePageState extends State<CapturePage> {
   BuildingFloor? _floor;
 
   Future<_CaptureContext> _load() async {
-    final floors = await getIt<BuildingRepository>().floorsOf(widget.buildingId);
+    final floors = await getIt<BuildingRepository>().floorsOf(
+      widget.buildingId,
+    );
     // Existing landmarks are advisory: a sign already recorded should be
     // captured under the name it already has, or the upload creates a second
     // landmark standing in the same spot.
@@ -65,8 +68,10 @@ class _CapturePageState extends State<CapturePage> {
       final metres =
           (await getIt<ProfileRepository>().currentProfile()).strideLengthM;
       if (metres != null) {
-        final calibrated =
-            StrideProfile(metres: metres, source: StrideSource.calibrated);
+        final calibrated = StrideProfile(
+          metres: metres,
+          source: StrideSource.calibrated,
+        );
         if (calibrated.isPlausible) stride = calibrated;
       }
     } catch (_) {
@@ -87,7 +92,8 @@ class _CapturePageState extends State<CapturePage> {
             child: _Message(
               icon: PhosphorIconsRegular.cloudSlash,
               title: 'Could not open this building',
-              detail: 'Recording a route needs its floor list. Try again '
+              detail:
+                  'Recording a route needs its floor list. Try again '
                   'with a connection.',
             ),
           );
@@ -103,7 +109,8 @@ class _CapturePageState extends State<CapturePage> {
             child: _Message(
               icon: PhosphorIconsRegular.stairs,
               title: 'This building has no floors listed',
-              detail: 'Landmarks belong to a floor, so one has to exist '
+              detail:
+                  'Landmarks belong to a floor, so one has to exist '
                   'before a route can be recorded.',
             ),
           );
@@ -143,15 +150,15 @@ class _Shell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(
-          leading: IconButton(
-            icon: const Icon(PhosphorIconsRegular.x),
-            onPressed: () => context.pop(),
-          ),
-          title: const Text('Record a route'),
-        ),
-        body: SafeArea(child: child),
-      );
+    appBar: AppBar(
+      leading: IconButton(
+        icon: const Icon(PhosphorIconsRegular.x),
+        onPressed: () => context.pop(),
+      ),
+      title: const Text('Record a route'),
+    ),
+    body: SafeArea(child: child),
+  );
 }
 
 class _FloorChooser extends StatelessWidget {
@@ -167,8 +174,10 @@ class _FloorChooser extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(AppDimens.space16),
       children: [
-        Text('Which floor are you starting on?',
-            style: theme.textTheme.titleMedium),
+        Text(
+          'Which floor are you starting on?',
+          style: theme.textTheme.titleMedium,
+        ),
         const SizedBox(height: AppDimens.space8),
         Text(
           'Every landmark you record belongs to this floor. Take the stairs '
@@ -220,10 +229,12 @@ class _CaptureView extends StatelessWidget {
           ),
           body: SafeArea(
             child: switch (state.status) {
-              CaptureStatus.preparing =>
-                const Center(child: CircularProgressIndicator()),
-              CaptureStatus.saving =>
-                const Center(child: CircularProgressIndicator()),
+              CaptureStatus.preparing => const Center(
+                child: CircularProgressIndicator(),
+              ),
+              CaptureStatus.saving => const Center(
+                child: CircularProgressIndicator(),
+              ),
               CaptureStatus.saved => _Saved(state: state),
               CaptureStatus.describing => _DescribeLeg(state: state),
               _ => _Sighting(state: state),
@@ -306,13 +317,16 @@ class _Sighting extends StatelessWidget {
         if (!first)
           Row(
             children: [
-              const Icon(PhosphorIconsFill.footprints,
-                  size: 18, color: AppColors.coral),
+              const Icon(
+                PhosphorIconsFill.footprints,
+                size: 18,
+                color: AppColors.coral,
+              ),
               const SizedBox(width: AppDimens.space8),
               Text(
                 state.stepCounting
                     ? '${state.stepsThisLeg} steps since '
-                        '${state.landmarks.last.displayName}'
+                          '${state.landmarks.last.displayName}'
                     : 'No step counter — you will be asked for the distance',
                 style: theme.textTheme.bodyMedium,
               ),
@@ -340,8 +354,10 @@ class _Sighting extends StatelessWidget {
                 title: Text(proposal.text),
                 subtitle: proposal.existing == null
                     ? null
-                    : Text('Already recorded as '
-                        '"${proposal.existing!.displayName}"'),
+                    : Text(
+                        'Already recorded as '
+                        '"${proposal.existing!.displayName}"',
+                      ),
                 onTap: () => _addLandmark(context, state, proposal: proposal),
               ),
             ),
@@ -396,8 +412,7 @@ class _LandmarkSheetState extends State<_LandmarkSheet> {
   late final TextEditingController _name = TextEditingController(
     text: widget.proposal?.existing?.displayName ?? widget.proposal?.text ?? '',
   );
-  LandmarkKind _kind =
-      LandmarkKind.sign;
+  LandmarkKind _kind = LandmarkKind.sign;
 
   @override
   void initState() {
@@ -417,13 +432,7 @@ class _LandmarkSheetState extends State<_LandmarkSheet> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Padding(
-      padding: EdgeInsets.only(
-        left: AppDimens.space16,
-        right: AppDimens.space16,
-        top: AppDimens.space16,
-        bottom: MediaQuery.of(context).viewInsets.bottom + AppDimens.space16,
-      ),
+    return SheetBody(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -527,16 +536,18 @@ class _DescribeLegState extends State<_DescribeLeg> {
         Text(
           state.needsManualDistance
               ? (state.stepCounting
-                  ? 'No steps were counted for this leg — enter how far you '
-                      'walked.'
-                  : 'No step counter — enter the distance you walked.')
+                    ? 'No steps were counted for this leg — enter how far you '
+                          'walked.'
+                    : 'No step counter — enter the distance you walked.')
               : '${state.pendingSteps} steps · about '
-                  '${state.stride.distanceFor(state.pendingSteps).toStringAsFixed(1)} m',
+                    '${state.stride.distanceFor(state.pendingSteps).toStringAsFixed(1)} m',
           style: theme.textTheme.bodySmall,
         ),
         const SizedBox(height: AppDimens.space16),
-        Text('Which way did you turn to start this leg?',
-            style: theme.textTheme.labelSmall),
+        Text(
+          'Which way did you turn to start this leg?',
+          style: theme.textTheme.labelSmall,
+        ),
         const SizedBox(height: AppDimens.space8),
         Wrap(
           spacing: AppDimens.space8,
@@ -562,11 +573,8 @@ class _DescribeLegState extends State<_DescribeLeg> {
           const SizedBox(height: AppDimens.space12),
           TextField(
             controller: _distance,
-            keyboardType:
-                const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: 'Distance in metres',
-            ),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(labelText: 'Distance in metres'),
           ),
         ],
         if (state.error != null) ...[
@@ -582,14 +590,14 @@ class _DescribeLegState extends State<_DescribeLeg> {
             final instruction = _instruction.text.trim();
             if (instruction.isEmpty) return;
             context.read<CaptureBloc>().add(
-                  CaptureLegDescribed(
-                    turnDeg: _turnDeg,
-                    instruction: instruction,
-                    distanceM: state.needsManualDistance
-                        ? double.tryParse(_distance.text.trim())
-                        : null,
-                  ),
-                );
+              CaptureLegDescribed(
+                turnDeg: _turnDeg,
+                instruction: instruction,
+                distanceM: state.needsManualDistance
+                    ? double.tryParse(_distance.text.trim())
+                    : null,
+              ),
+            );
           },
           child: const Text('Save this leg'),
         ),
@@ -644,8 +652,11 @@ class _Saved extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(PhosphorIconsFill.checkCircle,
-                size: 56, color: AppColors.coral),
+            const Icon(
+              PhosphorIconsFill.checkCircle,
+              size: 56,
+              color: AppColors.coral,
+            ),
             const SizedBox(height: AppDimens.space16),
             Text('Route uploaded', style: theme.textTheme.titleLarge),
             const SizedBox(height: AppDimens.space8),
@@ -692,11 +703,17 @@ class _Message extends StatelessWidget {
           children: [
             Icon(icon, size: 40, color: theme.textTheme.labelSmall?.color),
             const SizedBox(height: AppDimens.space12),
-            Text(title, textAlign: TextAlign.center,
-                style: theme.textTheme.titleMedium),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleMedium,
+            ),
             const SizedBox(height: AppDimens.space8),
-            Text(detail,
-                textAlign: TextAlign.center, style: theme.textTheme.bodySmall),
+            Text(
+              detail,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall,
+            ),
           ],
         ),
       ),

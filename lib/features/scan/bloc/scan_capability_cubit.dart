@@ -45,15 +45,13 @@ enum ScanCapability {
       switch (availability) {
         ArCoreAvailability.supported ||
         ArCoreAvailability.supportedNotInstalled ||
-        ArCoreAvailability.supportedApkTooOld =>
-          ScanCapability.available,
+        ArCoreAvailability.supportedApkTooOld => ScanCapability.available,
         // Includes `checking`: an unsettled answer is not a positive one.
         // [ScanCapabilityCubit.resolve] polls so this is only reached once
         // ARCore has genuinely stopped saying "checking".
         ArCoreAvailability.unsupported ||
         ArCoreAvailability.checking ||
-        ArCoreAvailability.unknown =>
-          ScanCapability.unavailable,
+        ArCoreAvailability.unknown => ScanCapability.unavailable,
       };
 }
 

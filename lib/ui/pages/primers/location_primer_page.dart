@@ -40,8 +40,7 @@ class LocationPrimerPage extends StatelessWidget {
                 body: 'Location is only used while you map',
               ),
               const Spacer(),
-              Text('Use your location?',
-                  style: theme.textTheme.headlineMedium),
+              Text('Use your location?', style: theme.textTheme.headlineMedium),
               const SizedBox(height: AppDimens.space8),
               Text(
                 'We use it to surface nearby maps and position your scans.',

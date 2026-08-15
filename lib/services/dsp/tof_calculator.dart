@@ -33,10 +33,10 @@ class ToFResult extends Equatable {
 
   /// This reading, stamped with its emission time.
   ToFResult at(DateTime timestamp) => ToFResult(
-        distanceMeters: distanceMeters,
-        peakToNoiseRatio: peakToNoiseRatio,
-        capturedAt: timestamp,
-      );
+    distanceMeters: distanceMeters,
+    peakToNoiseRatio: peakToNoiseRatio,
+    capturedAt: timestamp,
+  );
 
   @override
   List<Object?> get props => [distanceMeters, peakToNoiseRatio, capturedAt];
@@ -226,8 +226,8 @@ class ToFCalculator {
     );
     if (peak == null || peak.noiseFloor == 0) return null;
 
-    final targetDelay =
-        (2 * knownDistanceMeters / speedOfSoundMps * sampleRate).round();
+    final targetDelay = (2 * knownDistanceMeters / speedOfSoundMps * sampleRate)
+        .round();
 
     var localPeak = 0.0;
     for (var i = targetDelay - 3; i <= targetDelay + 3; i++) {
@@ -312,8 +312,8 @@ class ToFCalculator {
   }) {
     if (correlation.isEmpty || pulseCount < 1) return null;
 
-    final maxDelaySamples =
-        (2 * maxRangeMeters / speedOfSoundMps * sampleRate).round();
+    final maxDelaySamples = (2 * maxRangeMeters / speedOfSoundMps * sampleRate)
+        .round();
 
     final anchors = _deriveAnchors(
       correlation: correlation,
@@ -375,8 +375,8 @@ class ToFCalculator {
       }
     }
 
-    final minDelaySamples =
-        (2 * minRangeMeters / speedOfSoundMps * sampleRate).round();
+    final minDelaySamples = (2 * minRangeMeters / speedOfSoundMps * sampleRate)
+        .round();
     if (minDelaySamples >= envelope.length) return null;
 
     var peakIndex = minDelaySamples;

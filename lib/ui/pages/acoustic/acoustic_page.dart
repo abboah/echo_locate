@@ -59,17 +59,18 @@ class _AcousticView extends StatelessWidget {
                         AcousticStatus.starting =>
                           const CircularProgressIndicator(),
                         AcousticStatus.unavailable => Text(
-                            'Microphone unavailable',
-                            style: theme.textTheme.bodyLarge,
-                          ),
+                          'Microphone unavailable',
+                          style: theme.textTheme.bodyLarge,
+                        ),
                         AcousticStatus.listening => const _Listening(),
-                        AcousticStatus.idle => classification == null
-                            ? Text(
-                                'Listen to identify the space around you.',
-                                textAlign: TextAlign.center,
-                                style: theme.textTheme.bodyLarge,
-                              )
-                            : _Result(classification: classification),
+                        AcousticStatus.idle =>
+                          classification == null
+                              ? Text(
+                                  'Listen to identify the space around you.',
+                                  textAlign: TextAlign.center,
+                                  style: theme.textTheme.bodyLarge,
+                                )
+                              : _Result(classification: classification),
                       },
                     ),
                   ),
@@ -78,16 +79,17 @@ class _AcousticView extends StatelessWidget {
                     Text(
                       state.error!,
                       textAlign: TextAlign.center,
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: AppColors.error),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: AppColors.error,
+                      ),
                     ),
                     const SizedBox(height: AppDimens.space12),
                   ],
                   ElevatedButton.icon(
                     onPressed: canMeasure
-                        ? () => context
-                            .read<AcousticBloc>()
-                            .add(const AcousticMeasureRequested())
+                        ? () => context.read<AcousticBloc>().add(
+                            const AcousticMeasureRequested(),
+                          )
                         : null,
                     icon: const Icon(PhosphorIconsFill.waveform, size: 20),
                     label: Text(
@@ -117,15 +119,9 @@ class _Listening extends StatelessWidget {
       children: [
         const CircularProgressIndicator(),
         const SizedBox(height: AppDimens.space16),
-        Text(
-          'Listening to the room…',
-          style: theme.textTheme.bodyLarge,
-        ),
+        Text('Listening to the room…', style: theme.textTheme.bodyLarge),
         const SizedBox(height: AppDimens.space4),
-        Text(
-          'Hold still and stay quiet',
-          style: theme.textTheme.bodySmall,
-        ),
+        Text('Hold still and stay quiet', style: theme.textTheme.bodySmall),
       ],
     );
   }
@@ -192,8 +188,7 @@ class _Result extends StatelessWidget {
               ),
               _Metric(
                 label: 'EDT',
-                value:
-                    '${features.earlyDecayTimeSeconds.toStringAsFixed(2)} s',
+                value: '${features.earlyDecayTimeSeconds.toStringAsFixed(2)} s',
               ),
               _Metric(
                 label: 'fit',

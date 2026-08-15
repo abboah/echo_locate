@@ -26,9 +26,9 @@ class FloorMapBloc extends Bloc<FloorMapEvent, FloorMapState> {
     this._routes, {
     BuildingRepository? buildings,
     RoutePlanner planner = const RoutePlanner(),
-  })  : _buildings = buildings,
-        _planner = planner,
-        super(const FloorMapState()) {
+  }) : _buildings = buildings,
+       _planner = planner,
+       super(const FloorMapState()) {
     on<FloorMapRequested>(_onRequested);
     on<FloorMapFromSelected>(_onFromSelected);
     on<FloorMapToSelected>(_onToSelected);
@@ -210,20 +210,15 @@ class FloorMapBloc extends Bloc<FloorMapEvent, FloorMapState> {
   void _onFromSelected(
     FloorMapFromSelected event,
     Emitter<FloorMapState> emit,
-  ) =>
-      emit(_replanned(state.copyWith(fromId: event.landmarkId)));
+  ) => emit(_replanned(state.copyWith(fromId: event.landmarkId)));
 
-  void _onToSelected(
-    FloorMapToSelected event,
-    Emitter<FloorMapState> emit,
-  ) =>
+  void _onToSelected(FloorMapToSelected event, Emitter<FloorMapState> emit) =>
       emit(_replanned(state.copyWith(toId: event.landmarkId)));
 
   void _onFloorSelected(
     FloorMapFloorSelected event,
     Emitter<FloorMapState> emit,
-  ) =>
-      emit(state.copyWith(activeFloorId: event.floorId));
+  ) => emit(state.copyWith(activeFloorId: event.floorId));
 
   FloorMapState _replanned(FloorMapState next) {
     final from = next.fromId;

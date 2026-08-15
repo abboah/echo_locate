@@ -63,9 +63,9 @@ class SonarLatencyProfile extends Equatable {
       playbackLatency + maxEchoDelay + safetyMargin;
 
   Map<String, int> toJson() => {
-        'recorderStartupUs': recorderStartup.inMicroseconds,
-        'playbackLatencyUs': playbackLatency.inMicroseconds,
-      };
+    'recorderStartupUs': recorderStartup.inMicroseconds,
+    'playbackLatencyUs': playbackLatency.inMicroseconds,
+  };
 
   static SonarLatencyProfile? fromJson(Object? value) {
     if (value is! Map) return null;
@@ -80,7 +80,8 @@ class SonarLatencyProfile extends Equatable {
   }
 
   @override
-  String toString() => 'recorderStartup=${recorderStartup.inMilliseconds}ms '
+  String toString() =>
+      'recorderStartup=${recorderStartup.inMilliseconds}ms '
       'playbackLatency=${playbackLatency.inMilliseconds}ms';
 
   @override

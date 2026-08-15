@@ -24,10 +24,12 @@ class MapsBloc extends Bloc<MapsEvent, MapsState> {
       // Broad on purpose: a narrow catch let Supabase, socket and
       // Hive errors escape, and a Bloc that never emits leaves the
       // screen spinning forever.
-      emit(state.copyWith(
-        status: MapsStatus.failure,
-        error: OperationFailure.from(error).message,
-      ));
+      emit(
+        state.copyWith(
+          status: MapsStatus.failure,
+          error: OperationFailure.from(error).message,
+        ),
+      );
     }
   }
 }

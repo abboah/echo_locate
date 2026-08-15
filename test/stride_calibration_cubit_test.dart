@@ -44,18 +44,20 @@ void main() {
     await cubit.close();
   });
 
-  test('steps are counted while the user walks the measured distance',
-      () async {
-    final cubit = StrideCalibrationCubit(steps, profile);
-    await cubit.begin();
+  test(
+    'steps are counted while the user walks the measured distance',
+    () async {
+      final cubit = StrideCalibrationCubit(steps, profile);
+      await cubit.begin();
 
-    stepStream.add(13);
-    await pump();
+      stepStream.add(13);
+      await pump();
 
-    expect(cubit.state.status, CalibrationStatus.walking);
-    expect(cubit.state.steps, 13);
-    await cubit.close();
-  });
+      expect(cubit.state.status, CalibrationStatus.walking);
+      expect(cubit.state.steps, 13);
+      await cubit.close();
+    },
+  );
 
   test('finishing the walk stores metres per step', () async {
     final cubit = StrideCalibrationCubit(steps, profile);
@@ -125,8 +127,9 @@ void main() {
     await cubit.saveFromHeight(1.7);
 
     expect(cubit.state.profile?.source, StrideSource.height);
-    verify(() => profile.saveStride(any(that: closeTo(0.7055, 0.001))))
-        .called(1);
+    verify(
+      () => profile.saveStride(any(that: closeTo(0.7055, 0.001))),
+    ).called(1);
     await cubit.close();
   });
 

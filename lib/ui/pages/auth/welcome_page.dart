@@ -23,16 +23,16 @@ class WelcomePage extends StatelessWidget {
             curr is AuthUnauthenticated && curr.error != null,
         listener: (context, state) {
           final error = (state as AuthUnauthenticated).error!;
-          ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text(error)));
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(error)));
         },
         child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(AppDimens.pageGutter),
             child: BlocBuilder<AuthBloc, AuthState>(
               builder: (context, state) {
-                final busy =
-                    state is AuthUnauthenticated && state.inProgress;
+                final busy = state is AuthUnauthenticated && state.inProgress;
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -43,11 +43,15 @@ class WelcomePage extends StatelessWidget {
                         height: 64,
                         decoration: BoxDecoration(
                           color: AppColors.coral,
-                          borderRadius:
-                              BorderRadius.circular(AppDimens.radiusLg),
+                          borderRadius: BorderRadius.circular(
+                            AppDimens.radiusLg,
+                          ),
                         ),
-                        child: const Icon(PhosphorIconsFill.mapTrifold,
-                            color: Colors.white, size: 30),
+                        child: const Icon(
+                          PhosphorIconsFill.mapTrifold,
+                          color: Colors.white,
+                          size: 30,
+                        ),
                       ),
                     ),
                     const SizedBox(height: AppDimens.space20),
@@ -67,12 +71,13 @@ class WelcomePage extends StatelessWidget {
                     ElevatedButton.icon(
                       onPressed: busy
                           ? null
-                          : () => context
-                              .read<AuthBloc>()
-                              .add(const AuthAppleRequested()),
+                          : () => context.read<AuthBloc>().add(
+                              const AuthAppleRequested(),
+                            ),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor:
-                            isDark ? AppColors.darkElevated : AppColors.ink,
+                        backgroundColor: isDark
+                            ? AppColors.darkElevated
+                            : AppColors.ink,
                       ),
                       icon: const Icon(PhosphorIconsFill.appleLogo, size: 20),
                       label: const Text('Sign in with Apple'),
@@ -81,9 +86,9 @@ class WelcomePage extends StatelessWidget {
                     OutlinedButton.icon(
                       onPressed: busy
                           ? null
-                          : () => context
-                              .read<AuthBloc>()
-                              .add(const AuthGoogleRequested()),
+                          : () => context.read<AuthBloc>().add(
+                              const AuthGoogleRequested(),
+                            ),
                       icon: const Icon(
                         PhosphorIconsBold.googleLogo,
                         size: 20,
@@ -96,8 +101,10 @@ class WelcomePage extends StatelessWidget {
                       onPressed: busy
                           ? null
                           : () => context.pushNamed(RouteNames.signIn),
-                      icon: const Icon(PhosphorIconsRegular.envelopeSimple,
-                          size: 20),
+                      icon: const Icon(
+                        PhosphorIconsRegular.envelopeSimple,
+                        size: 20,
+                      ),
                       label: const Text('Continue with email'),
                     ),
                     const Spacer(),

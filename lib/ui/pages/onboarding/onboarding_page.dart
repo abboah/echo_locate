@@ -118,8 +118,9 @@ class _OnboardingPageState extends State<OnboardingPage> {
                         color: i == _index
                             ? AppColors.coral
                             : theme.dividerColor,
-                        borderRadius:
-                            BorderRadius.circular(AppDimens.radiusPill),
+                        borderRadius: BorderRadius.circular(
+                          AppDimens.radiusPill,
+                        ),
                       ),
                     ),
                     if (i != _steps.length - 1)
@@ -183,9 +184,12 @@ class _StepView extends StatelessWidget {
         const Spacer(),
         Text(step.title, style: theme.textTheme.displaySmall),
         const SizedBox(height: AppDimens.space12),
-        Text(step.body, style: theme.textTheme.bodyLarge?.copyWith(
-              color: theme.textTheme.bodyMedium?.color,
-            )),
+        Text(
+          step.body,
+          style: theme.textTheme.bodyLarge?.copyWith(
+            color: theme.textTheme.bodyMedium?.color,
+          ),
+        ),
         const SizedBox(height: AppDimens.space16),
       ],
     );

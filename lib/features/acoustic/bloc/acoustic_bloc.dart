@@ -17,9 +17,11 @@ part 'acoustic_state.dart';
 /// sonar feature — same speaker, same mic, same chirp — but a different
 /// capture shape: one excitation and a long silence rather than a train.
 class AcousticBloc extends Bloc<AcousticEvent, AcousticState> {
-  AcousticBloc(this._audio, {RoomClassifier classifier = const RoomClassifier()})
-      : _classifier = classifier,
-        super(const AcousticState()) {
+  AcousticBloc(
+    this._audio, {
+    RoomClassifier classifier = const RoomClassifier(),
+  }) : _classifier = classifier,
+       super(const AcousticState()) {
     on<AcousticStarted>(_onStarted);
     on<AcousticMeasureRequested>(_onMeasure);
   }
@@ -34,9 +36,11 @@ class AcousticBloc extends Bloc<AcousticEvent, AcousticState> {
     final available = await _audio.start();
     if (isClosed) return;
 
-    emit(state.copyWith(
-      status: available ? AcousticStatus.idle : AcousticStatus.unavailable,
-    ));
+    emit(
+      state.copyWith(
+        status: available ? AcousticStatus.idle : AcousticStatus.unavailable,
+      ),
+    );
   }
 
   Future<void> _onMeasure(
@@ -51,22 +55,24 @@ class AcousticBloc extends Bloc<AcousticEvent, AcousticState> {
 
     final classification = _classifier.classify(measurement.features);
 
-    emit(AcousticState(
-      status: AcousticStatus.idle,
-      // Held even when the verdict is `unknown`: the reverberation numbers are
-      // the evidence, and showing them is what lets a user (or an examiner)
-      // see why the space could not be named.
-      lastClassification: classification,
-      // A failed capture is reported as ITS cause, not the classifier's. The
-      // classifier can only say "no usable measurement", which would blame the
-      // room for a measurement the microphone never got to take.
-      error: switch ((measurement.failure, classification.type)) {
-        (final ReverbFailure failure, _) =>
-          'Could not measure — ${failure.message}',
-        (_, RoomType.unknown) =>
-          'Could not identify the space — ${classification.reason}',
-        _ => null,
-      },
-    ));
+    emit(
+      AcousticState(
+        status: AcousticStatus.idle,
+        // Held even when the verdict is `unknown`: the reverberation numbers are
+        // the evidence, and showing them is what lets a user (or an examiner)
+        // see why the space could not be named.
+        lastClassification: classification,
+        // A failed capture is reported as ITS cause, not the classifier's. The
+        // classifier can only say "no usable measurement", which would blame the
+        // room for a measurement the microphone never got to take.
+        error: switch ((measurement.failure, classification.type)) {
+          (final ReverbFailure failure, _) =>
+            'Could not measure — ${failure.message}',
+          (_, RoomType.unknown) =>
+            'Could not identify the space — ${classification.reason}',
+          _ => null,
+        },
+      ),
+    );
   }
 }

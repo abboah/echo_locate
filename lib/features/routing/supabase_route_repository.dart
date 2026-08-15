@@ -31,34 +31,34 @@ class SupabaseRouteRepository with RepositoryMixin implements RouteRepository {
       'distance_m, steps_recorded, turn_deg)';
 
   Landmark _landmarkFrom(Map<String, dynamic> row) => Landmark(
-        id: row['id'] as String,
-        buildingId: row['building_id'] as String,
-        floorId: row['floor_id'] as String,
-        kind: LandmarkKind.fromName(row['kind'] as String?),
-        labelText: row['label_text'] as String,
-        displayName: row['display_name'] as String,
-        aliases:
-            (row['aliases'] as List<dynamic>? ?? const []).cast<String>(),
-        roomId: row['room_id'] as String?,
-      );
+    id: row['id'] as String,
+    buildingId: row['building_id'] as String,
+    floorId: row['floor_id'] as String,
+    kind: LandmarkKind.fromName(row['kind'] as String?),
+    labelText: row['label_text'] as String,
+    displayName: row['display_name'] as String,
+    aliases: (row['aliases'] as List<dynamic>? ?? const []).cast<String>(),
+    roomId: row['room_id'] as String?,
+  );
 
   WalkRoute _routeFrom(Map<String, dynamic> row) {
-    final steps = (row['route_steps'] as List<dynamic>? ?? const [])
-        .cast<Map<String, dynamic>>()
-        .map(
-          (s) => RouteStep(
-            seq: (s['seq'] as num).toInt(),
-            fromLandmarkId: s['from_landmark_id'] as String,
-            toLandmarkId: s['to_landmark_id'] as String,
-            instruction: s['instruction'] as String,
-            distanceM: (s['distance_m'] as num).toDouble(),
-            turnDeg: (s['turn_deg'] as num?)?.toInt() ?? 0,
-            stepsRecorded: (s['steps_recorded'] as num?)?.toInt(),
-          ),
-        )
-        .toList()
-      // PostgREST does not guarantee embedded row order.
-      ..sort((a, b) => a.seq.compareTo(b.seq));
+    final steps =
+        (row['route_steps'] as List<dynamic>? ?? const [])
+            .cast<Map<String, dynamic>>()
+            .map(
+              (s) => RouteStep(
+                seq: (s['seq'] as num).toInt(),
+                fromLandmarkId: s['from_landmark_id'] as String,
+                toLandmarkId: s['to_landmark_id'] as String,
+                instruction: s['instruction'] as String,
+                distanceM: (s['distance_m'] as num).toDouble(),
+                turnDeg: (s['turn_deg'] as num?)?.toInt() ?? 0,
+                stepsRecorded: (s['steps_recorded'] as num?)?.toInt(),
+              ),
+            )
+            .toList()
+          // PostgREST does not guarantee embedded row order.
+          ..sort((a, b) => a.seq.compareTo(b.seq));
 
     return WalkRoute(
       id: row['id'] as String,

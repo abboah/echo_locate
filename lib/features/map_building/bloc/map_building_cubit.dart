@@ -32,13 +32,12 @@ class MapBuildingState extends Equatable {
     List<Building>? listed,
     Building? created,
     String? error,
-  }) =>
-      MapBuildingState(
-        status: status ?? this.status,
-        listed: listed ?? this.listed,
-        created: created ?? this.created,
-        error: error,
-      );
+  }) => MapBuildingState(
+    status: status ?? this.status,
+    listed: listed ?? this.listed,
+    created: created ?? this.created,
+    error: error,
+  );
 
   @override
   List<Object?> get props => [status, listed, created, error];
@@ -60,9 +59,7 @@ class MapBuildingCubit extends Cubit<MapBuildingState> {
     try {
       final listed = await _buildings.nearby();
       if (isClosed) return;
-      emit(
-        state.copyWith(status: MapBuildingStatus.ready, listed: listed),
-      );
+      emit(state.copyWith(status: MapBuildingStatus.ready, listed: listed));
     } catch (error, stack) {
       AppLogger.error('Could not list buildings: $error', error, stack);
       if (isClosed) return;

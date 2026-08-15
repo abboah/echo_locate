@@ -7,32 +7,30 @@ import 'package:flutter_test/flutter_test.dart';
 WalkRoute routeOf(
   String id,
   List<({String from, String to, double distanceM, int turnDeg})> legs,
-) =>
-    WalkRoute(
-      id: id,
-      buildingId: 'b1',
-      startLandmarkId: legs.first.from,
-      destinationRoomId: 'room-$id',
-      steps: [
-        for (var i = 0; i < legs.length; i++)
-          RouteStep(
-            seq: i + 1,
-            fromLandmarkId: legs[i].from,
-            toLandmarkId: legs[i].to,
-            instruction: 'walk to ${legs[i].to}',
-            distanceM: legs[i].distanceM,
-            turnDeg: legs[i].turnDeg,
-          ),
-      ],
-    );
+) => WalkRoute(
+  id: id,
+  buildingId: 'b1',
+  startLandmarkId: legs.first.from,
+  destinationRoomId: 'room-$id',
+  steps: [
+    for (var i = 0; i < legs.length; i++)
+      RouteStep(
+        seq: i + 1,
+        fromLandmarkId: legs[i].from,
+        toLandmarkId: legs[i].to,
+        instruction: 'walk to ${legs[i].to}',
+        distanceM: legs[i].distanceM,
+        turnDeg: legs[i].turnDeg,
+      ),
+  ],
+);
 
 ({String from, String to, double distanceM, int turnDeg}) leg(
   String from,
   String to, {
   double distanceM = 10,
   int turnDeg = 0,
-}) =>
-    (from: from, to: to, distanceM: distanceM, turnDeg: turnDeg);
+}) => (from: from, to: to, distanceM: distanceM, turnDeg: turnDeg);
 
 void main() {
   const planner = RoutePlanner();
@@ -92,7 +90,10 @@ void main() {
 
   test('the shorter way round is chosen', () {
     final graph = FloorGraph.merge([
-      routeOf('long', [leg('a', 'b', distanceM: 10), leg('b', 'd', distanceM: 10)]),
+      routeOf('long', [
+        leg('a', 'b', distanceM: 10),
+        leg('b', 'd', distanceM: 10),
+      ]),
       routeOf('short', [
         leg('a', 'c', distanceM: 4, turnDeg: 90),
         leg('c', 'd', distanceM: 4, turnDeg: -90),
@@ -167,10 +168,7 @@ void main() {
 
     test('the first leg has no approach, so it has no turn', () {
       final graph = FloorGraph.merge([
-        routeOf('r', [
-          leg('a', 'b', turnDeg: 90),
-          leg('b', 'c', turnDeg: 90),
-        ]),
+        routeOf('r', [leg('a', 'b', turnDeg: 90), leg('b', 'c', turnDeg: 90)]),
       ]);
 
       final plan = planner.plan(graph, from: 'a', to: 'c');
@@ -182,10 +180,7 @@ void main() {
 
     test('walking a recorded route backwards inverts its corner', () {
       final graph = FloorGraph.merge([
-        routeOf('r', [
-          leg('a', 'b'),
-          leg('b', 'c', turnDeg: 90),
-        ]),
+        routeOf('r', [leg('a', 'b'), leg('b', 'c', turnDeg: 90)]),
       ]);
 
       final forward = planner.plan(graph, from: 'a', to: 'c')!;
@@ -237,12 +232,7 @@ void main() {
       ];
       final graph = FloorGraph.merge(routes);
 
-      final plan = planner.plan(
-        graph,
-        from: 'x',
-        to: 'c',
-        recorded: routes,
-      );
+      final plan = planner.plan(graph, from: 'x', to: 'c', recorded: routes);
 
       expect(plan!.landmarkIds, ['x', 'b', 'c']);
       expect(plan.legs.last.instruction, isNull);
@@ -279,10 +269,10 @@ void main() {
 }
 
 Landmark _landmark(String id, String floorId) => Landmark(
-      id: id,
-      buildingId: 'b1',
-      floorId: floorId,
-      kind: LandmarkKind.sign,
-      labelText: id.toUpperCase(),
-      displayName: id,
-    );
+  id: id,
+  buildingId: 'b1',
+  floorId: floorId,
+  kind: LandmarkKind.sign,
+  labelText: id.toUpperCase(),
+  displayName: id,
+);
