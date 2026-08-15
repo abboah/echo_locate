@@ -37,7 +37,8 @@ void main() {
     int seed = 42,
   }) {
     final random = math.Random(seed);
-    final length = breakthroughOffset +
+    final length =
+        breakthroughOffset +
         (echoDelaySamples ?? 0) +
         chirp.length +
         trailingSamples;
@@ -179,8 +180,9 @@ void main() {
 
     final random = math.Random(3);
     const breakthroughOffset = 5000;
-    final received =
-        Float64List(breakthroughOffset + farDelay + chirp.length + 500);
+    final received = Float64List(
+      breakthroughOffset + farDelay + chirp.length + 500,
+    );
     for (var i = 0; i < received.length; i++) {
       received[i] = (random.nextDouble() * 2 - 1) * 0.02;
     }
@@ -347,8 +349,10 @@ void main() {
     );
     expect(profile, isNotNull);
 
-    final measured =
-        correlator.correlate(capture(withTarget: true, seed: 2), chirp);
+    final measured = correlator.correlate(
+      capture(withTarget: true, seed: 2),
+      chirp,
+    );
 
     // A real target at 0.15m is reported at 0.15m.
     final corrected = calculator.calculate(
@@ -363,8 +367,10 @@ void main() {
     // ringing now sits inside the search window, so subtracting the profile
     // is what keeps it from being reported as an obstacle.
     final suppressed = calculator.calculate(
-      correlation:
-          correlator.correlate(capture(withTarget: false, seed: 3), chirp),
+      correlation: correlator.correlate(
+        capture(withTarget: false, seed: 3),
+        chirp,
+      ),
       sampleRate: params.sampleRate,
       clutterProfile: profile,
     );

@@ -24,8 +24,7 @@ class AppConfig {
   /// theatre, an emulator with no DNS — and for exercising the UI against the
   /// seeded KNUST Library route without a round trip. A compile-time constant,
   /// so a release build cannot be talked into it at runtime.
-  static const bool forceMocks =
-      bool.fromEnvironment('FORCE_MOCKS');
+  static const bool forceMocks = bool.fromEnvironment('FORCE_MOCKS');
 
   static bool get hasSupabase =>
       !forceMocks && supabaseUrl.isNotEmpty && supabaseKey.isNotEmpty;

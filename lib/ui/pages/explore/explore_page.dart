@@ -55,9 +55,7 @@ class _ExploreView extends StatelessWidget {
     return Scaffold(
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppDimens.pageGutter,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: AppDimens.pageGutter),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -80,9 +78,9 @@ class _ExploreView extends StatelessWidget {
                         _FilterChip(
                           label: label,
                           selected: state.category == id,
-                          onTap: () => context
-                              .read<ExploreBloc>()
-                              .add(ExploreCategoryChanged(id)),
+                          onTap: () => context.read<ExploreBloc>().add(
+                            ExploreCategoryChanged(id),
+                          ),
                         ),
                         const SizedBox(width: AppDimens.space8),
                       ],
@@ -94,15 +92,14 @@ class _ExploreView extends StatelessWidget {
               Expanded(
                 child: BlocBuilder<ExploreBloc, ExploreState>(
                   builder: (context, state) => switch (state.status) {
-                    ExploreStatus.initial ||
-                    ExploreStatus.loading =>
+                    ExploreStatus.initial || ExploreStatus.loading =>
                       const Center(child: CircularProgressIndicator()),
                     ExploreStatus.failure => Center(
-                        child: Text(
-                          state.error ?? 'Could not load buildings',
-                          style: theme.textTheme.bodyMedium,
-                        ),
+                      child: Text(
+                        state.error ?? 'Could not load buildings',
+                        style: theme.textTheme.bodyMedium,
                       ),
+                    ),
                     ExploreStatus.success when state.buildings.isEmpty =>
                       Center(
                         child: Text(
@@ -111,24 +108,24 @@ class _ExploreView extends StatelessWidget {
                         ),
                       ),
                     ExploreStatus.success => ListView.separated(
-                        padding: const EdgeInsets.only(
-                          top: AppDimens.space8,
-                          bottom: AppDimens.space24,
-                        ),
-                        itemCount: state.buildings.length,
-                        separatorBuilder: (_, __) => Divider(
-                          height: AppDimens.space24,
-                          color: theme.dividerColor,
-                        ),
-                        itemBuilder: (context, index) {
-                          final building = state.buildings[index];
-                          return BuildingListTile(
-                            building: building,
-                            metaSuffix:
-                                ' · ${building.distanceKm.toStringAsFixed(1)} km',
-                          );
-                        },
+                      padding: const EdgeInsets.only(
+                        top: AppDimens.space8,
+                        bottom: AppDimens.space24,
                       ),
+                      itemCount: state.buildings.length,
+                      separatorBuilder: (_, __) => Divider(
+                        height: AppDimens.space24,
+                        color: theme.dividerColor,
+                      ),
+                      itemBuilder: (context, index) {
+                        final building = state.buildings[index];
+                        return BuildingListTile(
+                          building: building,
+                          metaSuffix:
+                              ' · ${building.distanceKm.toStringAsFixed(1)} km',
+                        );
+                      },
+                    ),
                   },
                 ),
               ),
@@ -138,8 +135,7 @@ class _ExploreView extends StatelessWidget {
                 child: SafeArea(
                   top: false,
                   child: Padding(
-                    padding:
-                        const EdgeInsets.only(bottom: AppDimens.space12),
+                    padding: const EdgeInsets.only(bottom: AppDimens.space12),
                     child: ElevatedButton.icon(
                       onPressed: () => openScanFlow(context),
                       icon: const Icon(PhosphorIconsBold.plus, size: 18),

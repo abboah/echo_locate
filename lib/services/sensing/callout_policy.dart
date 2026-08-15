@@ -55,8 +55,8 @@ class CalloutPolicy {
     final detail = urgent
         ? 'very close'
         : nearest.heightFraction >= 0.30
-            ? 'close'
-            : 'a few steps ahead';
+        ? 'close'
+        : 'a few steps ahead';
 
     final position = switch (nearest.position) {
       ObstaclePosition.left => 'on your left',

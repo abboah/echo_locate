@@ -72,7 +72,7 @@ abstract class WalkRoute with _$WalkRoute {
 
   /// Landmark ids in walking order, start included.
   List<String> get landmarkIds => [
-        if (steps.isNotEmpty) steps.first.fromLandmarkId,
-        for (final step in steps) step.toLandmarkId,
-      ];
+    if (steps.isNotEmpty) steps.first.fromLandmarkId,
+    for (final step in steps) step.toLandmarkId,
+  ];
 }

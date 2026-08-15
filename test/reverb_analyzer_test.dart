@@ -30,7 +30,8 @@ void main() {
     for (var i = 0; i < length; i++) {
       final t = i / sampleRate;
       final envelope = math.exp(-t / tau);
-      response[i] = (random.nextDouble() * 2 - 1) * envelope +
+      response[i] =
+          (random.nextDouble() * 2 - 1) * envelope +
           (random.nextDouble() * 2 - 1) * noiseFloor;
     }
     return response;
@@ -63,7 +64,10 @@ void main() {
       final quiet = syntheticDecay(rt60Seconds: 0.8);
       final loud = Float64List.fromList(quiet.map((s) => s * 50).toList());
 
-      final a = analyzer.analyze(impulseResponse: quiet, sampleRate: sampleRate);
+      final a = analyzer.analyze(
+        impulseResponse: quiet,
+        sampleRate: sampleRate,
+      );
       final b = analyzer.analyze(impulseResponse: loud, sampleRate: sampleRate);
 
       expect(a, isNotNull);
@@ -79,8 +83,10 @@ void main() {
       final delayed = Float64List(decay.length + sampleRate ~/ 2)
         ..setRange(sampleRate ~/ 2, sampleRate ~/ 2 + decay.length, decay);
 
-      final features =
-          analyzer.analyze(impulseResponse: delayed, sampleRate: sampleRate);
+      final features = analyzer.analyze(
+        impulseResponse: delayed,
+        sampleRate: sampleRate,
+      );
 
       expect(features, isNotNull);
       expect(features!.rt60Seconds, closeTo(rt60, rt60 * 0.05));
@@ -95,8 +101,10 @@ void main() {
         noise[i] = random.nextDouble() * 2 - 1;
       }
 
-      final features =
-          analyzer.analyze(impulseResponse: noise, sampleRate: sampleRate);
+      final features = analyzer.analyze(
+        impulseResponse: noise,
+        sampleRate: sampleRate,
+      );
 
       // Noise has no sustained decay, so either nothing is fitted or the fit
       // is visibly untrustworthy. Both are acceptable; a confident wrong
@@ -127,8 +135,10 @@ void main() {
     test('returns null when the capture is too short to hold a decay', () {
       // 20ms of a 1.5s reverb never falls far enough to fit.
       final features = analyzer.analyze(
-        impulseResponse:
-            syntheticDecay(rt60Seconds: 1.5, durationSeconds: 0.02),
+        impulseResponse: syntheticDecay(
+          rt60Seconds: 1.5,
+          durationSeconds: 0.02,
+        ),
         sampleRate: sampleRate,
       );
 
@@ -154,13 +164,14 @@ void main() {
         final t = i / sampleRate;
         // Sum of two decays: the fast one dominates early, the slow one
         // survives to dominate late.
-        final envelope =
-            math.exp(-t / fastTau) + 0.05 * math.exp(-t / slowTau);
+        final envelope = math.exp(-t / fastTau) + 0.05 * math.exp(-t / slowTau);
         response[i] = (random.nextDouble() * 2 - 1) * envelope;
       }
 
-      final features =
-          analyzer.analyze(impulseResponse: response, sampleRate: sampleRate);
+      final features = analyzer.analyze(
+        impulseResponse: response,
+        sampleRate: sampleRate,
+      );
 
       expect(features, isNotNull);
       expect(

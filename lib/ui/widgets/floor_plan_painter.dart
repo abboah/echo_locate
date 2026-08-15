@@ -30,7 +30,16 @@ class FloorPlanView extends StatelessWidget {
     this.route,
     this.currentLandmarkId,
     this.onLandmarkTap,
+    this.metric = true,
   });
+
+  /// Whether [nodes] are in metres — `FloorGraph.metric`.
+  ///
+  /// Only the zoom cap cares, and only because getting it wrong is invisible:
+  /// a graph built from a traced plan is about one unit across, so a cap
+  /// expressed in pixels per metre renders the whole floor as a smudge. See
+  /// [PlanViewport.maxScaleFor].
+  final bool metric;
 
   /// Nodes on the floor being shown — the caller filters, so the painter never
   /// has to know which plane is active.
@@ -76,6 +85,7 @@ class FloorPlanView extends StatelessWidget {
           nodes,
           width: constraints.maxWidth,
           height: constraints.maxHeight,
+          maxScale: PlanViewport.maxScaleFor(metric ? 1 : null),
         );
 
         // One-shot, not a loop: the halo swells and settles when the user
@@ -84,26 +94,26 @@ class FloorPlanView extends StatelessWidget {
         final animate = !MediaQuery.of(context).disableAnimations;
 
         Widget build(double pulse) => CustomPaint(
-              size: Size.infinite,
-              painter: _FloorPlanPainter(
-                nodes: nodes,
-                edges: edges,
-                landmarks: landmarks,
-                viewport: viewport,
-                routeLandmarkIds: route?.landmarkIds ?? const [],
-                destinationId: route == null || route!.legs.isEmpty
-                    ? null
-                    : route!.legs.last.toLandmarkId,
-                currentLandmarkId: currentLandmarkId,
-                brightness: theme.brightness,
-                hairline: theme.dividerColor,
-                onSurface: theme.colorScheme.onSurface,
-                muted: theme.textTheme.bodyMedium?.color ?? AppColors.inkMuted,
-                textDirection: Directionality.of(context),
-                pulse: pulse,
-                onLandmarkTap: onLandmarkTap,
-              ),
-            );
+          size: Size.infinite,
+          painter: _FloorPlanPainter(
+            nodes: nodes,
+            edges: edges,
+            landmarks: landmarks,
+            viewport: viewport,
+            routeLandmarkIds: route?.landmarkIds ?? const [],
+            destinationId: route == null || route!.legs.isEmpty
+                ? null
+                : route!.legs.last.toLandmarkId,
+            currentLandmarkId: currentLandmarkId,
+            brightness: theme.brightness,
+            hairline: theme.dividerColor,
+            onSurface: theme.colorScheme.onSurface,
+            muted: theme.textTheme.bodyMedium?.color ?? AppColors.inkMuted,
+            textDirection: Directionality.of(context),
+            pulse: pulse,
+            onLandmarkTap: onLandmarkTap,
+          ),
+        );
 
         final painter = animate
             ? TweenAnimationBuilder<double>(
@@ -349,7 +359,9 @@ class _FloorPlanPainter extends CustomPainter {
         centre,
         radius,
         Paint()
-          ..color = AppColors.coral.withValues(alpha: 0.25 * (0.4 + 0.6 * pulse)),
+          ..color = AppColors.coral.withValues(
+            alpha: 0.25 * (0.4 + 0.6 * pulse),
+          ),
       );
       canvas.drawCircle(centre, 6, Paint()..color = AppColors.coral);
     }
@@ -422,36 +434,34 @@ class _FloorPlanPainter extends CustomPainter {
   /// because "Help desk" alone does not say whether it is on the way.
   @override
   SemanticsBuilderCallback get semanticsBuilder => (size) {
-        final onRoute = routeLandmarkIds.toSet();
-        final tappable = onLandmarkTap != null;
+    final onRoute = routeLandmarkIds.toSet();
+    final tappable = onLandmarkTap != null;
 
-        return [
-          for (final node in nodes)
-            if (landmarks[node.landmarkId] case final landmark?)
-              CustomPainterSemantics(
-                // The drawn dot is 6px across. The semantics node matches the
-                // touch target instead, because a screen reader's explore-by-
-                // touch has to find it the same way a finger does.
-                rect: Rect.fromCenter(
-                  center: Offset(
-                    viewport.toCanvasX(node.x),
-                    viewport.toCanvasY(node.y),
-                  ),
-                  width: FloorPlanView.tapRadius * 2,
-                  height: FloorPlanView.tapRadius * 2,
-                ),
-                properties: SemanticsProperties(
-                  label: _describe(landmark, onRoute),
-                  textDirection: textDirection,
-                  button: tappable,
-                  enabled: tappable,
-                  onTap: tappable
-                      ? () => onLandmarkTap!(node.landmarkId)
-                      : null,
-                ),
+    return [
+      for (final node in nodes)
+        if (landmarks[node.landmarkId] case final landmark?)
+          CustomPainterSemantics(
+            // The drawn dot is 6px across. The semantics node matches the
+            // touch target instead, because a screen reader's explore-by-
+            // touch has to find it the same way a finger does.
+            rect: Rect.fromCenter(
+              center: Offset(
+                viewport.toCanvasX(node.x),
+                viewport.toCanvasY(node.y),
               ),
-        ];
-      };
+              width: FloorPlanView.tapRadius * 2,
+              height: FloorPlanView.tapRadius * 2,
+            ),
+            properties: SemanticsProperties(
+              label: _describe(landmark, onRoute),
+              textDirection: textDirection,
+              button: tappable,
+              enabled: tappable,
+              onTap: tappable ? () => onLandmarkTap!(node.landmarkId) : null,
+            ),
+          ),
+    ];
+  };
 
   String _describe(Landmark landmark, Set<String> onRoute) {
     final role = switch (landmark.id) {
@@ -469,13 +479,13 @@ class _FloorPlanPainter extends CustomPainter {
   }
 
   static String _kindWord(LandmarkKind kind) => switch (kind) {
-        LandmarkKind.entrance => 'entrance',
-        LandmarkKind.junction => 'junction',
-        LandmarkKind.stairs => 'stairs',
-        LandmarkKind.lift => 'lift',
-        LandmarkKind.door => 'door',
-        LandmarkKind.sign => 'sign',
-      };
+    LandmarkKind.entrance => 'entrance',
+    LandmarkKind.junction => 'junction',
+    LandmarkKind.stairs => 'stairs',
+    LandmarkKind.lift => 'lift',
+    LandmarkKind.door => 'door',
+    LandmarkKind.sign => 'sign',
+  };
 
   @override
   bool shouldRepaint(covariant _FloorPlanPainter old) =>

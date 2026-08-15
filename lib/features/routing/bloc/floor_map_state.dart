@@ -68,9 +68,9 @@ final class FloorMapState extends Equatable {
   /// A landmark the graph has never seen cannot be routed to, so offering it
   /// would be offering a dead end.
   List<Landmark> get mappedLandmarks => [
-        for (final landmark in landmarks)
-          if (graph.nodes.containsKey(landmark.id)) landmark,
-      ]..sort((a, b) => a.displayName.compareTo(b.displayName));
+    for (final landmark in landmarks)
+      if (graph.nodes.containsKey(landmark.id)) landmark,
+  ]..sort((a, b) => a.displayName.compareTo(b.displayName));
 
   /// Landmark ids along the current plan, for highlighting on the map.
   List<String> get highlighted => plan?.landmarkIds ?? const [];
@@ -118,8 +118,8 @@ final class FloorMapState extends Equatable {
 
   /// Landmarks by id, the shape the painter wants.
   Map<String, Landmark> get landmarksById => {
-        for (final landmark in landmarks) landmark.id: landmark,
-      };
+    for (final landmark in landmarks) landmark.id: landmark,
+  };
 
   FloorMapState copyWith({
     FloorMapStatus? status,
@@ -137,37 +137,36 @@ final class FloorMapState extends Equatable {
     String? error,
     bool clearPlan = false,
     bool clearError = false,
-  }) =>
-      FloorMapState(
-        status: status ?? this.status,
-        buildingId: buildingId ?? this.buildingId,
-        buildingName: buildingName ?? this.buildingName,
-        graph: graph ?? this.graph,
-        landmarks: landmarks ?? this.landmarks,
-        routes: routes ?? this.routes,
-        floors: floors ?? this.floors,
-        activeFloorId: activeFloorId ?? this.activeFloorId,
-        worstSpreadM: worstSpreadM ?? this.worstSpreadM,
-        fromId: fromId ?? this.fromId,
-        toId: toId ?? this.toId,
-        plan: clearPlan ? null : plan ?? this.plan,
-        error: clearError ? null : error ?? this.error,
-      );
+  }) => FloorMapState(
+    status: status ?? this.status,
+    buildingId: buildingId ?? this.buildingId,
+    buildingName: buildingName ?? this.buildingName,
+    graph: graph ?? this.graph,
+    landmarks: landmarks ?? this.landmarks,
+    routes: routes ?? this.routes,
+    floors: floors ?? this.floors,
+    activeFloorId: activeFloorId ?? this.activeFloorId,
+    worstSpreadM: worstSpreadM ?? this.worstSpreadM,
+    fromId: fromId ?? this.fromId,
+    toId: toId ?? this.toId,
+    plan: clearPlan ? null : plan ?? this.plan,
+    error: clearError ? null : error ?? this.error,
+  );
 
   @override
   List<Object?> get props => [
-        status,
-        buildingId,
-        buildingName,
-        graph,
-        landmarks,
-        routes,
-        floors,
-        activeFloorId,
-        worstSpreadM,
-        fromId,
-        toId,
-        plan,
-        error,
-      ];
+    status,
+    buildingId,
+    buildingName,
+    graph,
+    landmarks,
+    routes,
+    floors,
+    activeFloorId,
+    worstSpreadM,
+    fromId,
+    toId,
+    plan,
+    error,
+  ];
 }

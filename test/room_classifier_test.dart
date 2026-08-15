@@ -12,14 +12,13 @@ void main() {
     double? edt,
     double fitQuality = 0.99,
     double decayRangeDb = 20.0,
-  }) =>
-      ReverbFeatures(
-        rt60Seconds: rt60,
-        // Diffuse by default: early and late decay agree.
-        earlyDecayTimeSeconds: edt ?? rt60,
-        fitQuality: fitQuality,
-        decayRangeDb: decayRangeDb,
-      );
+  }) => ReverbFeatures(
+    rt60Seconds: rt60,
+    // Diffuse by default: early and late decay agree.
+    earlyDecayTimeSeconds: edt ?? rt60,
+    fitQuality: fitQuality,
+    decayRangeDb: decayRangeDb,
+  );
 
   group('classes', () {
     test('short diffuse decay is a small room', () {
@@ -71,17 +70,13 @@ void main() {
     test('an unreliable measurement gives unknown, not a class', () {
       // A poor fit means the "decay" may not have been one. Classifying it
       // would put a confident room label on noise.
-      final result = classifier.classify(
-        features(rt60: 0.4, fitQuality: 0.5),
-      );
+      final result = classifier.classify(features(rt60: 0.4, fitQuality: 0.5));
       expect(result.type, RoomType.unknown);
       expect(result.reason, contains('not reliable'));
     });
 
     test('too little decay to fit gives unknown', () {
-      final result = classifier.classify(
-        features(rt60: 1.5, decayRangeDb: 6),
-      );
+      final result = classifier.classify(features(rt60: 1.5, decayRangeDb: 6));
       expect(result.type, RoomType.unknown);
     });
 

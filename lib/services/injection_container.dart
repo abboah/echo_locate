@@ -15,6 +15,9 @@ import '../features/auth/bloc/auth_bloc.dart';
 import '../features/auth/supabase_auth_repository.dart';
 import '../features/building_detail/bloc/building_detail_bloc.dart';
 import '../features/buildings/building_repository.dart';
+import '../features/room_trace/bloc/room_trace_bloc.dart';
+import '../features/room_trace/room_plan_repository.dart';
+import '../features/room_trace/supabase_room_plan_repository.dart';
 import '../features/buildings/supabase_building_repository.dart';
 import '../features/capture/bloc/capture_bloc.dart';
 import '../features/explore/bloc/explore_bloc.dart';
@@ -43,6 +46,7 @@ import 'sensing/detection_service.dart';
 import 'sensing/landmark_matcher.dart';
 import 'sensing/text_recognition_service.dart';
 import 'speech/speech_service.dart';
+import 'vision/arcore_capture_service.dart';
 import 'vision/arcore_depth_service.dart';
 import 'vision/depth_reliability.dart';
 
@@ -89,6 +93,19 @@ Future<void> configureDependencies() async {
         ? SupabaseBuildingRepository(Supabase.instance.client)
         : MockBuildingRepository(),
   );
+  // Traced room geometry — the areas the schematic is drawn from and the doors
+  // that make "the second door on your left" possible.
+  //
+  // Falls back to on-device storage rather than to a mock, unlike its
+  // neighbours. A contributor tracing a floor has done twenty minutes of work
+  // that a mock would drop on the floor, and tracing is the one thing here that
+  // is genuinely useful offline: it happens standing in a corridor, in front of
+  // a board, on a campus connection.
+  getIt.registerLazySingleton<RoomPlanRepository>(
+    () => AppConfig.hasSupabase
+        ? SupabaseRoomPlanRepository(Supabase.instance.client)
+        : const LocalRoomPlanRepository(),
+  );
   getIt.registerLazySingleton<ProfileRepository>(
     () => AppConfig.hasSupabase
         ? SupabaseProfileRepository(Supabase.instance.client)
@@ -128,6 +145,12 @@ Future<void> configureDependencies() async {
     ),
   );
   getIt.registerLazySingleton<ArCoreDepthService>(() => ArCoreDepthService());
+  // AR room capture. A separate session from the depth spike — ARCore holds
+  // the camera exclusively, so the two are never running at once, and the
+  // screens that own them stop one before starting the other.
+  getIt.registerLazySingleton<ArCoreCaptureService>(
+    () => ArCoreCaptureService(),
+  );
 
   // The camera↔sound hand-off (M5). Registered as a pair: DepthReliability
   // decides when camera depth has failed, AcousticFallbackService answers
@@ -198,6 +221,17 @@ Future<void> configureDependencies() async {
       getIt<BuildingRepository>(),
     ),
   );
+  // Room tracing, the same shape as PlanTraceBloc above and for the same
+  // reason: a factory, so each tracing session gets its own camera service
+  // with its own start/stop lifecycle rather than sharing one that a previous
+  // screen may have left holding the camera.
+  getIt.registerFactory<RoomTraceBloc>(
+    () => RoomTraceBloc(
+      getIt<RoomPlanRepository>(),
+      PlanPhotoService(),
+      getIt<BuildingRepository>(),
+    ),
+  );
   getIt.registerFactory<MapBuildingCubit>(
     () => MapBuildingCubit(getIt<BuildingRepository>()),
   );
@@ -211,7 +245,10 @@ Future<void> configureDependencies() async {
     ),
   );
   getIt.registerFactory<StrideCalibrationCubit>(
-    () => StrideCalibrationCubit(getIt<StepService>(), getIt<ProfileRepository>()),
+    () => StrideCalibrationCubit(
+      getIt<StepService>(),
+      getIt<ProfileRepository>(),
+    ),
   );
   // Shares the sonar's audio service: same speaker, mic and chirp, captured
   // differently (one pulse plus a long decay, rather than a train).

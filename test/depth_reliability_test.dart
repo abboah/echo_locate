@@ -76,10 +76,7 @@ void main() {
     test('a bare wall or window returns too few cells to believe', () {
       // The documented low-light / featureless-surface case: the frame
       // arrives, and almost every cell comes back empty.
-      expect(
-        reliability.assess(frame(valid: 1)),
-        DepthDoubt.sparseCoverage,
-      );
+      expect(reliability.assess(frame(valid: 1)), DepthDoubt.sparseCoverage);
     });
 
     test('good coverage with an empty centre still falls back', () {

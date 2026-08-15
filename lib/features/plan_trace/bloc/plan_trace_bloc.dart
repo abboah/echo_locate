@@ -28,7 +28,7 @@ part 'plan_trace_state.dart';
 /// the *map* comes from, not how somebody is found on it.
 class PlanTraceBloc extends Bloc<PlanTraceEvent, PlanTraceState> {
   PlanTraceBloc(this._routes, this._photos, this._buildings)
-      : super(const PlanTraceState()) {
+    : super(const PlanTraceState()) {
     on<PlanTraceStarted>(_onStarted);
     on<PlanFloorChanged>(_onFloorChanged);
     on<PlanPhotoTaken>(_onPhotoTaken);
@@ -74,12 +74,7 @@ class PlanTraceBloc extends Bloc<PlanTraceEvent, PlanTraceState> {
       final floors = await _buildings.floorsOf(event.buildingId);
       if (isClosed) return;
       if (floors.isNotEmpty) {
-        emit(
-          state.copyWith(
-            floors: floors,
-            floorId: floors.first.id,
-          ),
-        );
+        emit(state.copyWith(floors: floors, floorId: floors.first.id));
       }
     } catch (error, stack) {
       AppLogger.warn('Floors unavailable for ${event.buildingId}: $error');
@@ -139,15 +134,15 @@ class PlanTraceBloc extends Bloc<PlanTraceEvent, PlanTraceState> {
   /// in. Without it a reloaded plan would come up mirrored, and every
   /// correction made to it would be made upside down.
   static PlanPoint _pointOf(TracedNode node) => PlanPoint(
-        ref: node.ref,
-        u: node.x,
-        v: -node.y,
-        floorId: node.floorId,
-        kind: node.kind,
-        labelText: node.labelText,
-        displayName: node.displayName,
-        roomId: node.roomId,
-      );
+    ref: node.ref,
+    u: node.x,
+    v: -node.y,
+    floorId: node.floorId,
+    kind: node.kind,
+    labelText: node.labelText,
+    displayName: node.displayName,
+    roomId: node.roomId,
+  );
 
   /// Switches which floor is being drawn.
   ///
@@ -156,10 +151,7 @@ class PlanTraceBloc extends Bloc<PlanTraceEvent, PlanTraceState> {
   /// one graph A* can climb, and clearing here made that join impossible to
   /// draw — the node you wanted to join to stopped existing the moment you
   /// went looking for its other end.
-  void _onFloorChanged(
-    PlanFloorChanged event,
-    Emitter<PlanTraceState> emit,
-  ) =>
+  void _onFloorChanged(PlanFloorChanged event, Emitter<PlanTraceState> emit) =>
       emit(state.copyWith(floorId: event.floorId));
 
   Future<void> _onPhotoTaken(
@@ -276,8 +268,7 @@ class PlanTraceBloc extends Bloc<PlanTraceEvent, PlanTraceState> {
   void _onSelectionCleared(
     PlanSelectionCleared event,
     Emitter<PlanTraceState> emit,
-  ) =>
-      emit(state.copyWith(clearSelection: true));
+  ) => emit(state.copyWith(clearSelection: true));
 
   void _onNodeRemoved(PlanNodeRemoved event, Emitter<PlanTraceState> emit) {
     emit(

@@ -216,7 +216,7 @@ class _TraceCard extends StatelessWidget {
 
     return Semantics(
       button: true,
-      label: 'Map a building. Trace the floor plan posted on its wall.',
+      label: 'Map a building. Trace its rooms off the plan posted on its wall.',
       child: Material(
         color: AppColors.coralSoft,
         borderRadius: BorderRadius.circular(AppDimens.radiusLg),
@@ -239,13 +239,15 @@ class _TraceCard extends StatelessWidget {
                     children: [
                       Text(
                         'Map a building',
-                        style: theme.textTheme.titleMedium
-                            ?.copyWith(color: AppColors.ink),
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          color: AppColors.ink,
+                        ),
                       ),
                       Text(
-                        'Trace the floor plan posted on its wall',
-                        style: theme.textTheme.bodyMedium
-                            ?.copyWith(color: AppColors.ink.withValues(alpha: 0.7)),
+                        'Trace its rooms off the plan posted on its wall',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: AppColors.ink.withValues(alpha: 0.7),
+                        ),
                       ),
                     ],
                   ),

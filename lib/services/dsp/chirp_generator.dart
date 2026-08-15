@@ -16,7 +16,8 @@ class ChirpGenerator {
     final n = params.sampleCount;
     final samples = Float64List(n);
     final sweepRate =
-        (params.endFrequencyHz - params.startFrequencyHz) / params.durationSeconds;
+        (params.endFrequencyHz - params.startFrequencyHz) /
+        params.durationSeconds;
 
     for (var i = 0; i < n; i++) {
       final t = i / params.sampleRate;

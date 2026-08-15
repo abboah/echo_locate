@@ -35,8 +35,10 @@ class StrideProfile extends Equatable {
 
   /// Used when the user offers neither a calibration walk nor a height —
   /// roughly the step of a 1.7m adult.
-  static const StrideProfile fallback =
-      StrideProfile(metres: 0.7055, source: StrideSource.assumed);
+  static const StrideProfile fallback = StrideProfile(
+    metres: 0.7055,
+    source: StrideSource.assumed,
+  );
 
   /// Plausible human step length. Wide enough to cover a short child and a
   /// tall adult striding out, tight enough that a miscount cannot get through:
@@ -63,9 +65,9 @@ class StrideProfile extends Equatable {
   }
 
   factory StrideProfile.fromHeight(double heightM) => StrideProfile(
-        metres: heightM * heightFactor,
-        source: StrideSource.height,
-      );
+    metres: heightM * heightFactor,
+    source: StrideSource.height,
+  );
 
   /// Whether this figure is worth guiding with. Checked before storing and
   /// again after restoring — the same discipline as [SonarLatencyProfile].
@@ -78,10 +80,7 @@ class StrideProfile extends Equatable {
   /// How far this user has travelled in [steps].
   double distanceFor(int steps) => steps * metres;
 
-  Map<String, dynamic> toJson() => {
-        'metres': metres,
-        'source': source.name,
-      };
+  Map<String, dynamic> toJson() => {'metres': metres, 'source': source.name};
 
   /// Restores a stored profile, or null when it is malformed or no longer
   /// believable. A bad stored stride is worse than none: it silently
@@ -93,17 +92,16 @@ class StrideProfile extends Equatable {
 
     // An unrecognised source is not a reason to discard a good measurement —
     // only the number actually guides anyone.
-    final source = StrideSource.values.asNameMap()[value['source']] ??
+    final source =
+        StrideSource.values.asNameMap()[value['source']] ??
         StrideSource.assumed;
 
-    final profile =
-        StrideProfile(metres: metres.toDouble(), source: source);
+    final profile = StrideProfile(metres: metres.toDouble(), source: source);
     return profile.isPlausible ? profile : null;
   }
 
   @override
-  String toString() =>
-      '${metres.toStringAsFixed(3)}m/step (${source.name})';
+  String toString() => '${metres.toStringAsFixed(3)}m/step (${source.name})';
 
   @override
   List<Object?> get props => [metres, source];

@@ -30,7 +30,9 @@ class BuildingDetailPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocProvider(
       create: (_) => getIt<BuildingDetailBloc>()
-        ..add(BuildingDetailStarted(buildingId: buildingId, building: building)),
+        ..add(
+          BuildingDetailStarted(buildingId: buildingId, building: building),
+        ),
       child: const _BuildingDetailView(),
     );
   }
@@ -77,9 +79,9 @@ class _BuildingDetailView extends StatelessWidget {
                           _FloorChip(
                             label: state.floors[i].label,
                             selected: state.selectedFloor == i,
-                            onTap: () => context
-                                .read<BuildingDetailBloc>()
-                                .add(BuildingDetailFloorSelected(i)),
+                            onTap: () => context.read<BuildingDetailBloc>().add(
+                              BuildingDetailFloorSelected(i),
+                            ),
                           ),
                           const SizedBox(width: AppDimens.space8),
                         ],
@@ -249,10 +251,10 @@ class _RoomTile extends StatelessWidget {
   final Building building;
 
   static IconData _iconFor(String kind) => switch (kind) {
-        'hall' => PhosphorIconsRegular.armchair,
-        'desk' => PhosphorIconsRegular.question,
-        _ => PhosphorIconsRegular.doorOpen,
-      };
+    'hall' => PhosphorIconsRegular.armchair,
+    'desk' => PhosphorIconsRegular.question,
+    _ => PhosphorIconsRegular.doorOpen,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -289,8 +291,10 @@ class _RoomTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(room.name, style: theme.textTheme.titleMedium),
-                  Text('~${room.distanceM} m away',
-                      style: theme.textTheme.bodyMedium),
+                  Text(
+                    '~${room.distanceM} m away',
+                    style: theme.textTheme.bodyMedium,
+                  ),
                 ],
               ),
             ),
@@ -321,33 +325,59 @@ class _BottomActions extends StatelessWidget {
       padding: const EdgeInsets.all(AppDimens.space16),
       child: SafeArea(
         top: false,
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
+            // The way back to what somebody traced. Home's "Map a building"
+            // now goes straight into tracing, which is the contributing half;
+            // this is the looking half — floor by floor, with the plan, the
+            // route through it and its evaluation hanging off the hub.
+            // Without this the mapped floors were reachable from nowhere.
             SizedBox(
-              width: 88,
+              width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('3D preview arrives in Phase 3'),
-                  ),
+                onPressed: () => context.pushNamed(
+                  RouteNames.buildingMapping,
+                  pathParameters: {'id': building.id},
+                  extra: building.name,
                 ),
-                icon: const Icon(PhosphorIconsRegular.cube, size: 18),
-                label: const Text('3D'),
+                icon: const Icon(PhosphorIconsRegular.stack, size: 18),
+                label: const Text('Floors and plans'),
               ),
             ),
-            const SizedBox(width: AppDimens.space12),
-            const _SaveButton(),
-            const SizedBox(width: AppDimens.space12),
-            Expanded(
-              child: ElevatedButton.icon(
-                onPressed: () => context.pushNamed(
-                  RouteNames.navigate,
-                  pathParameters: {'id': building.id},
-                  extra: building,
+            const SizedBox(height: AppDimens.space12),
+            Row(
+              children: [
+                SizedBox(
+                  width: 88,
+                  child: OutlinedButton.icon(
+                    onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('3D preview arrives in Phase 3'),
+                      ),
+                    ),
+                    icon: const Icon(PhosphorIconsRegular.cube, size: 18),
+                    label: const Text('3D'),
+                  ),
                 ),
-                icon: const Icon(PhosphorIconsFill.navigationArrow, size: 18),
-                label: const Text('Navigate here'),
-              ),
+                const SizedBox(width: AppDimens.space12),
+                const _SaveButton(),
+                const SizedBox(width: AppDimens.space12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => context.pushNamed(
+                      RouteNames.navigate,
+                      pathParameters: {'id': building.id},
+                      extra: building,
+                    ),
+                    icon: const Icon(
+                      PhosphorIconsFill.navigationArrow,
+                      size: 18,
+                    ),
+                    label: const Text('Navigate here'),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -370,16 +400,18 @@ class _SaveButton extends StatelessWidget {
         return SizedBox(
           width: 56,
           child: OutlinedButton(
-            onPressed: () => context
-                .read<BuildingDetailBloc>()
-                .add(const BuildingDetailSaveToggled()),
+            onPressed: () => context.read<BuildingDetailBloc>().add(
+              const BuildingDetailSaveToggled(),
+            ),
             style: OutlinedButton.styleFrom(
               padding: EdgeInsets.zero,
               foregroundColor: saved ? AppColors.coral : null,
             ),
             child: Semantics(
               button: true,
-              label: saved ? 'Saved for offline. Tap to remove.' : 'Save for offline',
+              label: saved
+                  ? 'Saved for offline. Tap to remove.'
+                  : 'Save for offline',
               child: Icon(
                 saved
                     ? PhosphorIconsFill.bookmarkSimple

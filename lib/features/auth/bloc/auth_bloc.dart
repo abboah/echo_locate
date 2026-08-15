@@ -14,14 +14,20 @@ part 'auth_state.dart';
 /// (via `refreshListenable`) to swap between guest and user route trees.
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
   AuthBloc(this._repository)
-      : super(_repository.currentUser == null
+    : super(
+        _repository.currentUser == null
             ? const AuthUnauthenticated()
-            : AuthAuthenticated(_repository.currentUser!)) {
+            : AuthAuthenticated(_repository.currentUser!),
+      ) {
     on<AuthSubscriptionRequested>(_onSubscriptionRequested);
     on<AuthSignInSubmitted>(_onSignIn);
     on<AuthSignUpSubmitted>(_onSignUp);
-    on<AuthGoogleRequested>((e, emit) => _social(emit, _repository.signInWithGoogle));
-    on<AuthAppleRequested>((e, emit) => _social(emit, _repository.signInWithApple));
+    on<AuthGoogleRequested>(
+      (e, emit) => _social(emit, _repository.signInWithGoogle),
+    );
+    on<AuthAppleRequested>(
+      (e, emit) => _social(emit, _repository.signInWithApple),
+    );
     on<AuthSignOutRequested>(_onSignOut);
     on<_AuthUserChanged>(_onUserChanged);
 
@@ -36,8 +42,9 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     Emitter<AuthState> emit,
   ) async {
     await _subscription?.cancel();
-    _subscription = _repository.authStateChanges
-        .listen((user) => add(_AuthUserChanged(user)));
+    _subscription = _repository.authStateChanges.listen(
+      (user) => add(_AuthUserChanged(user)),
+    );
   }
 
   Future<void> _onSignIn(
@@ -98,9 +105,11 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   }
 
   void _onUserChanged(_AuthUserChanged event, Emitter<AuthState> emit) {
-    emit(event.user == null
-        ? const AuthUnauthenticated()
-        : AuthAuthenticated(event.user!));
+    emit(
+      event.user == null
+          ? const AuthUnauthenticated()
+          : AuthAuthenticated(event.user!),
+    );
   }
 
   @override

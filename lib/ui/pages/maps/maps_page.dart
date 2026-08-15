@@ -34,8 +34,7 @@ class _MapsView extends StatelessWidget {
     return Scaffold(
       body: SafeArea(
         child: Padding(
-          padding:
-              const EdgeInsets.symmetric(horizontal: AppDimens.pageGutter),
+          padding: const EdgeInsets.symmetric(horizontal: AppDimens.pageGutter),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -52,36 +51,36 @@ class _MapsView extends StatelessWidget {
               Expanded(
                 child: BlocBuilder<MapsBloc, MapsState>(
                   builder: (context, state) => switch (state.status) {
-                    MapsStatus.initial ||
-                    MapsStatus.loading =>
-                      const Center(child: CircularProgressIndicator()),
+                    MapsStatus.initial || MapsStatus.loading => const Center(
+                      child: CircularProgressIndicator(),
+                    ),
                     MapsStatus.failure => Center(
-                        child: Text(
-                          state.error ?? 'Could not load saved maps',
-                          style: theme.textTheme.bodyMedium,
-                        ),
+                      child: Text(
+                        state.error ?? 'Could not load saved maps',
+                        style: theme.textTheme.bodyMedium,
                       ),
+                    ),
                     MapsStatus.success when state.saved.isEmpty =>
                       const _EmptyMaps(),
                     MapsStatus.success => ListView.separated(
-                        padding: const EdgeInsets.only(
-                          top: AppDimens.space8,
-                          bottom: AppDimens.space24,
-                        ),
-                        itemCount: state.saved.length,
-                        separatorBuilder: (_, __) => Divider(
-                          height: AppDimens.space24,
-                          color: theme.dividerColor,
-                        ),
-                        itemBuilder: (context, index) => BuildingListTile(
-                          building: state.saved[index],
-                          trailing: const Icon(
-                            PhosphorIconsFill.checkCircle,
-                            color: AppColors.coral,
-                            size: 20,
-                          ),
+                      padding: const EdgeInsets.only(
+                        top: AppDimens.space8,
+                        bottom: AppDimens.space24,
+                      ),
+                      itemCount: state.saved.length,
+                      separatorBuilder: (_, __) => Divider(
+                        height: AppDimens.space24,
+                        color: theme.dividerColor,
+                      ),
+                      itemBuilder: (context, index) => BuildingListTile(
+                        building: state.saved[index],
+                        trailing: const Icon(
+                          PhosphorIconsFill.checkCircle,
+                          color: AppColors.coral,
+                          size: 20,
                         ),
                       ),
+                    ),
                   },
                 ),
               ),

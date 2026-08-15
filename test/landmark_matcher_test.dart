@@ -7,16 +7,15 @@ void main() {
     String labelText, {
     String id = 'l1',
     List<String> aliases = const [],
-  }) =>
-      Landmark(
-        id: id,
-        buildingId: 'knust-library',
-        floorId: 'f1',
-        kind: LandmarkKind.door,
-        labelText: labelText,
-        displayName: 'Room $labelText',
-        aliases: aliases,
-      );
+  }) => Landmark(
+    id: id,
+    buildingId: 'knust-library',
+    floorId: 'f1',
+    kind: LandmarkKind.door,
+    labelText: labelText,
+    displayName: 'Room $labelText',
+    aliases: aliases,
+  );
 
   const matcher = LandmarkMatcher();
 
@@ -37,10 +36,7 @@ void main() {
 
   group('known misreads', () {
     test('a recorded alias matches', () {
-      expect(
-        matcher.matches('2O4', landmark('204', aliases: ['2O4'])),
-        isTrue,
-      );
+      expect(matcher.matches('2O4', landmark('204', aliases: ['2O4'])), isTrue);
     });
 
     test('letter-for-digit confusion matches without being recorded', () {
@@ -101,10 +97,7 @@ void main() {
     test('an ambiguous read is refused rather than guessed', () {
       // Two landmarks a single confusion apart. Saying nothing sends the user
       // into the recovery sweep; guessing sends them through the wrong door.
-      final candidates = [
-        landmark('1O1', id: 'a'),
-        landmark('101', id: 'b'),
-      ];
+      final candidates = [landmark('1O1', id: 'a'), landmark('101', id: 'b')];
 
       expect(matcher.match('1Ol', candidates), isNull);
     });
@@ -122,10 +115,7 @@ void main() {
 
       expect(strict.matches('2O4', landmark('204')), isFalse);
       expect(strict.matches('204', landmark('204')), isTrue);
-      expect(
-        strict.matches('2O4', landmark('204', aliases: ['2O4'])),
-        isTrue,
-      );
+      expect(strict.matches('2O4', landmark('204', aliases: ['2O4'])), isTrue);
     });
   });
 }

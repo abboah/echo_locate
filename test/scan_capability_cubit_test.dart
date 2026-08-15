@@ -23,7 +23,9 @@ void main() {
       // These are user-fixable. Hiding the entry point would strand a capable
       // device with no route to installing ARCore.
       expect(
-        ScanCapability.fromAvailability(ArCoreAvailability.supportedNotInstalled),
+        ScanCapability.fromAvailability(
+          ArCoreAvailability.supportedNotInstalled,
+        ),
         ScanCapability.available,
       );
       expect(
@@ -52,8 +54,10 @@ void main() {
 
     test('only a positive answer from ARCore opens the feature', () {
       final available = ArCoreAvailability.values
-          .where((a) =>
-              ScanCapability.fromAvailability(a) == ScanCapability.available)
+          .where(
+            (a) =>
+                ScanCapability.fromAvailability(a) == ScanCapability.available,
+          )
           .toSet();
 
       expect(available, {

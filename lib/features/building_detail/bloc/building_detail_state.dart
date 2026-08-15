@@ -43,6 +43,12 @@ final class BuildingDetailState extends Equatable {
   }
 
   @override
-  List<Object?> get props =>
-      [status, building, floors, selectedFloor, saved, error];
+  List<Object?> get props => [
+    status,
+    building,
+    floors,
+    selectedFloor,
+    saved,
+    error,
+  ];
 }

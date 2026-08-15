@@ -43,6 +43,11 @@ final class SonarState extends Equatable {
   }
 
   @override
-  List<Object?> get props =>
-      [status, lastMeasurement, headingDegrees, error, isCalibrated];
+  List<Object?> get props => [
+    status,
+    lastMeasurement,
+    headingDegrees,
+    error,
+    isCalibrated,
+  ];
 }

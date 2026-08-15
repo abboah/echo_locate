@@ -51,14 +51,15 @@ class ReverbFeatures extends Equatable {
 
   @override
   List<Object?> get props => [
-        rt60Seconds,
-        earlyDecayTimeSeconds,
-        fitQuality,
-        decayRangeDb,
-      ];
+    rt60Seconds,
+    earlyDecayTimeSeconds,
+    fitQuality,
+    decayRangeDb,
+  ];
 
   @override
-  String toString() => 'ReverbFeatures(rt60=${rt60Seconds.toStringAsFixed(3)}s '
+  String toString() =>
+      'ReverbFeatures(rt60=${rt60Seconds.toStringAsFixed(3)}s '
       'edt=${earlyDecayTimeSeconds.toStringAsFixed(3)}s '
       'r2=${fitQuality.toStringAsFixed(3)} '
       'range=${decayRangeDb.toStringAsFixed(1)}dB)';

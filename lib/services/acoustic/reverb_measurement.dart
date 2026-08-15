@@ -30,14 +30,14 @@ enum ReverbFailure {
 
   /// Plain-language cause, for the screen and the logs.
   String get message => switch (this) {
-        ReverbFailure.audioUnavailable => 'the microphone is unavailable',
-        ReverbFailure.audioBusy => 'the microphone was busy — try again',
-        ReverbFailure.interrupted =>
-          'the measurement was interrupted by a spoken callout — try again',
-        ReverbFailure.captureFailed => 'the recording failed — try again',
-        ReverbFailure.noMeasurableDecay =>
-          'no measurable reverberation in this space',
-      };
+    ReverbFailure.audioUnavailable => 'the microphone is unavailable',
+    ReverbFailure.audioBusy => 'the microphone was busy — try again',
+    ReverbFailure.interrupted =>
+      'the measurement was interrupted by a spoken callout — try again',
+    ReverbFailure.captureFailed => 'the recording failed — try again',
+    ReverbFailure.noMeasurableDecay =>
+      'no measurable reverberation in this space',
+  };
 }
 
 /// The outcome of one reverberation capture: features, or why not.
@@ -45,7 +45,7 @@ enum ReverbFailure {
 /// Exactly one of [features] and [failure] is non-null.
 class ReverbMeasurement {
   const ReverbMeasurement.measured(ReverbFeatures this.features)
-      : failure = null;
+    : failure = null;
 
   const ReverbMeasurement.failed(ReverbFailure this.failure) : features = null;
 
@@ -55,6 +55,7 @@ class ReverbMeasurement {
   bool get succeeded => features != null;
 
   @override
-  String toString() =>
-      succeeded ? 'ReverbMeasurement($features)' : 'ReverbMeasurement(${failure!.name})';
+  String toString() => succeeded
+      ? 'ReverbMeasurement($features)'
+      : 'ReverbMeasurement(${failure!.name})';
 }

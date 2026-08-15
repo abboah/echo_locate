@@ -43,14 +43,14 @@ class GuidanceBloc extends Bloc<GuidanceEvent, GuidanceState> {
     required HapticService haptics,
     LandmarkMatcher matcher = const LandmarkMatcher(),
     RoutePlanner planner = const RoutePlanner(),
-  })  : _detection = detection,
-        _textRecognition = textRecognition,
-        _steps = steps,
-        _speech = speech,
-        _haptics = haptics,
-        _matcher = matcher,
-        _planner = planner,
-        super(const GuidanceState()) {
+  }) : _detection = detection,
+       _textRecognition = textRecognition,
+       _steps = steps,
+       _speech = speech,
+       _haptics = haptics,
+       _matcher = matcher,
+       _planner = planner,
+       super(const GuidanceState()) {
     on<GuidanceStarted>(_onStarted);
     on<GuidanceVoiceToggled>(_onVoiceToggled);
     on<GuidanceLandmarkConfirmed>(_onLandmarkConfirmed);
@@ -357,9 +357,7 @@ class GuidanceBloc extends Bloc<GuidanceEvent, GuidanceState> {
   void _askForHelp(Emitter<GuidanceState> emit, {String? at}) {
     final session = state.session!;
     final where = at == null ? '' : "You're at $at. ";
-    emit(
-      state.copyWith(status: GuidanceStatus.recovering, askForHelp: true),
-    );
+    emit(state.copyWith(status: GuidanceStatus.recovering, askForHelp: true));
     _say(
       "${where}Ask someone nearby: you're looking for "
       '${session.destinationName}.',
@@ -399,7 +397,12 @@ class GuidanceBloc extends Bloc<GuidanceEvent, GuidanceState> {
 
     final name = session.nameOf(leg.toLandmarkId);
     final recorded = leg.instruction;
-    final base = recorded ?? 'Continue to $name';
+    // Stripped, because every branch below adds its own punctuation and a
+    // recorded instruction may or may not already carry some. A contributor
+    // types a clause — "past the lifts" — but a traced plan's edges are
+    // generated as whole sentences, so the phone said "Continue to the door..
+    // Look for Main corridor."
+    final base = _unpunctuated(recorded ?? 'Continue to $name');
     final expected = state.expectedSteps;
     if (expected > 0) return '$base, about $expected steps.';
     // Without a count the user needs something to look for. Generated wording
@@ -407,6 +410,21 @@ class GuidanceBloc extends Bloc<GuidanceEvent, GuidanceState> {
     // name twice — which is what a traced-plan route, whose edges carry no
     // recorded phrasing, would otherwise do on every single leg.
     return recorded == null ? '$base.' : '$base. Look for $name.';
+  }
+
+  /// [sentence] without whatever punctuation it already ends in.
+  ///
+  /// Visible for testing: the doubled full stop it prevents is the kind of
+  /// thing that reads as sloppy on screen and sounds like a stutter aloud,
+  /// which matters more here than most places.
+  static String unpunctuated(String sentence) => _unpunctuated(sentence);
+
+  static String _unpunctuated(String sentence) {
+    var end = sentence.length;
+    while (end > 0 && '.,;: '.contains(sentence[end - 1])) {
+      end--;
+    }
+    return end == 0 ? sentence : sentence.substring(0, end);
   }
 
   void _resetLegCount() {

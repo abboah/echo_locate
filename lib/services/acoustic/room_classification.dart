@@ -52,6 +52,7 @@ class RoomClassification extends Equatable {
   List<Object?> get props => [type, confidence, features, reason];
 
   @override
-  String toString() => 'RoomClassification(${type.name} '
+  String toString() =>
+      'RoomClassification(${type.name} '
       'confidence=${confidence.toStringAsFixed(2)} :: $reason)';
 }

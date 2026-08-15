@@ -49,15 +49,15 @@ class _AssistViewState extends State<_AssistView>
   }
 
   static IconData _iconFor(String label) => switch (label) {
-        'furniture' => PhosphorIconsFill.armchair,
-        'doorway' => PhosphorIconsFill.door,
-        'plant' => PhosphorIconsFill.plant,
-        'clothing item' => PhosphorIconsFill.tShirt,
-        'food item' => PhosphorIconsFill.forkKnife,
-        'path' => PhosphorIconsFill.arrowBendUpRight,
-        'sign' => PhosphorIconsFill.textT,
-        _ => PhosphorIconsFill.warningCircle,
-      };
+    'furniture' => PhosphorIconsFill.armchair,
+    'doorway' => PhosphorIconsFill.door,
+    'plant' => PhosphorIconsFill.plant,
+    'clothing item' => PhosphorIconsFill.tShirt,
+    'food item' => PhosphorIconsFill.forkKnife,
+    'path' => PhosphorIconsFill.arrowBendUpRight,
+    'sign' => PhosphorIconsFill.textT,
+    _ => PhosphorIconsFill.warningCircle,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -116,8 +116,11 @@ class _AssistViewState extends State<_AssistView>
                                 child: const SizedBox(
                                   width: 42,
                                   height: 42,
-                                  child: Icon(PhosphorIconsRegular.x,
-                                      color: Colors.white, size: 20),
+                                  child: Icon(
+                                    PhosphorIconsRegular.x,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
                                 ),
                               ),
                             ),
@@ -138,20 +141,22 @@ class _AssistViewState extends State<_AssistView>
                             child: Semantics(
                               liveRegion: true,
                               child: Container(
-                                padding:
-                                    const EdgeInsets.all(AppDimens.space16),
+                                padding: const EdgeInsets.all(
+                                  AppDimens.space16,
+                                ),
                                 decoration: BoxDecoration(
-                                  color:
-                                      Colors.black.withValues(alpha: 0.45),
+                                  color: Colors.black.withValues(alpha: 0.45),
                                   borderRadius: BorderRadius.circular(
-                                      AppDimens.radiusLg),
+                                    AppDimens.radiusLg,
+                                  ),
                                 ),
                                 child: callout == null
                                     ? const Text(
                                         'Looking around you…',
                                         style: TextStyle(
-                                            color: Colors.white70,
-                                            fontSize: 15),
+                                          color: Colors.white70,
+                                          fontSize: 15,
+                                        ),
                                       )
                                     : Row(
                                         children: [
@@ -165,12 +170,14 @@ class _AssistViewState extends State<_AssistView>
                                               shape: BoxShape.circle,
                                             ),
                                             child: Icon(
-                                                _iconFor(callout.label),
-                                                color: Colors.white,
-                                                size: 22),
+                                              _iconFor(callout.label),
+                                              color: Colors.white,
+                                              size: 22,
+                                            ),
                                           ),
                                           const SizedBox(
-                                              width: AppDimens.space12),
+                                            width: AppDimens.space12,
+                                          ),
                                           Expanded(
                                             child: Column(
                                               crossAxisAlignment:
@@ -181,15 +188,15 @@ class _AssistViewState extends State<_AssistView>
                                                   style: const TextStyle(
                                                     color: Colors.white,
                                                     fontSize: 17,
-                                                    fontWeight:
-                                                        FontWeight.w600,
+                                                    fontWeight: FontWeight.w600,
                                                   ),
                                                 ),
                                                 Text(
                                                   callout.detail,
                                                   style: const TextStyle(
-                                                      color: Colors.white70,
-                                                      fontSize: 14),
+                                                    color: Colors.white70,
+                                                    fontSize: 14,
+                                                  ),
                                                 ),
                                               ],
                                             ),
@@ -207,9 +214,8 @@ class _AssistViewState extends State<_AssistView>
               ),
               _AssistSheet(
                 voiceOn: state.voiceOn,
-                onVoiceToggle: () => context
-                    .read<AssistBloc>()
-                    .add(const AssistVoiceToggled()),
+                onVoiceToggle: () =>
+                    context.read<AssistBloc>().add(const AssistVoiceToggled()),
               ),
             ],
           );
@@ -379,20 +385,16 @@ class _AssistSheet extends StatelessWidget {
                     label: voiceOn ? 'Mute voice' : 'Unmute voice',
                     child: Material(
                       color: theme.colorScheme.surface,
-                      borderRadius:
-                          BorderRadius.circular(AppDimens.radiusMd),
+                      borderRadius: BorderRadius.circular(AppDimens.radiusMd),
                       child: InkWell(
                         onTap: onVoiceToggle,
-                        borderRadius:
-                            BorderRadius.circular(AppDimens.radiusMd),
+                        borderRadius: BorderRadius.circular(AppDimens.radiusMd),
                         child: Padding(
-                          padding:
-                              const EdgeInsets.all(AppDimens.space12),
+                          padding: const EdgeInsets.all(AppDimens.space12),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('Voice',
-                                  style: theme.textTheme.labelSmall),
+                              Text('Voice', style: theme.textTheme.labelSmall),
                               const SizedBox(height: AppDimens.space2),
                               Row(
                                 children: [
@@ -403,18 +405,17 @@ class _AssistSheet extends StatelessWidget {
                                     size: 16,
                                     color: voiceOn
                                         ? AppColors.coral
-                                        : theme
-                                            .textTheme.bodyMedium?.color,
+                                        : theme.textTheme.bodyMedium?.color,
                                   ),
                                   const SizedBox(width: AppDimens.space4),
                                   Text(
                                     voiceOn ? 'On' : 'Off',
                                     style: theme.textTheme.titleMedium
                                         ?.copyWith(
-                                      color: voiceOn
-                                          ? AppColors.coral
-                                          : null,
-                                    ),
+                                          color: voiceOn
+                                              ? AppColors.coral
+                                              : null,
+                                        ),
                                   ),
                                 ],
                               ),
@@ -468,8 +469,7 @@ class _AssistChip extends StatelessWidget {
             const SizedBox(height: AppDimens.space2),
             Row(
               children: [
-                Icon(icon, size: 16,
-                    color: theme.textTheme.bodyMedium?.color),
+                Icon(icon, size: 16, color: theme.textTheme.bodyMedium?.color),
                 const SizedBox(width: AppDimens.space4),
                 Text(value, style: theme.textTheme.titleMedium),
               ],

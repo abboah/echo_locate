@@ -21,13 +21,12 @@ void main() {
     double? edt,
     double fitQuality = 0.99,
     double decayRangeDb = 20.0,
-  }) =>
-      ReverbFeatures(
-        rt60Seconds: rt60,
-        earlyDecayTimeSeconds: edt ?? rt60,
-        fitQuality: fitQuality,
-        decayRangeDb: decayRangeDb,
-      );
+  }) => ReverbFeatures(
+    rt60Seconds: rt60,
+    earlyDecayTimeSeconds: edt ?? rt60,
+    fitQuality: fitQuality,
+    decayRangeDb: decayRangeDb,
+  );
 
   /// Drives one measurement to completion and returns the resulting bloc.
   Future<AcousticBloc> measured() async {
@@ -51,9 +50,9 @@ void main() {
   });
 
   test('a measured decay is classified and held', () async {
-    when(() => audio.measureReverb()).thenAnswer(
-      (_) async => ReverbMeasurement.measured(features(rt60: 1.8)),
-    );
+    when(
+      () => audio.measureReverb(),
+    ).thenAnswer((_) async => ReverbMeasurement.measured(features(rt60: 1.8)));
 
     final bloc = await measured();
 
@@ -63,19 +62,21 @@ void main() {
     await bloc.close();
   });
 
-  test('an unmeasurable room reports why, and keeps no false verdict',
-      () async {
-    when(() => audio.measureReverb()).thenAnswer(
-      (_) async =>
-          const ReverbMeasurement.failed(ReverbFailure.noMeasurableDecay),
-    );
+  test(
+    'an unmeasurable room reports why, and keeps no false verdict',
+    () async {
+      when(() => audio.measureReverb()).thenAnswer(
+        (_) async =>
+            const ReverbMeasurement.failed(ReverbFailure.noMeasurableDecay),
+      );
 
-    final bloc = await measured();
+      final bloc = await measured();
 
-    expect(bloc.state.lastClassification?.type, RoomType.unknown);
-    expect(bloc.state.error, isNotNull);
-    await bloc.close();
-  });
+      expect(bloc.state.lastClassification?.type, RoomType.unknown);
+      expect(bloc.state.error, isNotNull);
+      await bloc.close();
+    },
+  );
 
   test('a measurement lost to a spoken callout says so, and does not blame '
       'the room', () async {
@@ -90,8 +91,11 @@ void main() {
 
     expect(bloc.state.error, contains('interrupted'));
     expect(bloc.state.lastClassification?.type, RoomType.unknown);
-    expect(bloc.state.features, isNull,
-        reason: 'an abandoned capture yields no acoustics to show');
+    expect(
+      bloc.state.features,
+      isNull,
+      reason: 'an abandoned capture yields no acoustics to show',
+    );
     await bloc.close();
   });
 
@@ -109,9 +113,9 @@ void main() {
   test('the evidence survives an unknown verdict', () async {
     // An ambiguous but genuine measurement: the numbers explain the refusal,
     // so the screen can show them rather than a bare "unknown".
-    when(() => audio.measureReverb()).thenAnswer(
-      (_) async => ReverbMeasurement.measured(features(rt60: 0.9)),
-    );
+    when(
+      () => audio.measureReverb(),
+    ).thenAnswer((_) async => ReverbMeasurement.measured(features(rt60: 0.9)));
 
     final bloc = await measured();
 

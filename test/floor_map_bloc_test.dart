@@ -23,14 +23,14 @@ void main() {
   });
 
   Landmark landmark(String id, {String? roomId}) => Landmark(
-        id: id,
-        buildingId: 'b1',
-        floorId: 'f1',
-        kind: LandmarkKind.sign,
-        labelText: id.toUpperCase(),
-        displayName: id,
-        roomId: roomId,
-      );
+    id: id,
+    buildingId: 'b1',
+    floorId: 'f1',
+    kind: LandmarkKind.sign,
+    labelText: id.toUpperCase(),
+    displayName: id,
+    roomId: roomId,
+  );
 
   WalkRoute route(String id, List<(String, String)> legs, {String? room}) =>
       WalkRoute(
@@ -71,7 +71,11 @@ void main() {
 
   test('recorded walks are merged into one map', () async {
     when(() => routes.landmarksOf('b1')).thenAnswer(
-      (_) async => [landmark('entrance'), landmark('junction'), landmark('204')],
+      (_) async => [
+        landmark('entrance'),
+        landmark('junction'),
+        landmark('204'),
+      ],
     );
     when(() => routes.routesOf('b1')).thenAnswer(
       (_) async => [
@@ -104,8 +108,9 @@ void main() {
         category: 'campus',
       ),
     );
-    when(() => routes.landmarksOf('b1'))
-        .thenAnswer((_) async => [landmark('a'), landmark('b')]);
+    when(
+      () => routes.landmarksOf('b1'),
+    ).thenAnswer((_) async => [landmark('a'), landmark('b')]);
     when(() => routes.routesOf('b1')).thenAnswer(
       (_) async => [
         route('r1', [('a', 'b')]),
@@ -125,8 +130,9 @@ void main() {
   test('a building whose name will not load still draws its map', () async {
     final buildings = _MockBuildings();
     when(() => buildings.byId('b1')).thenThrow(Exception('offline'));
-    when(() => routes.landmarksOf('b1'))
-        .thenAnswer((_) async => [landmark('a'), landmark('b')]);
+    when(
+      () => routes.landmarksOf('b1'),
+    ).thenAnswer((_) async => [landmark('a'), landmark('b')]);
     when(() => routes.routesOf('b1')).thenAnswer(
       (_) async => [
         route('r1', [('a', 'b')]),
@@ -171,8 +177,9 @@ void main() {
   });
 
   test('two landmarks with no path between them plan nothing', () async {
-    when(() => routes.landmarksOf('b1'))
-        .thenAnswer((_) async => [landmark('a'), landmark('x')]);
+    when(
+      () => routes.landmarksOf('b1'),
+    ).thenAnswer((_) async => [landmark('a'), landmark('x')]);
     when(() => routes.routesOf('b1')).thenAnswer(
       (_) async => [
         route('r1', [('a', 'b')]),
@@ -230,41 +237,43 @@ void main() {
 
   group('a building traced off its posted floor plan', () {
     TracedPlan planWithEntrance() => const TracedPlan(
-          buildingId: 'b1',
-          nodes: [
-            TracedNode(
-              ref: 'entrance',
-              x: 0,
-              y: 0,
-              floorId: 'f1',
-              kind: LandmarkKind.entrance,
-              labelText: 'ENTRANCE',
-              displayName: 'entrance',
-            ),
-            TracedNode(
-              ref: '204',
-              x: 0,
-              y: 30,
-              floorId: 'f1',
-              kind: LandmarkKind.door,
-              labelText: '204',
-              displayName: '204',
-            ),
-          ],
-          edges: [TracedEdge(fromRef: 'entrance', toRef: '204')],
-        );
+      buildingId: 'b1',
+      nodes: [
+        TracedNode(
+          ref: 'entrance',
+          x: 0,
+          y: 0,
+          floorId: 'f1',
+          kind: LandmarkKind.entrance,
+          labelText: 'ENTRANCE',
+          displayName: 'entrance',
+        ),
+        TracedNode(
+          ref: '204',
+          x: 0,
+          y: 30,
+          floorId: 'f1',
+          kind: LandmarkKind.door,
+          labelText: '204',
+          displayName: '204',
+        ),
+      ],
+      edges: [TracedEdge(fromRef: 'entrance', toRef: '204')],
+    );
 
-    test('is drawn from the plan, not from the walks people recorded',
-        () async {
-      when(() => routes.landmarksOf('b1')).thenAnswer(
-        (_) async => [landmark('entrance'), landmark('204')],
-      );
-      when(() => routes.tracedPlanOf('b1'))
-          .thenAnswer((_) async => planWithEntrance());
+    test('is drawn from the plan, not from the walks people recorded', () async {
+      when(
+        () => routes.landmarksOf('b1'),
+      ).thenAnswer((_) async => [landmark('entrance'), landmark('204')]);
+      when(
+        () => routes.tracedPlanOf('b1'),
+      ).thenAnswer((_) async => planWithEntrance());
       // A recorded walk exists too, and disagrees: its turtle layout would put
       // 204 ten metres from the entrance, not thirty.
       when(() => routes.routesOf('b1')).thenAnswer(
-        (_) async => [route('r1', [('entrance', '204')])],
+        (_) async => [
+          route('r1', [('entrance', '204')]),
+        ],
       );
 
       final bloc = await loaded();
@@ -289,8 +298,9 @@ void main() {
           ),
         ],
       );
-      when(() => routes.tracedPlanOf('b1'))
-          .thenAnswer((_) async => planWithEntrance());
+      when(
+        () => routes.tracedPlanOf('b1'),
+      ).thenAnswer((_) async => planWithEntrance());
       when(() => routes.routesOf('b1')).thenAnswer((_) async => []);
 
       final bloc = await loaded();
@@ -301,13 +311,16 @@ void main() {
     });
 
     test('a plan with no nodes falls back to the recorded walks', () async {
-      when(() => routes.landmarksOf('b1')).thenAnswer(
-        (_) async => [landmark('entrance'), landmark('204')],
-      );
-      when(() => routes.tracedPlanOf('b1'))
-          .thenAnswer((_) async => TracedPlan.empty);
+      when(
+        () => routes.landmarksOf('b1'),
+      ).thenAnswer((_) async => [landmark('entrance'), landmark('204')]);
+      when(
+        () => routes.tracedPlanOf('b1'),
+      ).thenAnswer((_) async => TracedPlan.empty);
       when(() => routes.routesOf('b1')).thenAnswer(
-        (_) async => [route('r1', [('entrance', '204')])],
+        (_) async => [
+          route('r1', [('entrance', '204')]),
+        ],
       );
 
       final bloc = await loaded();

@@ -38,14 +38,13 @@ class StrideCalibrationState extends Equatable {
     int? steps,
     StrideProfile? profile,
     String? error,
-  }) =>
-      StrideCalibrationState(
-        status: status ?? this.status,
-        distanceM: distanceM ?? this.distanceM,
-        steps: steps ?? this.steps,
-        profile: profile ?? this.profile,
-        error: error,
-      );
+  }) => StrideCalibrationState(
+    status: status ?? this.status,
+    distanceM: distanceM ?? this.distanceM,
+    steps: steps ?? this.steps,
+    profile: profile ?? this.profile,
+    error: error,
+  );
 
   @override
   List<Object?> get props => [status, distanceM, steps, profile, error];
@@ -59,7 +58,7 @@ class StrideCalibrationState extends Equatable {
 /// about distance is scaled by it.
 class StrideCalibrationCubit extends Cubit<StrideCalibrationState> {
   StrideCalibrationCubit(this._steps, this._profile)
-      : super(const StrideCalibrationState());
+    : super(const StrideCalibrationState());
 
   final StepService _steps;
   final ProfileRepository _profile;
@@ -103,7 +102,8 @@ class StrideCalibrationCubit extends Cubit<StrideCalibrationState> {
       emit(
         state.copyWith(
           status: CalibrationStatus.unavailable,
-          error: 'No steps were counted, so this walk cannot be measured. '
+          error:
+              'No steps were counted, so this walk cannot be measured. '
               'Give your height instead — guidance will lean on landmarks '
               'rather than step counts.',
         ),
@@ -125,19 +125,15 @@ class StrideCalibrationCubit extends Cubit<StrideCalibrationState> {
   /// The fallback for a user who will not pace out a corridor: step length is
   /// about 0.415 of height. Less accurate than walking it, and better than the
   /// generic default it replaces.
-  Future<void> saveFromHeight(double heightM) =>
-      _store(
-        StrideProfile.fromHeight(heightM),
-        'That height does not give a believable step length.',
-      );
+  Future<void> saveFromHeight(double heightM) => _store(
+    StrideProfile.fromHeight(heightM),
+    'That height does not give a believable step length.',
+  );
 
   Future<void> _store(StrideProfile profile, String rejection) async {
     if (!profile.isPlausible) {
       emit(
-        state.copyWith(
-          status: CalibrationStatus.implausible,
-          error: rejection,
-        ),
+        state.copyWith(status: CalibrationStatus.implausible, error: rejection),
       );
       return;
     }
@@ -145,9 +141,7 @@ class StrideCalibrationCubit extends Cubit<StrideCalibrationState> {
     try {
       await _profile.saveStride(profile.metres);
       if (isClosed) return;
-      emit(
-        state.copyWith(status: CalibrationStatus.done, profile: profile),
-      );
+      emit(state.copyWith(status: CalibrationStatus.done, profile: profile));
     } catch (e, stack) {
       AppLogger.error('Saving stride failed: $e', e, stack);
       if (isClosed) return;
@@ -155,7 +149,8 @@ class StrideCalibrationCubit extends Cubit<StrideCalibrationState> {
         state.copyWith(
           status: CalibrationStatus.failed,
           profile: profile,
-          error: 'Measured $profile, but it could not be saved. '
+          error:
+              'Measured $profile, but it could not be saved. '
               'Try again with a connection.',
         ),
       );

@@ -10,72 +10,66 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// The seeded KNUST Library walk: entrance → desk → stairs → landing → hall.
 WalkRoute seededRoute() => const WalkRoute(
-      id: 'route-reading-hall',
-      buildingId: 'knust-library',
-      startLandmarkId: 'lm-entrance',
-      destinationRoomId: 'reading-hall',
-      steps: [
-        RouteStep(
-          seq: 1,
-          fromLandmarkId: 'lm-entrance',
-          toLandmarkId: 'lm-desk',
-          instruction: 'Straight ahead, past the entrance desk',
-          distanceM: 12,
-        ),
-        RouteStep(
-          seq: 2,
-          fromLandmarkId: 'lm-desk',
-          toLandmarkId: 'lm-stairs-g',
-          instruction: 'Turn right; the stairwell is at the end',
-          distanceM: 18,
-          turnDeg: 90,
-        ),
-        RouteStep(
-          seq: 3,
-          fromLandmarkId: 'lm-stairs-g',
-          toLandmarkId: 'lm-landing-2',
-          instruction: 'Take the stairs up two flights',
-          distanceM: 8,
-        ),
-        RouteStep(
-          seq: 4,
-          fromLandmarkId: 'lm-landing-2',
-          toLandmarkId: 'lm-reading-hall',
-          instruction: 'Turn left; third door on your right',
-          distanceM: 15,
-          turnDeg: -90,
-        ),
-      ],
-    );
+  id: 'route-reading-hall',
+  buildingId: 'knust-library',
+  startLandmarkId: 'lm-entrance',
+  destinationRoomId: 'reading-hall',
+  steps: [
+    RouteStep(
+      seq: 1,
+      fromLandmarkId: 'lm-entrance',
+      toLandmarkId: 'lm-desk',
+      instruction: 'Straight ahead, past the entrance desk',
+      distanceM: 12,
+    ),
+    RouteStep(
+      seq: 2,
+      fromLandmarkId: 'lm-desk',
+      toLandmarkId: 'lm-stairs-g',
+      instruction: 'Turn right; the stairwell is at the end',
+      distanceM: 18,
+      turnDeg: 90,
+    ),
+    RouteStep(
+      seq: 3,
+      fromLandmarkId: 'lm-stairs-g',
+      toLandmarkId: 'lm-landing-2',
+      instruction: 'Take the stairs up two flights',
+      distanceM: 8,
+    ),
+    RouteStep(
+      seq: 4,
+      fromLandmarkId: 'lm-landing-2',
+      toLandmarkId: 'lm-reading-hall',
+      instruction: 'Turn left; third door on your right',
+      distanceM: 15,
+      turnDeg: -90,
+    ),
+  ],
+);
 
 Map<String, Landmark> seededLandmarks() => {
-      for (final entry in {
-        'lm-entrance': ('Main entrance', LandmarkKind.entrance, 'floor-g'),
-        'lm-desk': ('Help desk', LandmarkKind.junction, 'floor-g'),
-        'lm-stairs-g': (
-          'Ground floor stairwell',
-          LandmarkKind.stairs,
-          'floor-g',
-        ),
-        'lm-landing-2': ('Floor 2 landing', LandmarkKind.stairs, 'floor-2'),
-        'lm-reading-hall': ('Reading Hall door', LandmarkKind.door, 'floor-2'),
-      }.entries)
-        entry.key: Landmark(
-          id: entry.key,
-          buildingId: 'knust-library',
-          floorId: entry.value.$3,
-          kind: entry.value.$2,
-          labelText: entry.value.$1.toUpperCase(),
-          displayName: entry.value.$1,
-        ),
-    };
+  for (final entry in {
+    'lm-entrance': ('Main entrance', LandmarkKind.entrance, 'floor-g'),
+    'lm-desk': ('Help desk', LandmarkKind.junction, 'floor-g'),
+    'lm-stairs-g': ('Ground floor stairwell', LandmarkKind.stairs, 'floor-g'),
+    'lm-landing-2': ('Floor 2 landing', LandmarkKind.stairs, 'floor-2'),
+    'lm-reading-hall': ('Reading Hall door', LandmarkKind.door, 'floor-2'),
+  }.entries)
+    entry.key: Landmark(
+      id: entry.key,
+      buildingId: 'knust-library',
+      floorId: entry.value.$3,
+      kind: entry.value.$2,
+      labelText: entry.value.$1.toUpperCase(),
+      displayName: entry.value.$1,
+    ),
+};
 
 Widget harness(Widget child, Brightness brightness) => MaterialApp(
-      theme: ThemeData(brightness: brightness),
-      home: Scaffold(
-        body: SizedBox(width: 360, height: 500, child: child),
-      ),
-    );
+  theme: ThemeData(brightness: brightness),
+  home: Scaffold(body: SizedBox(width: 360, height: 500, child: child)),
+);
 
 /// The view over one floor of [graph], the way the map screen builds it.
 FloorPlanView viewOf(
@@ -84,15 +78,14 @@ FloorPlanView viewOf(
   PlannedRoute? route,
   ValueChanged<String>? onLandmarkTap,
   String? currentLandmarkId,
-}) =>
-    FloorPlanView(
-      nodes: graph.nodesOn(floorId).toList(),
-      edges: graph.edgesOn(floorId).toList(),
-      landmarks: seededLandmarks(),
-      route: route,
-      onLandmarkTap: onLandmarkTap,
-      currentLandmarkId: currentLandmarkId,
-    );
+}) => FloorPlanView(
+  nodes: graph.nodesOn(floorId).toList(),
+  edges: graph.edgesOn(floorId).toList(),
+  landmarks: seededLandmarks(),
+  route: route,
+  onLandmarkTap: onLandmarkTap,
+  currentLandmarkId: currentLandmarkId,
+);
 
 /// Every label in the live semantics tree.
 ///
@@ -142,16 +135,15 @@ void main() {
     final route = PlannedRoute.fromRecorded(seededRoute());
 
     for (final brightness in Brightness.values) {
-      await tester.pumpWidget(
-        harness(viewOf(graph, route: route), brightness),
-      );
+      await tester.pumpWidget(harness(viewOf(graph, route: route), brightness));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     }
   });
 
-  testWidgets('an empty building paints nothing rather than crashing',
-      (tester) async {
+  testWidgets('an empty building paints nothing rather than crashing', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       harness(viewOf(FloorGraph.empty), Brightness.light),
     );
@@ -159,38 +151,37 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('a single-corridor building with no width still fits',
-      (tester) async {
+  testWidgets('a single-corridor building with no width still fits', (
+    tester,
+  ) async {
     // Every landmark on one straight line: the vertical span is zero, which is
     // where a fit-to-canvas scale divides by nothing.
-    final graph = FloorGraph.merge(
-      [
-        const WalkRoute(
-          id: 'straight',
-          buildingId: 'b1',
-          startLandmarkId: 'lm-entrance',
-          destinationRoomId: 'r',
-          steps: [
-            RouteStep(
-              seq: 1,
-              fromLandmarkId: 'lm-entrance',
-              toLandmarkId: 'lm-desk',
-              instruction: 'straight on',
-              distanceM: 20,
-            ),
-          ],
-        ),
-      ],
-      seededLandmarks(),
-    );
+    final graph = FloorGraph.merge([
+      const WalkRoute(
+        id: 'straight',
+        buildingId: 'b1',
+        startLandmarkId: 'lm-entrance',
+        destinationRoomId: 'r',
+        steps: [
+          RouteStep(
+            seq: 1,
+            fromLandmarkId: 'lm-entrance',
+            toLandmarkId: 'lm-desk',
+            instruction: 'straight on',
+            distanceM: 20,
+          ),
+        ],
+      ),
+    ], seededLandmarks());
 
     await tester.pumpWidget(harness(viewOf(graph), Brightness.light));
 
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('every landmark is published as a semantics node',
-      (tester) async {
+  testWidgets('every landmark is published as a semantics node', (
+    tester,
+  ) async {
     // The whole point of the plan being reachable without sight: a CustomPaint
     // is one unlabelled box unless it says otherwise.
     final handle = tester.ensureSemantics();
@@ -229,8 +220,9 @@ void main() {
     handle.dispose();
   });
 
-  testWidgets('the destination is announced as such on its own floor',
-      (tester) async {
+  testWidgets('the destination is announced as such on its own floor', (
+    tester,
+  ) async {
     final handle = tester.ensureSemantics();
     final graph = FloorGraph.merge([seededRoute()], seededLandmarks());
 
@@ -255,8 +247,9 @@ void main() {
     handle.dispose();
   });
 
-  testWidgets('a landmark off the route says so by saying nothing extra',
-      (tester) async {
+  testWidgets('a landmark off the route says so by saying nothing extra', (
+    tester,
+  ) async {
     final handle = tester.ensureSemantics();
     final graph = FloorGraph.merge([seededRoute()], seededLandmarks());
 
@@ -287,6 +280,7 @@ void main() {
       view.nodes,
       width: box.size.width,
       height: box.size.height,
+      maxScale: PlanViewport.maxScaleFor(view.metric ? 1 : null),
     );
     final desk = view.nodes.firstWhere((n) => n.landmarkId == 'lm-desk');
 

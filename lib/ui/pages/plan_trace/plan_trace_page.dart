@@ -33,8 +33,9 @@ class PlanTracePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
-      create: (_) => getIt<PlanTraceBloc>()
-        ..add(PlanTraceStarted(buildingId, floorId: floorId)),
+      create: (_) =>
+          getIt<PlanTraceBloc>()
+            ..add(PlanTraceStarted(buildingId, floorId: floorId)),
       child: const _TraceView(),
     );
   }
@@ -78,9 +79,9 @@ class _TraceView extends StatelessWidget {
               if (state.stage == PlanTraceStage.trace)
                 TextButton(
                   onPressed: state.canSave
-                      ? () => context
-                          .read<PlanTraceBloc>()
-                          .add(const PlanTraceSaved())
+                      ? () => context.read<PlanTraceBloc>().add(
+                          const PlanTraceSaved(),
+                        )
                       : null,
                   child: const Text('Save'),
                 ),
@@ -89,8 +90,9 @@ class _TraceView extends StatelessWidget {
           body: SafeArea(
             child: switch (state.stage) {
               PlanTraceStage.photo => const _PhotoStep(),
-              PlanTraceStage.saving =>
-                const Center(child: CircularProgressIndicator()),
+              PlanTraceStage.saving => const Center(
+                child: CircularProgressIndicator(),
+              ),
               _ => const _TraceStep(),
             },
           ),
@@ -211,8 +213,7 @@ class _TraceStep extends StatelessWidget {
                         points: state.pointsOnFloor,
                         links: state.linksOnFloor,
                         selectedRef: state.selectedRef,
-                        onDark:
-                            Theme.of(context).brightness == Brightness.dark,
+                        onDark: Theme.of(context).brightness == Brightness.dark,
                       ),
                     ),
                   ],
@@ -243,8 +244,9 @@ class _Instructions extends StatelessWidget {
       _ when state.joiningFromAnotherFloor =>
         'Joining from ${selected!.displayName} on the other floor — tap where '
             'the stairs come out and the two are linked.',
-      _ => 'Tap again to place the next one — it joins to the last. Tap a '
-          'placed landmark to join or unjoin it.',
+      _ =>
+        'Tap again to place the next one — it joins to the last. Tap a '
+            'placed landmark to join or unjoin it.',
     };
 
     return Padding(
@@ -347,12 +349,17 @@ class _FloorPicker extends StatelessWidget {
     }
 
     return DropdownButtonFormField<String>(
-      initialValue: floors.any((f) => f.id == floorId) ? floorId : floors.first.id,
+      initialValue: floors.any((f) => f.id == floorId)
+          ? floorId
+          : floors.first.id,
       isDense: true,
       decoration: const InputDecoration(labelText: 'Floor', isDense: true),
       items: [
         for (final floor in floors)
-          DropdownMenuItem(value: floor.id, child: Text('Floor ${floor.label}')),
+          DropdownMenuItem(
+            value: floor.id,
+            child: Text('Floor ${floor.label}'),
+          ),
       ],
       onChanged: (value) {
         if (value != null) onChanged(value);

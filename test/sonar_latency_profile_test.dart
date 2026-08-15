@@ -98,9 +98,10 @@ void main() {
       expect(SonarLatencyProfile.fromJson('nonsense'), isNull);
       expect(SonarLatencyProfile.fromJson({'recorderStartupUs': 1}), isNull);
       expect(
-        SonarLatencyProfile.fromJson(
-          const {'recorderStartupUs': -1, 'playbackLatencyUs': 100},
-        ),
+        SonarLatencyProfile.fromJson(const {
+          'recorderStartupUs': -1,
+          'playbackLatencyUs': 100,
+        }),
         isNull,
         reason: 'stored garbage must not be trusted on restore',
       );

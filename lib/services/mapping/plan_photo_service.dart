@@ -1,6 +1,8 @@
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:camera/camera.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -32,7 +34,9 @@ class PlanPhotoService {
     try {
       final permission = await Permission.camera.request();
       if (!permission.isGranted) {
-        AppLogger.warn('Camera permission not granted — tracing on a blank grid');
+        AppLogger.warn(
+          'Camera permission not granted — tracing on a blank grid',
+        );
         return false;
       }
 
@@ -45,8 +49,11 @@ class PlanPhotoService {
 
       // High, not medium: the contributor reads room numbers off this photo
       // while tracing, and a plan shot at preview resolution is unreadable.
-      _controller = CameraController(back, ResolutionPreset.high,
-          enableAudio: false);
+      _controller = CameraController(
+        back,
+        ResolutionPreset.high,
+        enableAudio: false,
+      );
       await _controller!.initialize();
       return true;
     } catch (e) {
@@ -81,6 +88,43 @@ class PlanPhotoService {
     }
   }
 
+  /// Imports a board photo already in the gallery.
+  ///
+  /// Often the better source than the live camera. A wall board is frequently
+  /// photographed opportunistically — you are standing in front of one, you
+  /// take a picture — and the trip back to trace it happens later, somewhere
+  /// else. Requiring the camera at tracing time means going back to the
+  /// building for a photo that already exists.
+  ///
+  /// It also lets a contributor pick their *best* shot rather than whatever the
+  /// preview happened to catch, which matters more than it sounds: the squarer
+  /// the photograph, the less the perspective correction has to do and the more
+  /// accurate every traced room is.
+  ///
+  /// Copied into the same durable location a captured photo goes to, for the
+  /// same reason — the gallery entry can be deleted, and a plan re-opened
+  /// afterwards would come up on a blank grid with its rooms floating over
+  /// nothing.
+  Future<String?> pickFromGallery(String buildingId, String floorId) async {
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        // Full resolution. The contributor reads room numbers off this while
+        // tracing, and a downscaled board is a board you cannot read.
+        imageQuality: 100,
+      );
+      if (picked == null) return null;
+
+      final destination = await _pathFor(buildingId, floorId);
+      await Directory(destination).parent.create(recursive: true);
+      await File(picked.path).copy(destination);
+      return destination;
+    } catch (e) {
+      AppLogger.warn('Gallery import failed: $e');
+      return null;
+    }
+  }
+
   /// Every floor of [buildingId] that already has a photo, floor id → path.
   ///
   /// Read on start so re-opening a part-traced building shows the plan the
@@ -108,6 +152,47 @@ class PlanPhotoService {
       if (file.existsSync()) await file.delete();
     } catch (e) {
       AppLogger.warn('Could not discard plan photo: $e');
+    }
+  }
+
+  /// Width ÷ height of the photo at [path], or null when it cannot be read.
+  ///
+  /// ## Why the tracing screen needs this
+  ///
+  /// Taps are stored as fractions of the plan photo's *width*, and the painter
+  /// draws them back the same way. That only lines up if the photo's own
+  /// top-left is the tap area's top-left and its width is the tap area's width
+  /// — which is to say, only if the box the photo is drawn in has exactly the
+  /// photo's shape.
+  ///
+  /// It did not. The photo sat inside whatever space was left between the mode
+  /// bar and the controls, letter-boxed and vertically centred, while the
+  /// overlay was measured from the top of that space. The two agreed as long as
+  /// the space kept its size — and stopped agreeing the moment it changed,
+  /// which is every time the controls below grow or shrink for a different
+  /// tool. Switching from Rooms to Doors slid the photograph a few dozen pixels
+  /// under a set of rooms that stayed put.
+  ///
+  /// Knowing the aspect ratio lets the box be given the photo's shape, after
+  /// which the two cannot drift apart at all.
+  ///
+  /// Reads the header rather than decoding the image: a 12-megapixel phone
+  /// photo is about 50 MB decoded, and this needs two integers from it.
+  Future<double?> aspectOf(String path) async {
+    ui.ImmutableBuffer? buffer;
+    ui.ImageDescriptor? descriptor;
+    try {
+      buffer = await ui.ImmutableBuffer.fromFilePath(path);
+      descriptor = await ui.ImageDescriptor.encoded(buffer);
+      final height = descriptor.height;
+      if (height <= 0) return null;
+      return descriptor.width / height;
+    } catch (e) {
+      AppLogger.warn('Could not read the plan photo size: $e');
+      return null;
+    } finally {
+      descriptor?.dispose();
+      buffer?.dispose();
     }
   }
 

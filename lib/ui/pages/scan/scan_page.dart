@@ -72,8 +72,11 @@ class _ScanPageState extends State<ScanPage>
                         child: const SizedBox(
                           width: 42,
                           height: 42,
-                          child: Icon(PhosphorIconsRegular.x,
-                              color: Colors.white, size: 20),
+                          child: Icon(
+                            PhosphorIconsRegular.x,
+                            color: Colors.white,
+                            size: 20,
+                          ),
                         ),
                       ),
                     ),
@@ -90,8 +93,9 @@ class _ScanPageState extends State<ScanPage>
                         ),
                         decoration: BoxDecoration(
                           color: Colors.white.withValues(alpha: 0.12),
-                          borderRadius:
-                              BorderRadius.circular(AppDimens.radiusPill),
+                          borderRadius: BorderRadius.circular(
+                            AppDimens.radiusPill,
+                          ),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -280,11 +284,7 @@ class _ScanSheet extends StatelessWidget {
 }
 
 class _StatChip extends StatelessWidget {
-  const _StatChip({
-    required this.label,
-    required this.value,
-    this.valueColor,
-  });
+  const _StatChip({required this.label, required this.value, this.valueColor});
 
   final String label;
   final String value;

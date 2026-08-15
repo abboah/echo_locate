@@ -72,6 +72,12 @@ class GuidanceSession extends Equatable {
       );
 
   @override
-  List<Object?> get props =>
-      [plan, landmarks, destinationName, stride, graph, metric];
+  List<Object?> get props => [
+    plan,
+    landmarks,
+    destinationName,
+    stride,
+    graph,
+    metric,
+  ];
 }

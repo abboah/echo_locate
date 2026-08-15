@@ -115,40 +115,40 @@ final class CaptureState extends Equatable {
     String? error,
     bool clearPending = false,
     bool clearError = false,
-  }) =>
-      CaptureState(
-        status: status ?? this.status,
-        buildingId: buildingId ?? this.buildingId,
-        floorId: floorId ?? this.floorId,
-        stride: stride ?? this.stride,
-        proposals: proposals ?? this.proposals,
-        landmarks: landmarks ?? this.landmarks,
-        steps: steps ?? this.steps,
-        stepsThisLeg: stepsThisLeg ?? this.stepsThisLeg,
-        pendingLandmark:
-            clearPending ? null : pendingLandmark ?? this.pendingLandmark,
-        pendingSteps: pendingSteps ?? this.pendingSteps,
-        stepCounting: stepCounting ?? this.stepCounting,
-        signReading: signReading ?? this.signReading,
-        savedRouteId: savedRouteId ?? this.savedRouteId,
-        error: clearError ? null : error ?? this.error,
-      );
+  }) => CaptureState(
+    status: status ?? this.status,
+    buildingId: buildingId ?? this.buildingId,
+    floorId: floorId ?? this.floorId,
+    stride: stride ?? this.stride,
+    proposals: proposals ?? this.proposals,
+    landmarks: landmarks ?? this.landmarks,
+    steps: steps ?? this.steps,
+    stepsThisLeg: stepsThisLeg ?? this.stepsThisLeg,
+    pendingLandmark: clearPending
+        ? null
+        : pendingLandmark ?? this.pendingLandmark,
+    pendingSteps: pendingSteps ?? this.pendingSteps,
+    stepCounting: stepCounting ?? this.stepCounting,
+    signReading: signReading ?? this.signReading,
+    savedRouteId: savedRouteId ?? this.savedRouteId,
+    error: clearError ? null : error ?? this.error,
+  );
 
   @override
   List<Object?> get props => [
-        status,
-        buildingId,
-        floorId,
-        stride,
-        proposals,
-        landmarks,
-        steps,
-        stepsThisLeg,
-        pendingLandmark,
-        pendingSteps,
-        stepCounting,
-        signReading,
-        savedRouteId,
-        error,
-      ];
+    status,
+    buildingId,
+    floorId,
+    stride,
+    proposals,
+    landmarks,
+    steps,
+    stepsThisLeg,
+    pendingLandmark,
+    pendingSteps,
+    stepCounting,
+    signReading,
+    savedRouteId,
+    error,
+  ];
 }

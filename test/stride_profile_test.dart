@@ -14,10 +14,14 @@ void main() {
 
     test('a walk nobody actually did is not believed', () {
       // Tapping "done" without walking, or the counter never starting.
-      expect(StrideProfile.fromWalk(distanceM: 10, steps: 0).isPlausible,
-          isFalse);
-      expect(StrideProfile.fromWalk(distanceM: 0, steps: 14).isPlausible,
-          isFalse);
+      expect(
+        StrideProfile.fromWalk(distanceM: 10, steps: 0).isPlausible,
+        isFalse,
+      );
+      expect(
+        StrideProfile.fromWalk(distanceM: 0, steps: 14).isPlausible,
+        isFalse,
+      );
     });
 
     test('an implausible result is rejected rather than stored', () {
@@ -49,7 +53,10 @@ void main() {
 
   group('converting a leg for this user', () {
     test('metres become the number of steps to expect', () {
-      const stride = StrideProfile(metres: 0.7, source: StrideSource.calibrated);
+      const stride = StrideProfile(
+        metres: 0.7,
+        source: StrideSource.calibrated,
+      );
 
       // 25 m of corridor at 0.7 m per step.
       expect(stride.stepsFor(25), 36);
@@ -59,7 +66,10 @@ void main() {
       // The one modelling rule in the spec, made executable: the same stored
       // 20 m leg is a different number of steps for different people.
       const tall = StrideProfile(metres: 0.78, source: StrideSource.calibrated);
-      const short = StrideProfile(metres: 0.65, source: StrideSource.calibrated);
+      const short = StrideProfile(
+        metres: 0.65,
+        source: StrideSource.calibrated,
+      );
 
       expect(tall.stepsFor(20), isNot(short.stepsFor(20)));
       expect(tall.stepsFor(20), 26);
@@ -77,17 +87,23 @@ void main() {
     test('a malformed or implausible stored value is discarded', () {
       expect(StrideProfile.fromJson(null), isNull);
       expect(StrideProfile.fromJson('0.7'), isNull);
-      expect(StrideProfile.fromJson({'metres': 5.0, 'source': 'calibrated'}),
-          isNull);
-      expect(StrideProfile.fromJson({'metres': -0.7, 'source': 'calibrated'}),
-          isNull);
+      expect(
+        StrideProfile.fromJson({'metres': 5.0, 'source': 'calibrated'}),
+        isNull,
+      );
+      expect(
+        StrideProfile.fromJson({'metres': -0.7, 'source': 'calibrated'}),
+        isNull,
+      );
     });
 
     test('an unknown source does not lose the measurement', () {
       // Forward compatibility: a newer build writing a source this one does
       // not know should not throw away a perfectly good stride.
-      final restored =
-          StrideProfile.fromJson({'metres': 0.72, 'source': 'lidar'});
+      final restored = StrideProfile.fromJson({
+        'metres': 0.72,
+        'source': 'lidar',
+      });
 
       expect(restored?.metres, 0.72);
       expect(restored?.source, StrideSource.assumed);

@@ -66,7 +66,8 @@ class RoomClassifier {
         type: RoomType.unknown,
         confidence: 0,
         features: features,
-        reason: 'measurement not reliable '
+        reason:
+            'measurement not reliable '
             '(fit ${features.fitQuality.toStringAsFixed(2)}, '
             '${features.decayRangeDb.toStringAsFixed(1)}dB of decay)',
       );
@@ -83,7 +84,8 @@ class RoomClassifier {
         type: RoomType.corridor,
         confidence: _confidence(maxDiffuseRatio - ratio, maxDiffuseRatio),
         features: features,
-        reason: 'non-diffuse decay (EDT/RT60 ${ratio.toStringAsFixed(2)}) — '
+        reason:
+            'non-diffuse decay (EDT/RT60 ${ratio.toStringAsFixed(2)}) — '
             'strong early reflections off parallel surfaces',
       );
     }
@@ -93,7 +95,8 @@ class RoomClassifier {
         type: RoomType.smallRoom,
         confidence: _confidence(smallRoomMaxRt60 - rt60, smallRoomMaxRt60),
         features: features,
-        reason: 'short decay (RT60 ${rt60.toStringAsFixed(2)}s) — '
+        reason:
+            'short decay (RT60 ${rt60.toStringAsFixed(2)}s) — '
             'small, absorbing space',
       );
     }
@@ -103,7 +106,8 @@ class RoomClassifier {
         type: RoomType.hall,
         confidence: _confidence(rt60 - hallMinRt60, hallMinRt60),
         features: features,
-        reason: 'long decay (RT60 ${rt60.toStringAsFixed(2)}s) — '
+        reason:
+            'long decay (RT60 ${rt60.toStringAsFixed(2)}s) — '
             'large, lightly absorbing volume',
       );
     }
@@ -114,7 +118,8 @@ class RoomClassifier {
       type: RoomType.unknown,
       confidence: 0,
       features: features,
-      reason: 'RT60 ${rt60.toStringAsFixed(2)}s falls between '
+      reason:
+          'RT60 ${rt60.toStringAsFixed(2)}s falls between '
           'small-room and hall, with no corridor signature',
     );
   }

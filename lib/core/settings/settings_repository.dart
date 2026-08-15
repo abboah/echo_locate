@@ -60,8 +60,7 @@ class SharedPrefsSettingsRepository implements SettingsRepository {
       _prefs.setBool(_onboardingKey, true);
 
   @override
-  Future<void> resetOnboarding() async =>
-      _prefs.setBool(_onboardingKey, false);
+  Future<void> resetOnboarding() async => _prefs.setBool(_onboardingKey, false);
 
   @override
   bool get cameraPrimerSeen => _prefs.getBool(_cameraPrimerKey) ?? false;

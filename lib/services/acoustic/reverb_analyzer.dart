@@ -77,7 +77,8 @@ class ReverbAnalyzer {
     // EDT over the first 10dB. Falls back to the main estimate when the
     // curve is too coarse there, so a usable RT60 is not thrown away just
     // because its early portion was short.
-    final edt = _extrapolatedDecayTime(
+    final edt =
+        _extrapolatedDecayTime(
           decayCurveDb: decayCurveDb,
           sampleRate: sampleRate,
           fromDb: 0.0,
@@ -130,7 +131,9 @@ class ReverbAnalyzer {
 
     for (var i = 0; i < length; i++) {
       // Guard the log: the final sample integrates to exactly zero energy.
-      curve[i] = curve[i] <= 0 ? -double.infinity : 10 * math.log(curve[i] / total) / math.ln10;
+      curve[i] = curve[i] <= 0
+          ? -double.infinity
+          : 10 * math.log(curve[i] / total) / math.ln10;
     }
     return curve;
   }
@@ -190,8 +193,9 @@ class ReverbAnalyzer {
       totalSumSquares += (l - meanL) * (l - meanL);
       residualSumSquares += (l - predicted) * (l - predicted);
     }
-    final rSquared =
-        totalSumSquares == 0 ? 1.0 : 1 - residualSumSquares / totalSumSquares;
+    final rSquared = totalSumSquares == 0
+        ? 1.0
+        : 1 - residualSumSquares / totalSumSquares;
 
     return _DecayFit(
       seconds: -60.0 / slope,

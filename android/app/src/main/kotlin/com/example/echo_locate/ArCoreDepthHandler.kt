@@ -160,6 +160,11 @@ class ArCoreDepthHandler(private val activity: Activity) :
             return
         }
 
+        // ARCore holds the camera exclusively and room capture wants it too.
+        // Claiming stops whoever had it, so navigating between the two screens
+        // does not leave the second failing to start.
+        ArCoreSessionOwner.claim(::stop)
+
         try {
             val newSession = Session(activity)
             if (!newSession.isDepthModeSupported(Config.DepthMode.AUTOMATIC)) {
@@ -218,6 +223,7 @@ class ArCoreDepthHandler(private val activity: Activity) :
     fun stop() {
         if (!running) return
         running = false
+        ArCoreSessionOwner.releaseIfHeld(::stop)
 
         val handler = renderHandler
         val thread = renderThread

@@ -25,24 +25,20 @@ void main() {
   AcousticFallbackService service({
     Duration cooldown = const Duration(seconds: 4),
     double floor = 0.6,
-  }) =>
-      AcousticFallbackService(
-        audio,
-        cooldown: cooldown,
-        uncalibratedFloorMeters: floor,
-        clock: clock,
-      );
+  }) => AcousticFallbackService(
+    audio,
+    cooldown: cooldown,
+    uncalibratedFloorMeters: floor,
+    clock: clock,
+  );
 
   void whenMeasured(ToFResult? result) {
-    when(() => audio.measure(sweeps: any(named: 'sweeps')))
-        .thenAnswer((_) async => result);
+    when(
+      () => audio.measure(sweeps: any(named: 'sweeps')),
+    ).thenAnswer((_) async => result);
   }
 
-  ToFResult tof({
-    double distance = 2.0,
-    double ratio = 19.0,
-    DateTime? at,
-  }) =>
+  ToFResult tof({double distance = 2.0, double ratio = 19.0, DateTime? at}) =>
       ToFResult(
         distanceMeters: distance,
         peakToNoiseRatio: ratio,
@@ -65,27 +61,34 @@ void main() {
       expect(result.range!.calibrated, isFalse);
     });
 
-    test('confidence spans the gate to saturation, and cannot leave 0..1',
-        () async {
-      whenMeasured(tof(ratio: 8.0)); // the acceptance gate itself
-      expect((await service().rangeAhead()).range!.confidence, 0.0);
+    test(
+      'confidence spans the gate to saturation, and cannot leave 0..1',
+      () async {
+        whenMeasured(tof(ratio: 8.0)); // the acceptance gate itself
+        expect((await service().rangeAhead()).range!.confidence, 0.0);
 
-      whenMeasured(tof(ratio: 200.0)); // far past saturation
-      now = now.add(const Duration(minutes: 1));
-      expect((await service().rangeAhead()).range!.confidence, 1.0);
-    });
+        whenMeasured(tof(ratio: 200.0)); // far past saturation
+        now = now.add(const Duration(minutes: 1));
+        expect((await service().rangeAhead()).range!.confidence, 1.0);
+      },
+    );
 
-    test('reports calibration state, since it sets the usable near range',
-        () async {
-      when(() => audio.hasClutterProfile).thenReturn(true);
-      whenMeasured(tof(distance: 0.2));
+    test(
+      'reports calibration state, since it sets the usable near range',
+      () async {
+        when(() => audio.hasClutterProfile).thenReturn(true);
+        whenMeasured(tof(distance: 0.2));
 
-      final result = await service().rangeAhead();
+        final result = await service().rangeAhead();
 
-      expect(result.range!.calibrated, isTrue);
-      expect(result.range!.distanceMeters, 0.2,
-          reason: 'a clutter profile is what makes the near field readable');
-    });
+        expect(result.range!.calibrated, isTrue);
+        expect(
+          result.range!.distanceMeters,
+          0.2,
+          reason: 'a clutter profile is what makes the near field readable',
+        );
+      },
+    );
   });
 
   group('refusals', () {
@@ -99,14 +102,10 @@ void main() {
       expect(result.refusal, RangeRefusal.belowUncalibratedFloor);
     });
 
-    test('silence is reported as no echo — evidence about the scene',
-        () async {
+    test('silence is reported as no echo — evidence about the scene', () async {
       whenMeasured(null);
 
-      expect(
-        (await service().rangeAhead()).refusal,
-        RangeRefusal.noEcho,
-      );
+      expect((await service().rangeAhead()).refusal, RangeRefusal.noEcho);
     });
 
     test('audio taken by speech is NOT reported as no echo', () async {
@@ -116,10 +115,7 @@ void main() {
       whenMeasured(null);
       when(() => audio.lastCaptureYielded).thenReturn(true);
 
-      expect(
-        (await service().rangeAhead()).refusal,
-        RangeRefusal.audioBusy,
-      );
+      expect((await service().rangeAhead()).refusal, RangeRefusal.audioBusy);
     });
 
     test('an unstarted audio service refuses rather than pretending', () async {
@@ -135,10 +131,7 @@ void main() {
     test('a capture already in flight is refused', () async {
       when(() => audio.isBusy).thenReturn(true);
 
-      expect(
-        (await service().rangeAhead()).refusal,
-        RangeRefusal.audioBusy,
-      );
+      expect((await service().rangeAhead()).refusal, RangeRefusal.audioBusy);
       verifyNever(() => audio.measure(sweeps: any(named: 'sweeps')));
     });
   });
@@ -170,15 +163,17 @@ void main() {
       expect((await fallback.rangeAhead()).succeeded, isTrue);
     });
 
-    test('is announced, so a caller can skip the call it would refuse',
-        () async {
-      whenMeasured(tof());
-      final fallback = service();
+    test(
+      'is announced, so a caller can skip the call it would refuse',
+      () async {
+        whenMeasured(tof());
+        final fallback = service();
 
-      expect(fallback.isThrottled, isFalse);
-      await fallback.rangeAhead();
-      expect(fallback.isThrottled, isTrue);
-    });
+        expect(fallback.isThrottled, isFalse);
+        await fallback.rangeAhead();
+        expect(fallback.isThrottled, isTrue);
+      },
+    );
 
     test('counts from the START of a measurement, not its end', () async {
       // Measuring takes seconds. Stamping on completion would let the next
@@ -187,31 +182,37 @@ void main() {
       whenMeasured(tof());
       final fallback = service(cooldown: const Duration(seconds: 4));
 
-      when(() => audio.measure(sweeps: any(named: 'sweeps')))
-          .thenAnswer((_) async {
+      when(() => audio.measure(sweeps: any(named: 'sweeps'))).thenAnswer((
+        _,
+      ) async {
         now = now.add(const Duration(seconds: 5)); // the sweep's own duration
         return tof();
       });
 
       await fallback.rangeAhead();
 
-      expect(fallback.isThrottled, isFalse,
-          reason: 'the measurement itself outlasted the cooldown');
+      expect(
+        fallback.isThrottled,
+        isFalse,
+        reason: 'the measurement itself outlasted the cooldown',
+      );
       // And a second measurement that returns instantly must then re-arm it.
       whenMeasured(tof());
       await fallback.rangeAhead();
       expect(fallback.isThrottled, isTrue);
     });
 
-    test('a refused measurement still counts, so failures cannot loop',
-        () async {
-      // A room that returns no echo returns no echo every time. Without this,
-      // a silent scene would chirp continuously.
-      whenMeasured(null);
-      final fallback = service();
+    test(
+      'a refused measurement still counts, so failures cannot loop',
+      () async {
+        // A room that returns no echo returns no echo every time. Without this,
+        // a silent scene would chirp continuously.
+        whenMeasured(null);
+        final fallback = service();
 
-      expect((await fallback.rangeAhead()).refusal, RangeRefusal.noEcho);
-      expect((await fallback.rangeAhead()).refusal, RangeRefusal.throttled);
-    });
+        expect((await fallback.rangeAhead()).refusal, RangeRefusal.noEcho);
+        expect((await fallback.rangeAhead()).refusal, RangeRefusal.throttled);
+      },
+    );
   });
 }

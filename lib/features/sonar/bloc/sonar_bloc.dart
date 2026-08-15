@@ -38,10 +38,12 @@ class SonarBloc extends Bloc<SonarEvent, SonarState> {
     // has just restored it if one was stored. Without asking, the UI reported
     // "Calibration needed" on every fresh launch — telling the user to redo
     // work that was already done and already being applied to every ping.
-    emit(state.copyWith(
-      status: SonarStatus.idle,
-      isCalibrated: _audio.hasClutterProfile,
-    ));
+    emit(
+      state.copyWith(
+        status: SonarStatus.idle,
+        isCalibrated: _audio.hasClutterProfile,
+      ),
+    );
 
     await _headingSubscription?.cancel();
     _headingSubscription = magnetometerEventStream().listen(
@@ -62,17 +64,19 @@ class SonarBloc extends Bloc<SonarEvent, SonarState> {
     final result = await _audio.measure();
     if (isClosed) return;
 
-    emit(SonarState(
-      status: SonarStatus.idle,
-      headingDegrees: state.headingDegrees,
-      lastMeasurement: result ?? state.lastMeasurement,
-      isCalibrated: state.isCalibrated,
-      error: result == null
-          ? state.isCalibrated
-              ? 'No echo detected — try facing a flatter surface'
-              : 'No echo detected — calibrate first for close-range readings'
-          : null,
-    ));
+    emit(
+      SonarState(
+        status: SonarStatus.idle,
+        headingDegrees: state.headingDegrees,
+        lastMeasurement: result ?? state.lastMeasurement,
+        isCalibrated: state.isCalibrated,
+        error: result == null
+            ? state.isCalibrated
+                  ? 'No echo detected — try facing a flatter surface'
+                  : 'No echo detected — calibrate first for close-range readings'
+            : null,
+      ),
+    );
   }
 
   Future<void> _onCalibrate(
@@ -85,15 +89,17 @@ class SonarBloc extends Bloc<SonarEvent, SonarState> {
     final ok = await _audio.calibrateClutter();
     if (isClosed) return;
 
-    emit(SonarState(
-      status: SonarStatus.idle,
-      headingDegrees: state.headingDegrees,
-      lastMeasurement: state.lastMeasurement,
-      isCalibrated: ok || state.isCalibrated,
-      error: ok
-          ? null
-          : 'Calibration failed — hold the phone still and try again',
-    ));
+    emit(
+      SonarState(
+        status: SonarStatus.idle,
+        headingDegrees: state.headingDegrees,
+        lastMeasurement: state.lastMeasurement,
+        isCalibrated: ok || state.isCalibrated,
+        error: ok
+            ? null
+            : 'Calibration failed — hold the phone still and try again',
+      ),
+    );
   }
 
   void _onHeadingChanged(_HeadingChanged event, Emitter<SonarState> emit) {

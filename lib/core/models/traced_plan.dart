@@ -56,10 +56,8 @@ abstract class TracedNode with _$TracedNode {
 /// with where its ends were drawn.
 @freezed
 abstract class TracedEdge with _$TracedEdge {
-  const factory TracedEdge({
-    required String fromRef,
-    required String toRef,
-  }) = _TracedEdge;
+  const factory TracedEdge({required String fromRef, required String toRef}) =
+      _TracedEdge;
 
   const TracedEdge._();
 

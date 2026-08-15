@@ -36,8 +36,9 @@ List<MapNode> layout(
   // order, and the start landmark is taken from the first leg.
   final legs = [...route.steps]..sort((a, b) => a.seq.compareTo(b.seq));
 
-  final startId =
-      legs.isEmpty ? route.startLandmarkId : legs.first.fromLandmarkId;
+  final startId = legs.isEmpty
+      ? route.startLandmarkId
+      : legs.first.fromLandmarkId;
   if (startId.isEmpty) return const [];
 
   var floorId = landmarks[startId]?.floorId ?? '';

@@ -72,13 +72,13 @@ class _ProfileView extends StatelessWidget {
                           profile.fullName.isEmpty
                               ? '?'
                               : profile.fullName[0].toUpperCase(),
-                          style: theme.textTheme.headlineMedium
-                              ?.copyWith(color: AppColors.coral),
+                          style: theme.textTheme.headlineMedium?.copyWith(
+                            color: AppColors.coral,
+                          ),
                         ),
                       ),
                       const SizedBox(height: AppDimens.space12),
-                      Text(profile.fullName,
-                          style: theme.textTheme.titleLarge),
+                      Text(profile.fullName, style: theme.textTheme.titleLarge),
                       Text(profile.email, style: theme.textTheme.bodyMedium),
                       const SizedBox(height: AppDimens.space8),
                       Container(
@@ -88,13 +88,15 @@ class _ProfileView extends StatelessWidget {
                         ),
                         decoration: BoxDecoration(
                           color: AppColors.coralSoft,
-                          borderRadius:
-                              BorderRadius.circular(AppDimens.radiusPill),
+                          borderRadius: BorderRadius.circular(
+                            AppDimens.radiusPill,
+                          ),
                         ),
                         child: Text(
                           profile.rankLabel,
-                          style: theme.textTheme.labelSmall
-                              ?.copyWith(color: AppColors.coral),
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: AppColors.coral,
+                          ),
                         ),
                       ),
                     ],
@@ -104,14 +106,16 @@ class _ProfileView extends StatelessWidget {
                 Row(
                   children: [
                     _StatCard(
-                        value: '${profile.buildingsMapped}',
-                        label: 'Buildings'),
+                      value: '${profile.buildingsMapped}',
+                      label: 'Buildings',
+                    ),
                     const SizedBox(width: AppDimens.space12),
                     _StatCard(
-                        value: '${profile.floorsMapped}', label: 'Floors'),
+                      value: '${profile.floorsMapped}',
+                      label: 'Floors',
+                    ),
                     const SizedBox(width: AppDimens.space12),
-                    _StatCard(
-                        value: '${profile.roomsMapped}', label: 'Rooms'),
+                    _StatCard(value: '${profile.roomsMapped}', label: 'Rooms'),
                   ],
                 ),
                 const SizedBox(height: AppDimens.space32),
@@ -121,26 +125,31 @@ class _ProfileView extends StatelessWidget {
                   child: Column(
                     children: [
                       SwitchListTile(
-                        title: Text('Dark mode',
-                            style: theme.textTheme.titleMedium),
-                        subtitle: Text('Easier on the eyes at night',
-                            style: theme.textTheme.bodyMedium),
+                        title: Text(
+                          'Dark mode',
+                          style: theme.textTheme.titleMedium,
+                        ),
+                        subtitle: Text(
+                          'Easier on the eyes at night',
+                          style: theme.textTheme.bodyMedium,
+                        ),
                         activeThumbColor: AppColors.coral,
                         value: theme.brightness == Brightness.dark,
-                        onChanged: (dark) => context
-                            .read<ThemeCubit>()
-                            .setMode(
-                                dark ? ThemeMode.dark : ThemeMode.light),
+                        onChanged: (dark) => context.read<ThemeCubit>().setMode(
+                          dark ? ThemeMode.dark : ThemeMode.light,
+                        ),
                       ),
                       Divider(height: 1, color: theme.dividerColor),
                       ListTile(
-                        title: Text('Measure your step',
-                            style: theme.textTheme.titleMedium),
+                        title: Text(
+                          'Measure your step',
+                          style: theme.textTheme.titleMedium,
+                        ),
                         subtitle: Text(
                           profile.strideLengthM == null
                               ? 'Not measured — distances are estimated'
                               : '${(profile.strideLengthM! * 100).round()} cm '
-                                  'per step',
+                                    'per step',
                           style: theme.textTheme.bodyMedium,
                         ),
                         trailing: Icon(
@@ -153,18 +162,21 @@ class _ProfileView extends StatelessWidget {
                       ),
                       Divider(height: 1, color: theme.dividerColor),
                       ListTile(
-                        title: Text('View the intro again',
-                            style: theme.textTheme.titleMedium),
-                        subtitle: Text('Replay the 3-step welcome tour',
-                            style: theme.textTheme.bodyMedium),
+                        title: Text(
+                          'View the intro again',
+                          style: theme.textTheme.titleMedium,
+                        ),
+                        subtitle: Text(
+                          'Replay the 3-step welcome tour',
+                          style: theme.textTheme.bodyMedium,
+                        ),
                         trailing: Icon(
                           PhosphorIconsRegular.caretRight,
                           size: 18,
                           color: theme.textTheme.bodyMedium?.color,
                         ),
                         onTap: () async {
-                          await getIt<SettingsRepository>()
-                              .resetOnboarding();
+                          await getIt<SettingsRepository>().resetOnboarding();
                           if (context.mounted) {
                             context.goNamed(RouteNames.onboarding);
                           }
@@ -183,8 +195,10 @@ class _ProfileView extends StatelessWidget {
                 const SizedBox(height: AppDimens.space8),
                 Card(
                   child: ListTile(
-                    title: Text('Landmark map + routing (dev)',
-                        style: theme.textTheme.titleMedium),
+                    title: Text(
+                      'Landmark map + routing (dev)',
+                      style: theme.textTheme.titleMedium,
+                    ),
                     subtitle: Text(
                       'KNUST Library — schematic, A* between any two '
                       'landmarks, then guidance',
@@ -204,8 +218,10 @@ class _ProfileView extends StatelessWidget {
                 const SizedBox(height: AppDimens.space8),
                 Card(
                   child: ListTile(
-                    title: Text('Trace a floor plan (dev)',
-                        style: theme.textTheme.titleMedium),
+                    title: Text(
+                      'Trace a floor plan (dev)',
+                      style: theme.textTheme.titleMedium,
+                    ),
                     subtitle: Text(
                       'Photograph the posted plan, set its scale, tap the '
                       'landmarks onto it — no step counting',
@@ -222,11 +238,38 @@ class _ProfileView extends StatelessWidget {
                     ),
                   ),
                 ),
+                // "Map a building (dev)" lived here, opening the mapping hub.
+                // Room tracing is the mainline contributor task now and is
+                // reached from Home, so a developer shortcut to it is one more
+                // way in to the same place rather than access to something
+                // otherwise unreachable.
                 const SizedBox(height: AppDimens.space8),
                 Card(
                   child: ListTile(
-                    title: Text('Record a route (dev)',
-                        style: theme.textTheme.titleMedium),
+                    title: Text(
+                      'Room plan probe (dev)',
+                      style: theme.textTheme.titleMedium,
+                    ),
+                    subtitle: Text(
+                      'A hand-built floor: pick two rooms, read the route and '
+                      'the spoken directions it generates',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                    trailing: Icon(
+                      PhosphorIconsRegular.caretRight,
+                      size: 18,
+                      color: theme.textTheme.bodyMedium?.color,
+                    ),
+                    onTap: () => context.pushNamed(RouteNames.roomPlanProbe),
+                  ),
+                ),
+                const SizedBox(height: AppDimens.space8),
+                Card(
+                  child: ListTile(
+                    title: Text(
+                      'Record a route (dev)',
+                      style: theme.textTheme.titleMedium,
+                    ),
                     subtitle: Text(
                       'Capture flow: read a sign, count steps, tap the turn',
                       style: theme.textTheme.bodyMedium,
@@ -245,10 +288,14 @@ class _ProfileView extends StatelessWidget {
                 const SizedBox(height: AppDimens.space8),
                 Card(
                   child: ListTile(
-                    title: Text('Sonar (dev)',
-                        style: theme.textTheme.titleMedium),
-                    subtitle: Text('Acoustic distance ping + radar',
-                        style: theme.textTheme.bodyMedium),
+                    title: Text(
+                      'Sonar (dev)',
+                      style: theme.textTheme.titleMedium,
+                    ),
+                    subtitle: Text(
+                      'Acoustic distance ping + radar',
+                      style: theme.textTheme.bodyMedium,
+                    ),
                     trailing: Icon(
                       PhosphorIconsRegular.caretRight,
                       size: 18,
@@ -260,10 +307,14 @@ class _ProfileView extends StatelessWidget {
                 const SizedBox(height: AppDimens.space8),
                 Card(
                   child: ListTile(
-                    title: Text('Room acoustics (dev)',
-                        style: theme.textTheme.titleMedium),
-                    subtitle: Text('Reverberation → room type',
-                        style: theme.textTheme.bodyMedium),
+                    title: Text(
+                      'Room acoustics (dev)',
+                      style: theme.textTheme.titleMedium,
+                    ),
+                    subtitle: Text(
+                      'Reverberation → room type',
+                      style: theme.textTheme.bodyMedium,
+                    ),
                     trailing: Icon(
                       PhosphorIconsRegular.caretRight,
                       size: 18,
@@ -275,10 +326,14 @@ class _ProfileView extends StatelessWidget {
                 const SizedBox(height: AppDimens.space8),
                 Card(
                   child: ListTile(
-                    title: Text('Depth probe (dev)',
-                        style: theme.textTheme.titleMedium),
-                    subtitle: Text('ARCore availability + live depth readout',
-                        style: theme.textTheme.bodyMedium),
+                    title: Text(
+                      'Depth probe (dev)',
+                      style: theme.textTheme.titleMedium,
+                    ),
+                    subtitle: Text(
+                      'ARCore availability + live depth readout',
+                      style: theme.textTheme.bodyMedium,
+                    ),
                     trailing: Icon(
                       PhosphorIconsRegular.caretRight,
                       size: 18,
@@ -289,11 +344,14 @@ class _ProfileView extends StatelessWidget {
                 ),
                 const SizedBox(height: AppDimens.space24),
                 OutlinedButton.icon(
-                  onPressed: () => context
-                      .read<AuthBloc>()
-                      .add(const AuthSignOutRequested()),
-                  icon: const Icon(PhosphorIconsRegular.signOut,
-                      color: AppColors.error, size: 20),
+                  onPressed: () => context.read<AuthBloc>().add(
+                    const AuthSignOutRequested(),
+                  ),
+                  icon: const Icon(
+                    PhosphorIconsRegular.signOut,
+                    color: AppColors.error,
+                    size: 20,
+                  ),
                   label: const Text(
                     'Sign out',
                     style: TextStyle(color: AppColors.error),

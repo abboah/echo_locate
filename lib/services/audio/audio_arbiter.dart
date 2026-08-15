@@ -45,12 +45,12 @@ enum AudioUse {
   /// told about a chair you are not about to hit; not walking into the chair
   /// matters more than either.
   int get rank => switch (this) {
-        AudioUse.ranging => 0,
-        AudioUse.speech => 10,
-        AudioUse.guidanceProgress => 12,
-        AudioUse.landmarkReached => 15,
-        AudioUse.urgentSpeech => 20,
-      };
+    AudioUse.ranging => 0,
+    AudioUse.speech => 10,
+    AudioUse.guidanceProgress => 12,
+    AudioUse.landmarkReached => 15,
+    AudioUse.urgentSpeech => 20,
+  };
 }
 
 /// Serialises access to the microphone and speaker.

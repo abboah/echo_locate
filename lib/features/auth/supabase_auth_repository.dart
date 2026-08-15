@@ -15,7 +15,7 @@ import 'auth_repository.dart';
 /// paid Apple Developer account, and the thesis is demoed on Android.
 class SupabaseAuthRepository with RepositoryMixin implements AuthRepository {
   SupabaseAuthRepository(this._client, {GoogleSignIn? googleSignIn})
-      : _google = googleSignIn ?? GoogleSignIn.instance;
+    : _google = googleSignIn ?? GoogleSignIn.instance;
 
   final SupabaseClient _client;
   final GoogleSignIn _google;
@@ -24,7 +24,8 @@ class SupabaseAuthRepository with RepositoryMixin implements AuthRepository {
   AuthUser? _map(User? user) {
     if (user == null) return null;
     final email = user.email ?? '';
-    final name = user.userMetadata?['full_name'] as String? ??
+    final name =
+        user.userMetadata?['full_name'] as String? ??
         (email.contains('@') ? email.split('@').first : 'Mapper');
     return AuthUser(id: user.id, fullName: name, email: email);
   }
@@ -43,8 +44,10 @@ class SupabaseAuthRepository with RepositoryMixin implements AuthRepository {
   }) {
     return runOperation('sign_in_email', () async {
       try {
-        final res = await _client.auth
-            .signInWithPassword(email: email.trim(), password: password);
+        final res = await _client.auth.signInWithPassword(
+          email: email.trim(),
+          password: password,
+        );
         return _map(res.user)!;
       } on AuthException catch (e) {
         throw OperationFailure(_friendly(e));
@@ -93,34 +96,38 @@ class SupabaseAuthRepository with RepositoryMixin implements AuthRepository {
   /// No nonce is requested, so Google omits the claim and Supabase skips that
   /// check — leave "Skip nonce checks" OFF in the dashboard regardless.
   @override
-  Future<AuthUser> signInWithGoogle() {
+  Future<AuthUser> signInWithGoogle() async {
+    if (!AppConfig.hasGoogleSignIn) {
+      throw const OperationFailure(
+        'Google sign-in is not configured on this build',
+      );
+    }
+
+    // Deliberately NOT inside runOperation: the account-chooser sheet waits on
+    // a person, and RepositoryMixin's 15s deadline is a *network* deadline.
+    // Wrapping the sheet in it meant anyone who took longer than 15s to pick
+    // an account got the whole flow killed with "Could not connect. Check your
+    // connection and try again." — on a perfectly good connection.
+    final GoogleSignInAccount account;
+    try {
+      if (!_googleReady) {
+        await _google.initialize(serverClientId: AppConfig.googleWebClientId);
+        _googleReady = true;
+      }
+      account = await _google.authenticate();
+    } on GoogleSignInException catch (e) {
+      throw OperationFailure(_friendlyGoogle(e));
+    }
+
+    final idToken = account.authentication.idToken;
+    if (idToken == null) {
+      throw const OperationFailure(
+        'Google did not return a sign-in token. Please try again.',
+      );
+    }
+
+    // The token exchange *is* network-bound, so it keeps the deadline.
     return runOperation('sign_in_google', () async {
-      if (!AppConfig.hasGoogleSignIn) {
-        throw const OperationFailure(
-          'Google sign-in is not configured on this build',
-        );
-      }
-
-      final GoogleSignInAccount account;
-      try {
-        if (!_googleReady) {
-          await _google.initialize(
-            serverClientId: AppConfig.googleWebClientId,
-          );
-          _googleReady = true;
-        }
-        account = await _google.authenticate();
-      } on GoogleSignInException catch (e) {
-        throw OperationFailure(_friendlyGoogle(e));
-      }
-
-      final idToken = account.authentication.idToken;
-      if (idToken == null) {
-        throw const OperationFailure(
-          'Google did not return a sign-in token. Please try again.',
-        );
-      }
-
       try {
         final res = await _client.auth.signInWithIdToken(
           provider: OAuthProvider.google,
@@ -134,13 +141,12 @@ class SupabaseAuthRepository with RepositoryMixin implements AuthRepository {
   }
 
   String _friendlyGoogle(GoogleSignInException e) => switch (e.code) {
-        GoogleSignInExceptionCode.canceled ||
-        GoogleSignInExceptionCode.interrupted =>
-          'Google sign-in cancelled',
-        GoogleSignInExceptionCode.providerConfigurationError =>
-          'Google sign-in is not set up correctly for this app',
-        _ => 'Could not sign in with Google. Please try again.',
-      };
+    GoogleSignInExceptionCode.canceled ||
+    GoogleSignInExceptionCode.interrupted => 'Google sign-in cancelled',
+    GoogleSignInExceptionCode.providerConfigurationError =>
+      'Google sign-in is not set up correctly for this app',
+    _ => 'Could not sign in with Google. Please try again.',
+  };
 
   @override
   Future<AuthUser> signInWithApple() async {

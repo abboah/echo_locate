@@ -22,7 +22,7 @@ import 'text_recognition_service.dart';
 /// the API here doesn't change.
 class DetectionService {
   DetectionService({TextRecognitionService? textRecognition})
-      : _textRecognition = textRecognition;
+    : _textRecognition = textRecognition;
 
   /// Sign reading, when a screen has switched it on. This class owns the only
   /// camera stream, so OCR cannot open its own — it is handed alternate frames
@@ -54,7 +54,9 @@ class DetectionService {
     try {
       final permission = await Permission.camera.request();
       if (!permission.isGranted) {
-        AppLogger.warn('Camera permission not granted — assist runs in demo mode');
+        AppLogger.warn(
+          'Camera permission not granted — assist runs in demo mode',
+        );
         return false;
       }
 
@@ -131,7 +133,8 @@ class DetectionService {
       // Frame dimensions in the rotated (upright) coordinate space that
       // ML Kit reports boxes in.
       final rotation = _currentRotation();
-      final sideways = rotation == InputImageRotation.rotation90deg ||
+      final sideways =
+          rotation == InputImageRotation.rotation90deg ||
           rotation == InputImageRotation.rotation270deg;
       final frameW = sideways ? image.height : image.width;
       final frameH = sideways ? image.width : image.height;
@@ -140,18 +143,19 @@ class DetectionService {
         final best = o.labels.isEmpty
             ? null
             : (o.labels..sort((a, b) => b.confidence.compareTo(a.confidence)))
-                .first;
+                  .first;
         final centerX = o.boundingBox.center.dx / frameW;
         return DetectedObstacle(
           label: _wordFor(best?.text),
           confidence: best?.confidence ?? 0,
-          heightFraction:
-              (o.boundingBox.height / frameH).clamp(0.0, 1.0).toDouble(),
+          heightFraction: (o.boundingBox.height / frameH)
+              .clamp(0.0, 1.0)
+              .toDouble(),
           position: centerX < 0.35
               ? ObstaclePosition.left
               : centerX > 0.65
-                  ? ObstaclePosition.right
-                  : ObstaclePosition.center,
+              ? ObstaclePosition.right
+              : ObstaclePosition.center,
         );
       }).toList();
 
@@ -161,10 +165,10 @@ class DetectionService {
         'ASSIST-FRAME ${image.width}x${image.height} '
         'rot=${rotation.rawValue} objects=${objects.length}'
         '${obstacles.isEmpty ? '' : ' :: ${obstacles.map((o) => '${o.label}'
-            '/c${o.confidence.toStringAsFixed(2)}'
-            '/h${o.heightFraction.toStringAsFixed(2)}'
-            '/${o.position.name}').join(' | ')}'
-            ' raw=${objects.map((o) => o.boundingBox).join(' ')}'}',
+                      '/c${o.confidence.toStringAsFixed(2)}'
+                      '/h${o.heightFraction.toStringAsFixed(2)}'
+                      '/${o.position.name}').join(' | ')}'
+                  ' raw=${objects.map((o) => o.boundingBox).join(' ')}'}',
       );
 
       _obstaclesController.add(obstacles);
@@ -190,12 +194,11 @@ class DetectionService {
       return InputImageRotationValue.fromRawValue(sensor) ??
           InputImageRotation.rotation0deg;
     }
-    final device =
-        _deviceOrientations[controller.value.deviceOrientation] ?? 0;
+    final device = _deviceOrientations[controller.value.deviceOrientation] ?? 0;
     final compensated =
         controller.description.lensDirection == CameraLensDirection.front
-            ? (sensor + device) % 360
-            : (sensor - device + 360) % 360;
+        ? (sensor + device) % 360
+        : (sensor - device + 360) % 360;
     return InputImageRotationValue.fromRawValue(compensated) ??
         InputImageRotation.rotation0deg;
   }
@@ -218,11 +221,11 @@ class DetectionService {
 
   /// ML Kit base-model categories → words a person wants to hear.
   String _wordFor(String? category) => switch (category) {
-        'Home good' => 'furniture',
-        'Fashion good' => 'clothing item',
-        'Food' => 'food item',
-        'Plant' => 'plant',
-        'Place' => 'doorway',
-        _ => 'obstacle',
-      };
+    'Home good' => 'furniture',
+    'Fashion good' => 'clothing item',
+    'Food' => 'food item',
+    'Plant' => 'plant',
+    'Place' => 'doorway',
+    _ => 'obstacle',
+  };
 }

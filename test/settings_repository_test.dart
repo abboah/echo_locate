@@ -7,11 +7,11 @@ import 'package:echo_locate/core/settings/settings_repository.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  Future<SharedPrefsSettingsRepository> repoWith(
-      [Map<String, Object> seed = const {}]) async {
+  Future<SharedPrefsSettingsRepository> repoWith([
+    Map<String, Object> seed = const {},
+  ]) async {
     SharedPreferences.setMockInitialValues(seed);
-    return SharedPrefsSettingsRepository(
-        await SharedPreferences.getInstance());
+    return SharedPrefsSettingsRepository(await SharedPreferences.getInstance());
   }
 
   test('fresh install: onboarding unseen, theme follows system', () async {

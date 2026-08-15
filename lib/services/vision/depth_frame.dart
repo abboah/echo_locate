@@ -35,13 +35,13 @@ enum ArCoreAvailability {
       this == ArCoreAvailability.supportedApkTooOld;
 
   static ArCoreAvailability fromNative(String? value) => switch (value) {
-        'supported' => ArCoreAvailability.supported,
-        'supportedNotInstalled' => ArCoreAvailability.supportedNotInstalled,
-        'supportedApkTooOld' => ArCoreAvailability.supportedApkTooOld,
-        'unsupported' => ArCoreAvailability.unsupported,
-        'checking' => ArCoreAvailability.checking,
-        _ => ArCoreAvailability.unknown,
-      };
+    'supported' => ArCoreAvailability.supported,
+    'supportedNotInstalled' => ArCoreAvailability.supportedNotInstalled,
+    'supportedApkTooOld' => ArCoreAvailability.supportedApkTooOld,
+    'unsupported' => ArCoreAvailability.unsupported,
+    'checking' => ArCoreAvailability.checking,
+    _ => ArCoreAvailability.unknown,
+  };
 }
 
 /// How well ARCore currently knows where the phone is.
@@ -55,10 +55,10 @@ enum DepthTrackingState {
   stopped;
 
   static DepthTrackingState fromNative(String? value) => switch (value) {
-        'TRACKING' => DepthTrackingState.tracking,
-        'PAUSED' => DepthTrackingState.paused,
-        _ => DepthTrackingState.stopped,
-      };
+    'TRACKING' => DepthTrackingState.tracking,
+    'PAUSED' => DepthTrackingState.paused,
+    _ => DepthTrackingState.stopped,
+  };
 }
 
 /// One ARCore depth observation: a coarse depth grid plus the camera pose it
@@ -87,19 +87,19 @@ class DepthFrame extends Equatable {
 
   /// A frame that arrived while ARCore had no usable pose, so carries no depth.
   const DepthFrame.untracked(this.trackingState)
-      : hasDepth = false,
-        width = 0,
-        height = 0,
-        gridColumns = 0,
-        gridRows = 0,
-        grid = const [],
-        minMillimeters = 0,
-        maxMillimeters = 0,
-        meanMillimeters = 0,
-        validSamples = 0,
-        timestampNs = 0,
-        translation = const [0, 0, 0],
-        rotation = const [0, 0, 0, 1];
+    : hasDepth = false,
+      width = 0,
+      height = 0,
+      gridColumns = 0,
+      gridRows = 0,
+      grid = const [],
+      minMillimeters = 0,
+      maxMillimeters = 0,
+      meanMillimeters = 0,
+      validSamples = 0,
+      timestampNs = 0,
+      translation = const [0, 0, 0],
+      rotation = const [0, 0, 0, 1];
 
   final DepthTrackingState trackingState;
 
@@ -150,7 +150,9 @@ class DepthFrame extends Equatable {
   }
 
   static DepthFrame fromNative(Map<Object?, Object?> map) {
-    final tracking = DepthTrackingState.fromNative(map['trackingState'] as String?);
+    final tracking = DepthTrackingState.fromNative(
+      map['trackingState'] as String?,
+    );
     if (map['hasDepth'] != true) return DepthFrame.untracked(tracking);
 
     return DepthFrame(
@@ -183,15 +185,15 @@ class DepthFrame extends Equatable {
 
   @override
   List<Object?> get props => [
-        trackingState,
-        hasDepth,
-        timestampNs,
-        minMillimeters,
-        maxMillimeters,
-        meanMillimeters,
-        validSamples,
-        grid,
-        translation,
-        rotation,
-      ];
+    trackingState,
+    hasDepth,
+    timestampNs,
+    minMillimeters,
+    maxMillimeters,
+    meanMillimeters,
+    validSamples,
+    grid,
+    translation,
+    rotation,
+  ];
 }

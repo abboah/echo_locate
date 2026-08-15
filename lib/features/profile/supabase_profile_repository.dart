@@ -16,11 +16,11 @@ class SupabaseProfileRepository
 
   /// Mapper levels shown under the name on the Profile tab.
   static String _rankFor(int buildingsMapped) => switch (buildingsMapped) {
-        0 => 'New mapper',
-        1 || 2 => 'Mapper · Level 1',
-        3 || 4 || 5 => 'Mapper · Level 2',
-        _ => 'Mapper · Level 3',
-      };
+    0 => 'New mapper',
+    1 || 2 => 'Mapper · Level 1',
+    3 || 4 || 5 => 'Mapper · Level 2',
+    _ => 'Mapper · Level 3',
+  };
 
   @override
   Future<void> saveStride(double metresPerStep) {
@@ -30,7 +30,8 @@ class SupabaseProfileRepository
 
       await _client
           .from('profiles')
-          .update({'stride_length_m': metresPerStep}).eq('id', user.id);
+          .update({'stride_length_m': metresPerStep})
+          .eq('id', user.id);
     });
   }
 
@@ -62,7 +63,7 @@ class SupabaseProfileRepository
         fullName: fullName != null && fullName.isNotEmpty
             ? fullName
             : user.userMetadata?['full_name'] as String? ??
-                (email.contains('@') ? email.split('@').first : 'Mapper'),
+                  (email.contains('@') ? email.split('@').first : 'Mapper'),
         email: email,
         buildingsMapped: buildings,
         floorsMapped: (s['floors_mapped'] as num?)?.toInt() ?? 0,

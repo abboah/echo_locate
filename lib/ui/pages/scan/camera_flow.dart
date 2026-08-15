@@ -14,8 +14,7 @@ import '../../../services/injection_container.dart';
 void openAssistFlow(BuildContext context) =>
     _viaPrimer(context, RouteNames.assist);
 
-void openScanFlow(BuildContext context) =>
-    _viaPrimer(context, RouteNames.scan);
+void openScanFlow(BuildContext context) => _viaPrimer(context, RouteNames.scan);
 
 void _viaPrimer(BuildContext context, String destinationName) {
   final settings = getIt<SettingsRepository>();

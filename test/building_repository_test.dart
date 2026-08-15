@@ -44,12 +44,14 @@ void main() {
       expect(all.map((b) => b.name), contains('Great Hall Annexe'));
     });
 
-    test('it starts at nothing mapped, not at an invented percentage',
-        () async {
-      final added = await repository.create(name: 'Annexe', area: 'Kumasi');
+    test(
+      'it starts at nothing mapped, not at an invented percentage',
+      () async {
+        final added = await repository.create(name: 'Annexe', area: 'Kumasi');
 
-      expect(added.mappedPercent, 0);
-    });
+        expect(added.mappedPercent, 0);
+      },
+    );
 
     test('its floors exist and are empty, ready to trace', () async {
       final added = await repository.create(
@@ -90,9 +92,10 @@ void main() {
     expect(floors.first.label, 'G');
     expect(floors.every((f) => f.rooms.isNotEmpty), isTrue);
     // Floor 2 mirrors the Figma building-detail mock.
-    expect(
-      floors[2].rooms.map((r) => r.name),
-      ['Reading Hall', 'Study Room 2B', 'Help Desk'],
-    );
+    expect(floors[2].rooms.map((r) => r.name), [
+      'Reading Hall',
+      'Study Room 2B',
+      'Help Desk',
+    ]);
   });
 }

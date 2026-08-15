@@ -42,7 +42,9 @@ class _DepthProbePageState extends State<DepthProbePage> {
 
   Future<void> _probe() async {
     final availability = await _service.checkAvailability();
-    final depth = availability.isReady ? await _service.isDepthSupported() : false;
+    final depth = availability.isReady
+        ? await _service.isDepthSupported()
+        : false;
     if (!mounted) return;
     setState(() {
       _availability = availability;
@@ -116,37 +118,32 @@ class _DepthProbePageState extends State<DepthProbePage> {
           ),
           const Divider(height: AppDimens.space32),
           if (availability != null && !availability.isReady)
-            Text(
-              switch (availability) {
-                ArCoreAvailability.supportedNotInstalled ||
-                ArCoreAvailability.supportedApkTooOld =>
-                  'This device can run ARCore, but the ARCore app is missing '
-                      'or out of date. Install or update "Google Play Services '
-                      'for AR" from the Play Store, then reopen this screen.',
-                ArCoreAvailability.unsupported =>
-                  'Google has not certified this device for ARCore, so '
-                      'camera scanning cannot run on it. Everything else in '
-                      'the app — sonar, browsing and navigation — works '
-                      'normally. Scanning needs a certified device.',
-                // Distinct from `unsupported`: ARCore did not rule the device
-                // out, it failed to answer. Saying "not certified" here would
-                // assert more than was measured — and this is the state an
-                // uncertified device actually lands in, because ARCore's
-                // install service cannot resolve it at all.
-                _ => 'ARCore could not determine whether this device supports '
+            Text(switch (availability) {
+              ArCoreAvailability.supportedNotInstalled ||
+              ArCoreAvailability.supportedApkTooOld =>
+                'This device can run ARCore, but the ARCore app is missing '
+                    'or out of date. Install or update "Google Play Services '
+                    'for AR" from the Play Store, then reopen this screen.',
+              ArCoreAvailability.unsupported =>
+                'Google has not certified this device for ARCore, so '
+                    'camera scanning cannot run on it. Everything else in '
+                    'the app — sonar, browsing and navigation — works '
+                    'normally. Scanning needs a certified device.',
+              // Distinct from `unsupported`: ARCore did not rule the device
+              // out, it failed to answer. Saying "not certified" here would
+              // assert more than was measured — and this is the state an
+              // uncertified device actually lands in, because ARCore's
+              // install service cannot resolve it at all.
+              _ =>
+                'ARCore could not determine whether this device supports '
                     'scanning — it is either uncertified or unable to reach '
                     'Google Play Services for AR. Scanning stays unavailable '
                     'until it answers. Sonar, browsing and navigation are '
                     'unaffected.',
-              },
-              style: theme.textTheme.bodyMedium,
-            ),
+            }, style: theme.textTheme.bodyMedium),
           if (availability != null && availability.isReady) ...[
             _Row(label: 'Frames', value: '$_frameCount'),
-            _Row(
-              label: 'Tracking',
-              value: _frame?.trackingState.name ?? '—',
-            ),
+            _Row(label: 'Tracking', value: _frame?.trackingState.name ?? '—'),
             _Row(
               label: 'Centre',
               value: _frame?.centerMeters == null
@@ -158,7 +155,7 @@ class _DepthProbePageState extends State<DepthProbePage> {
               value: _frame == null || !_frame!.hasDepth
                   ? '—'
                   : '${_frame!.minMeters.toStringAsFixed(2)} – '
-                      '${_frame!.maxMeters.toStringAsFixed(2)} m',
+                        '${_frame!.maxMeters.toStringAsFixed(2)} m',
             ),
             _Row(
               label: 'Valid cells',
@@ -169,8 +166,8 @@ class _DepthProbePageState extends State<DepthProbePage> {
               value: _frame == null || _frame!.translation.length < 3
                   ? '—'
                   : _frame!.translation
-                      .map((v) => v.toStringAsFixed(2))
-                      .join(', '),
+                        .map((v) => v.toStringAsFixed(2))
+                        .join(', '),
             ),
             const SizedBox(height: AppDimens.space24),
             if (running && _frame != null && !_frame!.hasDepth)
@@ -183,9 +180,7 @@ class _DepthProbePageState extends State<DepthProbePage> {
             ElevatedButton.icon(
               onPressed: running ? _stop : _start,
               icon: Icon(
-                running
-                    ? PhosphorIconsRegular.stop
-                    : PhosphorIconsRegular.play,
+                running ? PhosphorIconsRegular.stop : PhosphorIconsRegular.play,
                 size: 20,
               ),
               label: Text(running ? 'Stop' : 'Start depth session'),
@@ -195,8 +190,9 @@ class _DepthProbePageState extends State<DepthProbePage> {
             const SizedBox(height: AppDimens.space16),
             Text(
               _error!,
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: theme.colorScheme.error),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.error,
+              ),
             ),
           ],
         ],
@@ -231,10 +227,7 @@ class _Row extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label, style: theme.textTheme.bodyMedium),
-          Text(
-            value,
-            style: theme.textTheme.titleMedium,
-          ),
+          Text(value, style: theme.textTheme.titleMedium),
         ],
       ),
     );

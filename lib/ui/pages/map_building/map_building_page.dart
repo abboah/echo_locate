@@ -47,10 +47,18 @@ class _MapBuildingView extends StatelessWidget {
         }
         final created = state.created;
         if (state.status == MapBuildingStatus.created && created != null) {
-          // Straight into tracing, replacing this screen: coming "back" to a
-          // chooser you have already answered is a dead end.
+          // Straight into room tracing, replacing this screen: coming "back"
+          // to a chooser you have already answered is a dead end. The tool
+          // rather than the hub, because tracing the rooms off the posted
+          // plan *is* what mapping a building means now — the hub existed to
+          // choose between methods that are no longer equals.
+          //
+          // Deliberately no `extra`: roomTrace reads it as a floor id, and a
+          // building's name arriving there would be taken for one. Left off,
+          // the screen opens the building's first floor, which is where a
+          // building that has just been created has to start anyway.
           context.pushReplacementNamed(
-            RouteNames.planTrace,
+            RouteNames.roomTrace,
             pathParameters: {'id': created.id},
           );
         }
@@ -77,7 +85,7 @@ class _MapBuildingView extends StatelessWidget {
                       const SizedBox(height: AppDimens.space4),
                       Text(
                         'Add it if nobody has yet. You will photograph the '
-                        'floor plan on its wall and tap the landmarks onto it.',
+                        'floor plan on its wall and trace its rooms onto it.',
                         style: theme.textTheme.bodySmall,
                       ),
                       const SizedBox(height: AppDimens.space20),
@@ -180,11 +188,11 @@ class _NewBuildingFormState extends State<_NewBuildingForm> {
         const SizedBox(height: AppDimens.space16),
         ElevatedButton.icon(
           onPressed: () => context.read<MapBuildingCubit>().create(
-                name: _name.text,
-                area: _area.text,
-                floors: _floors,
-                category: _category,
-              ),
+            name: _name.text,
+            area: _area.text,
+            floors: _floors,
+            category: _category,
+          ),
           icon: const Icon(PhosphorIconsFill.mapTrifold, size: 18),
           label: const Text('Add it and start tracing'),
         ),
@@ -221,8 +229,11 @@ class _ListedBuilding extends StatelessWidget {
         size: 18,
         color: AppColors.coral,
       ),
+      // Straight at room tracing rather than the hub — see the note on the
+      // created-building branch above. No `extra`, for the same reason: that
+      // slot is a floor id here, not a name.
       onTap: () => context.pushReplacementNamed(
-        RouteNames.planTrace,
+        RouteNames.roomTrace,
         pathParameters: {'id': building.id},
       ),
     );

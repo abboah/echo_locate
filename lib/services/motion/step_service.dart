@@ -37,8 +37,8 @@ class StepService {
   StepService({
     Stream<int>? cumulativeSteps,
     Future<bool> Function()? requestPermission,
-  })  : _source = cumulativeSteps,
-        _requestPermission = requestPermission;
+  }) : _source = cumulativeSteps,
+       _requestPermission = requestPermission;
 
   final Stream<int>? _source;
   final Future<bool> Function()? _requestPermission;

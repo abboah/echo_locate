@@ -14,9 +14,12 @@ void main() {
   // exist here and leaves async work pending past the end of the test. These
   // tests are about calibration state, so the compass is stubbed to a stream
   // that simply never emits.
-  const sensorsMethod = MethodChannel('dev.fluttercommunity.plus/sensors/method');
-  const magnetometer =
-      EventChannel('dev.fluttercommunity.plus/sensors/magnetometer');
+  const sensorsMethod = MethodChannel(
+    'dev.fluttercommunity.plus/sensors/method',
+  );
+  const magnetometer = EventChannel(
+    'dev.fluttercommunity.plus/sensors/magnetometer',
+  );
 
   late _MockSonarAudioService audio;
 

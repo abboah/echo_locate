@@ -81,8 +81,8 @@ class _RadarPainter extends CustomPainter {
     // Heading needle: 0deg points "up" (away from the user, matching how
     // the phone is held facing the target surface).
     final headingRad = (headingDegrees - 90) * math.pi / 180;
-    final needleEnd = center +
-        Offset(math.cos(headingRad), math.sin(headingRad)) * radius;
+    final needleEnd =
+        center + Offset(math.cos(headingRad), math.sin(headingRad)) * radius;
     canvas.drawLine(
       center,
       needleEnd,
@@ -96,13 +96,10 @@ class _RadarPainter extends CustomPainter {
     if (distance != null) {
       final clamped = distance.clamp(0.0, maxRangeMeters);
       final blipRadius = radius * (clamped / maxRangeMeters);
-      final blip = center +
+      final blip =
+          center +
           Offset(math.cos(headingRad), math.sin(headingRad)) * blipRadius;
-      canvas.drawCircle(
-        blip,
-        6,
-        Paint()..color = const Color(0xFFFB5B47),
-      );
+      canvas.drawCircle(blip, 6, Paint()..color = const Color(0xFFFB5B47));
       canvas.drawCircle(
         blip,
         10,
