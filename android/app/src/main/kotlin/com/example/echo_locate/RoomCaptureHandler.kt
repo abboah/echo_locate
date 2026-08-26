@@ -2,13 +2,6 @@ package com.example.echo_locate
 
 import android.app.Activity
 import android.content.pm.PackageManager
-import android.opengl.EGL14
-import android.opengl.EGLConfig
-import android.opengl.EGLContext
-import android.opengl.EGLDisplay
-import android.opengl.EGLSurface
-import android.opengl.GLES11Ext
-import android.opengl.GLES20
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
@@ -108,29 +101,39 @@ class RoomCaptureHandler(
     private var renderHandler: Handler? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    private var eglDisplay: EGLDisplay = EGL14.EGL_NO_DISPLAY
-    private var eglContext: EGLContext = EGL14.EGL_NO_CONTEXT
-    private var eglSurface: EGLSurface = EGL14.EGL_NO_SURFACE
-    private var eglConfig: EGLConfig? = null
-    private var cameraTextureId: Int = 0
+    /** The GL context, the camera texture and the surface Flutter composites. */
+    private val gl = ArGlSurface(textures)
 
-    /** The Flutter-side texture the camera is drawn into. */
-    private var surfaceProducer: TextureRegistry.SurfaceProducer? = null
+    /** The texture id handed to Dart, so a second `start` answers the same one. */
+    private var startedTextureId: Long = -1L
 
     private val renderer = CameraBackgroundRenderer()
+    private val markers = AnchorMarkerRenderer()
     private val hitTester = SurfaceHitTester()
+
+    /**
+     * Which anchors to draw, as Dart last described them.
+     *
+     * Dart decides rather than native inferring it from [anchors], because
+     * native holds every anchor that has ever been created this session and
+     * only Dart knows which of them are still the current draft, which became
+     * a door, and in **what order** the outline runs. Volatile immutable lists:
+     * written from the platform thread on each tap, read from the render thread
+     * every frame, and a torn read here would draw a wall to a corner that is
+     * no longer there.
+     */
+    @Volatile
+    private var cornerMarkerIds: List<String> = emptyList()
+
+    @Volatile
+    private var doorMarkerIds: List<String> = emptyList()
+
+    /** Refilled every frame from the anchors above — see [WorldPoints]. */
+    private val cornerPoints = WorldPoints()
+    private val doorPoints = WorldPoints()
 
     @Volatile
     private var running = false
-
-    /**
-     * Set when the window surface has gone and drawing must stop.
-     *
-     * Tracking deliberately keeps running: a session that survives a moment
-     * without a surface comes back with its anchors and its map intact, and
-     * tearing it down would lose a half-captured room over a transient.
-     */
-    private var canDraw = false
 
     /**
      * The last state pushed to Dart, so identical ones are not pushed again.
@@ -245,6 +248,10 @@ class RoomCaptureHandler(
                 result.success(null)
             }
             "resolveAnchors" -> resolveAnchors(call, result)
+            "setMarkers" -> {
+                setMarkers(call)
+                result.success(null)
+            }
             "releaseAnchors" -> {
                 releaseAnchors(call.argument<List<String>>("ids") ?: emptyList())
                 result.success(null)
@@ -302,7 +309,7 @@ class RoomCaptureHandler(
         viewHeight = height
         displayRotation = rotation
 
-        surfaceProducer?.setSize(width, height)
+        gl.resizeProducer(width, height)
 
         // Session and GL surface are both thread-affine, so both go to the
         // thread that owns them.
@@ -312,7 +319,7 @@ class RoomCaptureHandler(
             } catch (e: Exception) {
                 Log.w(TAG, "setDisplayGeometry failed: $e")
             }
-            rebindWindowSurface()
+            gl.rebind()
         }
     }
 
@@ -355,6 +362,20 @@ class RoomCaptureHandler(
         }
     }
 
+    /**
+     * Records which anchors the preview should draw, and in which order.
+     *
+     * Cheap and idempotent: two lists of short strings, sent when a corner is
+     * placed, undone or closed — a handful of times per room, not per frame.
+     * Ids naming an anchor that has since been detached are ignored rather than
+     * rejected, so a release racing a redraw is a marker that stops being drawn
+     * rather than an error crossing the channel.
+     */
+    private fun setMarkers(call: MethodCall) {
+        cornerMarkerIds = call.argument<List<String>>("corners")?.toList() ?: emptyList()
+        doorMarkerIds = call.argument<List<String>>("doors")?.toList() ?: emptyList()
+    }
+
     /** Detaches anchors that are no longer needed. */
     private fun releaseAnchors(ids: List<String>) {
         renderHandler?.post {
@@ -369,7 +390,7 @@ class RoomCaptureHandler(
 
     private fun start(call: MethodCall, result: MethodChannel.Result) {
         if (running) {
-            result.success(mapOf("textureId" to (surfaceProducer?.id() ?: -1L)))
+            result.success(mapOf("textureId" to startedTextureId))
             return
         }
         // Recorded before the session exists so `setDisplayGeometry` can be
@@ -422,10 +443,9 @@ class RoomCaptureHandler(
 
             // Created on the platform thread, which is where Flutter's texture
             // registry expects to be called.
-            val producer = textures.createSurfaceProducer()
-            producer.setSize(viewWidth, viewHeight)
-            surfaceProducer = producer
-            val textureId = producer.id()
+            val textureId = gl.createProducer(viewWidth, viewHeight)
+            startedTextureId = textureId
+            gl.onSurfaceRebound = { renderer.invalidateGeometry() }
 
             val thread = HandlerThread("arcore-capture").also { it.start() }
             renderThread = thread
@@ -433,10 +453,14 @@ class RoomCaptureHandler(
             running = true
             hitTester.reset()
             lastEmitted = null
+            // A restarted session has no anchors, and ids from the last one
+            // would name anchors this one never created.
+            cornerMarkerIds = emptyList()
+            doorMarkerIds = emptyList()
 
             renderHandler?.post {
                 try {
-                    createEglContext(producer.surface)
+                    gl.createContext()
                     if (!renderer.prepare()) {
                         // A driver that will not compile a textured quad is a
                         // black preview and nothing worse — tracking, hit-tests
@@ -444,8 +468,13 @@ class RoomCaptureHandler(
                         // carried rather than failed.
                         Log.e(TAG, "Camera background renderer unavailable")
                     }
-                    cameraTextureId = createExternalTexture()
-                    newSession.setCameraTextureName(cameraTextureId)
+                    if (!markers.prepare()) {
+                        // Same bargain, one step smaller: no markers means the
+                        // corner count and the plan preview are the only
+                        // feedback, which is what this screen shipped with.
+                        Log.e(TAG, "Anchor marker renderer unavailable")
+                    }
+                    newSession.setCameraTextureName(gl.cameraTextureId)
                     newSession.resume()
                     // Before the first frame, unconditionally. Doing this
                     // inside the pump meant a first frame that threw — which
@@ -462,13 +491,13 @@ class RoomCaptureHandler(
                 } catch (e: CameraNotAvailableException) {
                     running = false
                     mainHandler.post {
-                        releaseProducer()
+                        gl.releaseProducer()
                         result.error("camera", "Camera not available: ${e.message}", null)
                     }
                 } catch (e: Exception) {
                     running = false
                     mainHandler.post {
-                        releaseProducer()
+                        gl.releaseProducer()
                         result.error("start", "ARCore start failed: ${e.message}", null)
                     }
                 }
@@ -483,7 +512,7 @@ class RoomCaptureHandler(
     fun stop() {
         if (!running) return
         running = false
-        canDraw = false
+        startedTextureId = -1L
         ArCoreSessionOwner.releaseIfHeld(::stop)
 
         val handler = renderHandler
@@ -491,6 +520,8 @@ class RoomCaptureHandler(
         renderHandler = null
         renderThread = null
         lastEmitted = null
+        cornerMarkerIds = emptyList()
+        doorMarkerIds = emptyList()
 
         // A tap still waiting when the session goes away would otherwise leave
         // its Dart future hanging forever.
@@ -512,22 +543,18 @@ class RoomCaptureHandler(
             }
             session = null
             renderer.release()
-            destroyEglContext()
+            markers.release()
+            gl.destroy()
             thread?.quitSafely()
             // The producer belongs to Flutter and is released on its thread,
             // after the GL surface built on it has gone — the other order
             // leaves the context drawing into a surface that was handed back.
-            mainHandler.post { releaseProducer() }
+            mainHandler.post { gl.releaseProducer() }
         } ?: run {
             session = null
             thread?.quitSafely()
-            releaseProducer()
+            gl.releaseProducer()
         }
-    }
-
-    private fun releaseProducer() {
-        surfaceProducer?.release()
-        surfaceProducer = null
     }
 
     /**
@@ -630,16 +657,46 @@ class RoomCaptureHandler(
     }
 
     private fun drawFrame(frame: Frame) {
-        if (!canDraw || !renderer.isReady) return
-        renderer.draw(frame, cameraTextureId, viewWidth, viewHeight)
-        if (!EGL14.eglSwapBuffers(eglDisplay, eglSurface)) {
-            // The surface went away underneath us — the app is going to the
-            // background, or Flutter recreated it. Stop drawing; tracking keeps
-            // running so a half-captured room survives, and the surface is
-            // rebound on the next viewport update or session restart.
-            Log.w(TAG, "eglSwapBuffers failed; preview paused")
-            canDraw = false
+        if (!gl.canDraw || !renderer.isReady) return
+        renderer.draw(frame, gl.cameraTextureId, viewWidth, viewHeight)
+        drawMarkers(frame)
+        // A failed swap means the surface went away underneath us — the app is
+        // going to the background, or Flutter recreated it. Drawing stops there;
+        // tracking keeps running so a half-captured room survives, and the
+        // surface is rebound on the next viewport update or session restart.
+        gl.swapBuffers()
+    }
+
+    /**
+     * Draws the corners placed so far on top of the camera image.
+     *
+     * Reading the anchors here, in the same frame that drew the camera, is the
+     * whole point: an anchor's pose is corrected as ARCore learns the room, so
+     * a marker follows its corner through a relocalisation instead of sitting
+     * where the world used to be. See [AnchorMarkerRenderer].
+     *
+     * An anchor that has stopped tracking is skipped rather than drawn at its
+     * last known pose. A marker frozen a metre from its corner is a worse lie
+     * than no marker: it is exactly the picture a bad hit-test makes.
+     */
+    private fun drawMarkers(frame: Frame) {
+        if (!markers.isReady) return
+
+        cornerPoints.clear()
+        for (id in cornerMarkerIds) {
+            val anchor = anchors[id] ?: continue
+            if (anchor.trackingState != TrackingState.TRACKING) continue
+            cornerPoints.add(anchor.pose)
         }
+
+        doorPoints.clear()
+        for (id in doorMarkerIds) {
+            val anchor = anchors[id] ?: continue
+            if (anchor.trackingState != TrackingState.TRACKING) continue
+            doorPoints.add(anchor.pose)
+        }
+
+        markers.draw(frame, cornerPoints, doorPoints, viewWidth, viewHeight)
     }
 
     private fun servicePendingHit(frame: Frame) {
@@ -718,150 +775,4 @@ class RoomCaptureHandler(
         eventSink = null
     }
 
-    // --- EGL ----------------------------------------------------------------
-
-    /**
-     * A window surface on the texture Flutter composites.
-     *
-     * `Session.update()` requires a current GL context with a camera texture
-     * bound — ARCore is a renderer API, not a headless sensor API. The earlier
-     * version satisfied that with a 1x1 pbuffer, because nothing was drawn and
-     * the camera reached Flutter as JPEG bytes instead. Drawing into the
-     * producer's surface is what lets those bytes go away: the camera image
-     * stays on the GPU from ARCore's texture to Flutter's compositor.
-     */
-    private fun createEglContext(surface: Surface) {
-        eglDisplay = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
-        check(eglDisplay != EGL14.EGL_NO_DISPLAY) { "No EGL display" }
-        val version = IntArray(2)
-        check(EGL14.eglInitialize(eglDisplay, version, 0, version, 1)) { "eglInitialize failed" }
-
-        val configAttributes = intArrayOf(
-            EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
-            // WINDOW, not PBUFFER: this context draws into a real surface now.
-            EGL14.EGL_SURFACE_TYPE, EGL14.EGL_WINDOW_BIT,
-            EGL14.EGL_RED_SIZE, 8,
-            EGL14.EGL_GREEN_SIZE, 8,
-            EGL14.EGL_BLUE_SIZE, 8,
-            // Flutter composites this texture with the widgets drawn over it,
-            // so the buffer needs an alpha channel to be a valid layer.
-            EGL14.EGL_ALPHA_SIZE, 8,
-            EGL14.EGL_NONE,
-        )
-        val configs = arrayOfNulls<EGLConfig>(1)
-        val configCount = IntArray(1)
-        check(
-            EGL14.eglChooseConfig(
-                eglDisplay, configAttributes, 0, configs, 0, 1, configCount, 0,
-            ) && configCount[0] > 0
-        ) { "No suitable EGL config" }
-        eglConfig = configs[0]
-
-        eglContext = EGL14.eglCreateContext(
-            eglDisplay,
-            configs[0],
-            EGL14.EGL_NO_CONTEXT,
-            intArrayOf(EGL14.EGL_CONTEXT_CLIENT_VERSION, 2, EGL14.EGL_NONE),
-            0,
-        )
-        check(eglContext != EGL14.EGL_NO_CONTEXT) { "eglCreateContext failed" }
-
-        bindWindowSurface(surface)
-    }
-
-    /**
-     * Makes [surface] the draw target, replacing whatever was current.
-     *
-     * A window surface belongs to one `Surface`, so a resize — which hands back
-     * a new one — needs this rather than a reconfiguration. The context and the
-     * compiled program survive; only the surface is rebuilt.
-     */
-    private fun bindWindowSurface(surface: Surface) {
-        if (eglSurface != EGL14.EGL_NO_SURFACE) {
-            EGL14.eglMakeCurrent(
-                eglDisplay,
-                EGL14.EGL_NO_SURFACE,
-                EGL14.EGL_NO_SURFACE,
-                EGL14.EGL_NO_CONTEXT,
-            )
-            EGL14.eglDestroySurface(eglDisplay, eglSurface)
-            eglSurface = EGL14.EGL_NO_SURFACE
-        }
-
-        eglSurface = EGL14.eglCreateWindowSurface(
-            eglDisplay,
-            eglConfig,
-            surface,
-            intArrayOf(EGL14.EGL_NONE),
-            0,
-        )
-        check(eglSurface != EGL14.EGL_NO_SURFACE) { "eglCreateWindowSurface failed" }
-        check(EGL14.eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext)) {
-            "eglMakeCurrent failed"
-        }
-        renderer.invalidateGeometry()
-        canDraw = true
-    }
-
-    /** Rebuilds the draw target after a resize or a lost surface. */
-    private fun rebindWindowSurface() {
-        val producer = surfaceProducer ?: return
-        if (eglContext == EGL14.EGL_NO_CONTEXT) return
-        try {
-            bindWindowSurface(producer.surface)
-        } catch (e: Exception) {
-            Log.w(TAG, "Could not rebind the preview surface: $e")
-            canDraw = false
-        }
-    }
-
-    private fun createExternalTexture(): Int {
-        val textures = IntArray(1)
-        GLES20.glGenTextures(1, textures, 0)
-        GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textures[0])
-        GLES20.glTexParameteri(
-            GLES11Ext.GL_TEXTURE_EXTERNAL_OES,
-            GLES20.GL_TEXTURE_MIN_FILTER,
-            GLES20.GL_LINEAR,
-        )
-        GLES20.glTexParameteri(
-            GLES11Ext.GL_TEXTURE_EXTERNAL_OES,
-            GLES20.GL_TEXTURE_MAG_FILTER,
-            GLES20.GL_LINEAR,
-        )
-        // The camera image does not tile, and a driver sampling past its edge
-        // with the default REPEAT wraps the far side of the frame into it.
-        GLES20.glTexParameteri(
-            GLES11Ext.GL_TEXTURE_EXTERNAL_OES,
-            GLES20.GL_TEXTURE_WRAP_S,
-            GLES20.GL_CLAMP_TO_EDGE,
-        )
-        GLES20.glTexParameteri(
-            GLES11Ext.GL_TEXTURE_EXTERNAL_OES,
-            GLES20.GL_TEXTURE_WRAP_T,
-            GLES20.GL_CLAMP_TO_EDGE,
-        )
-        return textures[0]
-    }
-
-    private fun destroyEglContext() {
-        if (eglDisplay == EGL14.EGL_NO_DISPLAY) return
-        EGL14.eglMakeCurrent(
-            eglDisplay,
-            EGL14.EGL_NO_SURFACE,
-            EGL14.EGL_NO_SURFACE,
-            EGL14.EGL_NO_CONTEXT,
-        )
-        if (eglSurface != EGL14.EGL_NO_SURFACE) {
-            EGL14.eglDestroySurface(eglDisplay, eglSurface)
-        }
-        if (eglContext != EGL14.EGL_NO_CONTEXT) {
-            EGL14.eglDestroyContext(eglDisplay, eglContext)
-        }
-        EGL14.eglTerminate(eglDisplay)
-        eglDisplay = EGL14.EGL_NO_DISPLAY
-        eglContext = EGL14.EGL_NO_CONTEXT
-        eglSurface = EGL14.EGL_NO_SURFACE
-        eglConfig = null
-    }
 }

@@ -417,15 +417,18 @@ class _ModeBar extends StatelessWidget {
   );
 }
 
-/// A crosshair and the corner count, over the camera.
+/// The crosshair, over the camera.
 ///
-/// The corners themselves are deliberately *not* drawn in place: doing that
-/// needs each captured anchor projected back into the current camera view every
-/// frame. Now that there is a real GL context drawing the camera, that has
-/// become a normal thing to add rather than an architectural problem — it would
-/// live in `CameraBackgroundRenderer` beside the quad. Showing how many have
-/// been placed, plus the plan preview a tap away, gives most of the confidence
-/// for none of the work, so it stays the next thing rather than this thing.
+/// **The corners themselves are drawn natively**, by `AnchorMarkerRenderer`,
+/// into the same buffer as the camera image. That is not where the design
+/// system lives and it is still the right place: projected positions painted
+/// here would describe the frame they were computed from and land over whatever
+/// frame the compositor had by then, so the markers would swim off their
+/// corners exactly while the phone is moving — which is the whole time somebody
+/// is tracing a room, and the precise error the markers exist to expose.
+///
+/// What stays in Flutter is everything that is not registered to the world: the
+/// crosshair, the guidance, the controls.
 class _CaptureOverlay extends CustomPainter {
   const _CaptureOverlay({required this.cornerCount, required this.canPlace});
 

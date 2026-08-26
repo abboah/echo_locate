@@ -46,3 +46,6 @@ app.*.map.json
 
 .figma_designs
 .env
+
+# Field-test captures: logs and screen recordings from real walks.
+walk-captures/

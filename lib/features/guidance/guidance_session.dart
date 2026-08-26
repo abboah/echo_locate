@@ -2,6 +2,7 @@ import 'package:equatable/equatable.dart';
 
 import '../../core/models/landmark.dart';
 import '../../services/mapping/floor_graph.dart';
+import '../../services/mapping/room_plan_bridge.dart';
 import '../../services/mapping/route_planner.dart';
 import '../../services/motion/stride_profile.dart';
 
@@ -18,9 +19,22 @@ class GuidanceSession extends Equatable {
     this.stride = StrideProfile.fallback,
     this.graph,
     this.metric = true,
+    this.routePath,
   });
 
   final PlannedRoute plan;
+
+  /// The route as a line on the floor, in metres, in the plan's own frame.
+  ///
+  /// Null for a session with no geometry behind it — a route stitched out of
+  /// recorded walks knows its turns and its lengths but not where anything
+  /// *is*, and a traced plan nobody measured knows where things are but not
+  /// how far apart. Both still guide; they simply cannot be laid into the room.
+  ///
+  /// When it is present the AR layer registers it into ARCore's world (see
+  /// `route_registration.dart`) and the arrow points at real corners rather
+  /// than dead-reckoning a chain of turns from a guessed starting direction.
+  final RoutePath? routePath;
 
   /// Every landmark in the building, not just this route's.
   ///
@@ -69,6 +83,11 @@ class GuidanceSession extends Equatable {
         stride: stride ?? this.stride,
         graph: graph,
         metric: metric,
+        // Deliberately *not* carried when the plan is replaced: recovery
+        // replans onto a different line, and keeping the old one would leave
+        // the arrow registered to a route the walker has left. A caller that
+        // replans has to supply fresh geometry or go without.
+        routePath: plan == null ? routePath : null,
       );
 
   @override
@@ -79,5 +98,6 @@ class GuidanceSession extends Equatable {
     stride,
     graph,
     metric,
+    routePath,
   ];
 }

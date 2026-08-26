@@ -93,24 +93,44 @@ class PassedDoor {
 
 /// Turns a route into sentences.
 ///
-/// [metric] says whether the plan's coordinates are really metres. A plan
-/// traced off a photograph usually is not — nobody measured the wall board —
-/// and quoting "walk twelve metres" from arbitrary plan units is a confidently
-/// wrong number in a blind user's ear. When false, distances are omitted and
-/// the instructions lean on doors and landmarks instead, which are true either
+/// [metresPerUnit] is how long one unit of the plan's coordinate frame is in
+/// the real world, and null means nobody knows. A plan traced off a photograph
+/// starts out that way — nobody measured the wall board — and quoting "walk
+/// twelve metres" from arbitrary plan units is a confidently wrong number in a
+/// blind user's ear. When it is null, distances are omitted and the
+/// instructions lean on doors and landmarks instead, which are true either
 /// way. Same reasoning as `FloorGraph.metric`.
+///
+/// **It is a multiplier, not a flag.** Everything this class emits with a
+/// `distanceM` on it is in metres, converted here, so that a caller cannot
+/// receive a number labelled metres that is really a fraction of a
+/// photograph's width. That was the bug: the scale a user had taken the
+/// trouble to measure was stored, turned `isMetric` true, and was then never
+/// applied to anything — so setting it made the spoken distances worse than
+/// leaving it unset.
 class RoomDirections {
-  const RoomDirections({this.metric = true});
+  const RoomDirections({this.metresPerUnit});
 
   /// Reads the answer off the plan rather than making the caller remember it.
   ///
   /// The safer constructor, and the one screens should use: a caller who
-  /// forgets to pass `metric: false` for a traced plan gets metres invented out
-  /// of arbitrary units, and nothing about the output looks wrong.
+  /// forgets to pass the scale for a traced plan gets metres invented out of
+  /// arbitrary units, and nothing about the output looks wrong.
   factory RoomDirections.forPlan(RoomPlan plan) =>
-      RoomDirections(metric: plan.isMetric);
+      RoomDirections(metresPerUnit: plan.metresPerUnit);
 
-  final bool metric;
+  /// Real-world length of one plan unit, or null when it was never measured.
+  final double? metresPerUnit;
+
+  /// Whether distances may be spoken at all.
+  bool get metric => metresPerUnit != null;
+
+  /// The multiplier from plan units to metres, or 1 when there is no scale.
+  ///
+  /// Only ever used on paths already guarded by [metric], so the fallback
+  /// never reaches a spoken sentence — it exists so the arithmetic below reads
+  /// the same on both branches.
+  double get _scale => metresPerUnit ?? 1;
 
   /// Describes [route], starting from [initialHeading].
   ///
@@ -172,7 +192,7 @@ class RoomDirections {
           out.add(
             RoomInstruction(
               text: _doorPhrase(counted, plan),
-              distanceM: leg.distance,
+              distanceM: leg.distance * _scale,
               segmentIndex: i,
             ),
           );
@@ -183,8 +203,8 @@ class RoomDirections {
 
       out.add(
         RoomInstruction(
-          text: _walkPhrase(leg.distance, to, plan, throughRoom),
-          distanceM: leg.distance,
+          text: _walkPhrase(leg.distance * _scale, to, plan, throughRoom),
+          distanceM: leg.distance * _scale,
           segmentIndex: i,
         ),
       );

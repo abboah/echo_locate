@@ -150,7 +150,7 @@ String joined(List<RoomInstruction> instructions) =>
 void main() {
   const east = Offset(1, 0);
   const west = Offset(-1, 0);
-  const directions = RoomDirections();
+  const directions = RoomDirections(metresPerUnit: 1);
 
   group('graph structure', () {
     test('routes from the lobby to a room off the corridor', () {
@@ -442,7 +442,7 @@ void main() {
       final route = graph.route(fromRoomId: 'lobby', toRoomId: 'n2')!;
       final spoken = joined(
         const RoomDirections(
-          metric: false,
+          metresPerUnit: null,
         ).describe(graph, route, initialHeading: east),
       );
 

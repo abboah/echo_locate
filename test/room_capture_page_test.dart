@@ -70,6 +70,15 @@ class _FakeCapture implements ArCoreCaptureService {
   Future<void> releaseCorners(List<CapturedCorner> corners) async {}
 
   @override
+  Future<void> releaseAnchorIds(List<String> ids) async {}
+
+  @override
+  Future<void> setMarkers({
+    required List<String> cornerIds,
+    required List<String> doorIds,
+  }) async {}
+
+  @override
   Future<void> resetPlaneLock() async {}
 
   @override

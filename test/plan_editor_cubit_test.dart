@@ -374,6 +374,185 @@ void main() {
     });
   });
 
+  group('declaring the scale', () {
+    /// A floor traced off a photograph: correct geometry, no units. This is the
+    /// state every traced plan is in, and the state in which guidance withholds
+    /// every distance and the AR arrow cannot register the route at all.
+    Future<PlanEditorCubit> unitless() async {
+      when(() => plans.planFor(any(), any())).thenAnswer(
+        (_) async => twoWings().copyWith(metresPerUnit: null),
+      );
+      return opened();
+    }
+
+    test('a traced floor arrives with no scale and says so', () async {
+      final cubit = await unitless();
+
+      expect(cubit.state.hasScale, isFalse);
+      await cubit.close();
+    });
+
+    test('two taps and a distance turn the floor metric', () async {
+      final cubit = await unitless();
+
+      cubit.setScaleMode(on: true);
+      cubit.tapScalePoint(const Offset(0, 0));
+      cubit.tapScalePoint(const Offset(10, 0));
+      // Ten plan units are really five metres, so a unit is half a metre.
+      cubit.declareScale(5);
+
+      expect(cubit.state.hasScale, isTrue);
+      expect(cubit.state.plan.metresPerUnit, closeTo(0.5, 1e-9));
+      // And the mode closes itself: the measurement is the whole of the job.
+      expect(cubit.state.settingScale, isFalse);
+      expect(cubit.state.scalePoints, isEmpty);
+      await cubit.close();
+    });
+
+    test('the span is measured however the two points are placed', () async {
+      final cubit = await unitless();
+
+      cubit.setScaleMode(on: true);
+      cubit.tapScalePoint(const Offset(1, 2));
+      cubit.tapScalePoint(const Offset(4, 6)); // 3-4-5 triangle.
+      cubit.declareScale(10);
+
+      expect(cubit.state.plan.metresPerUnit, closeTo(2, 1e-9));
+      await cubit.close();
+    });
+
+    test('a third tap starts the span again rather than being ignored', () {
+      return unitless().then((cubit) async {
+        cubit.setScaleMode(on: true);
+        cubit.tapScalePoint(const Offset(0, 0));
+        cubit.tapScalePoint(const Offset(10, 0));
+        cubit.tapScalePoint(const Offset(3, 3));
+
+        // Somebody fixing a misplaced second mark taps again; refusing that
+        // would send them looking for a Clear button they have not noticed.
+        expect(cubit.state.scalePoints, [const Offset(3, 3)]);
+        await cubit.close();
+      });
+    });
+
+    test('one point is not a span', () async {
+      final cubit = await unitless();
+
+      cubit.setScaleMode(on: true);
+      cubit.tapScalePoint(const Offset(0, 0));
+      cubit.declareScale(5);
+
+      expect(cubit.state.hasScale, isFalse);
+      expect(cubit.state.hint, contains('both ends'));
+      await cubit.close();
+    });
+
+    test('two points in the same place are refused, not divided by', () async {
+      final cubit = await unitless();
+
+      cubit.setScaleMode(on: true);
+      cubit.tapScalePoint(const Offset(4, 4));
+      cubit.tapScalePoint(const Offset(4, 4));
+      cubit.declareScale(5);
+
+      // Left unscaled rather than scaled by infinity, which would render the
+      // floor as a building several light years across.
+      expect(cubit.state.hasScale, isFalse);
+      expect(cubit.state.plan.metresPerUnit, isNull);
+      expect(cubit.state.error, contains('same place'));
+      await cubit.close();
+    });
+
+    test('a distance of zero or less is refused', () async {
+      final cubit = await unitless();
+
+      cubit.setScaleMode(on: true);
+      cubit.tapScalePoint(const Offset(0, 0));
+      cubit.tapScalePoint(const Offset(10, 0));
+      cubit.declareScale(0);
+
+      expect(cubit.state.hasScale, isFalse);
+      await cubit.close();
+    });
+
+    test('declaring a scale moves no geometry at all', () async {
+      final cubit = await unitless();
+      final before = cubit.state.plan.rooms.map((r) => r.polygon).toList();
+
+      cubit.setScaleMode(on: true);
+      cubit.tapScalePoint(const Offset(0, 0));
+      cubit.tapScalePoint(const Offset(10, 0));
+      cubit.declareScale(5);
+
+      // The editor's standing rule: no coordinate is ever scaled. What changes
+      // is what the coordinates are understood to *mean*.
+      expect(cubit.state.plan.rooms.map((r) => r.polygon).toList(), before);
+      await cubit.close();
+    });
+
+    test('the scale is an edit, so it saves and can be seen to be dirty', () async {
+      final cubit = await unitless();
+
+      cubit.setScaleMode(on: true);
+      cubit.tapScalePoint(const Offset(0, 0));
+      cubit.tapScalePoint(const Offset(10, 0));
+      cubit.declareScale(5);
+      expect(cubit.state.isDirty, isTrue);
+
+      await cubit.save();
+
+      final saved = verify(() => plans.save(captureAny())).captured.single;
+      expect((saved as RoomPlan).metresPerUnit, closeTo(0.5, 1e-9));
+      await cubit.close();
+    });
+
+    test('clearing takes the floor back to unitless', () async {
+      final cubit = await opened(); // twoWings() is metric at 1 m/unit.
+      expect(cubit.state.hasScale, isTrue);
+
+      cubit.clearScale();
+
+      expect(cubit.state.hasScale, isFalse);
+      expect(cubit.state.plan.metresPerUnit, isNull);
+      await cubit.close();
+    });
+
+    test('entering the mode closes any shape being edited', () async {
+      final cubit = await opened();
+
+      cubit.editShape('c1');
+      expect(cubit.state.editingRoomId, isNotNull);
+
+      cubit.setScaleMode(on: true);
+
+      // Otherwise a tap means "place a mark" and "drag a handle" at once.
+      expect(cubit.state.editingRoomId, isNull);
+      await cubit.close();
+    });
+
+    test('taps outside the mode place nothing', () async {
+      final cubit = await opened();
+
+      cubit.tapScalePoint(const Offset(1, 1));
+
+      expect(cubit.state.scalePoints, isEmpty);
+      await cubit.close();
+    });
+
+    test('a re-measure can be checked against the scale in force', () async {
+      final cubit = await opened(); // 1 m per unit.
+
+      cubit.setScaleMode(on: true);
+      cubit.tapScalePoint(const Offset(0, 0));
+      cubit.tapScalePoint(const Offset(12, 0));
+
+      // Twelve units at one metre each. A contributor who can see the span is
+      // nothing like twelve metres knows the existing scale is wrong.
+      expect(cubit.state.spanUnderCurrentScale, closeTo(12, 1e-9));
+      await cubit.close();
+    });
+  });
+
   group('saving', () {
     test('writes the edited plan and clears the dirty flag', () async {
       final cubit = await opened();

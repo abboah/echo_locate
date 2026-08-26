@@ -14,6 +14,8 @@ class PlanEditorState extends Equatable {
     this.selectedRoomId,
     this.editingRoomId,
     this.selectedPoint,
+    this.settingScale = false,
+    this.scalePoints = const [],
     this.hint,
     this.error,
   });
@@ -42,12 +44,43 @@ class PlanEditorState extends Equatable {
   /// somebody was only inspecting.
   final String? editingRoomId;
   final int? selectedPoint;
+
+  /// Whether a tap on the plan places a scale mark rather than opening a room.
+  final bool settingScale;
+
+  /// The ends of the span being measured, in plan units. Nought, one or two.
+  final List<Offset> scalePoints;
+
   final String? hint;
   final String? error;
 
   bool get hasWings => plan.wingIds.length > 1;
 
   bool get isDirty => plan != original;
+
+  /// Whether this floor's units have been given a meaning.
+  ///
+  /// A captured plan arrives with one; a traced plan does not, and until it is
+  /// given one guidance withholds every distance and the AR arrow cannot lay
+  /// the route into the room. See [PlanEditorCubit.declareScale].
+  bool get hasScale => plan.isMetric;
+
+  /// How long the span currently marked is, in plan units, or null before both
+  /// ends are down.
+  double? get spanInUnits => scalePoints.length < 2
+      ? null
+      : (scalePoints[1] - scalePoints[0]).distance;
+
+  /// What the marked span works out as under the scale already set.
+  ///
+  /// Shown while re-measuring a floor that has a scale, so a contributor can
+  /// check the one they are about to type against the one in force — the
+  /// cheapest way to catch a scale that was set from the wrong two points.
+  double? get spanUnderCurrentScale {
+    final span = spanInUnits;
+    final perUnit = plan.metresPerUnit;
+    return span == null || perUnit == null ? null : span * perUnit;
+  }
 
   WingPlacement placementOf(String wingId) =>
       plan.wings[wingId] ?? const WingPlacement();
@@ -187,6 +220,8 @@ class PlanEditorState extends Equatable {
     String? editingRoomId,
     int? selectedPoint,
     bool clearEditing = false,
+    bool? settingScale,
+    List<Offset>? scalePoints,
     String? hint,
     String? error,
   }) => PlanEditorState(
@@ -206,6 +241,8 @@ class PlanEditorState extends Equatable {
     // and carrying an index into another room indexes the wrong corners.
     editingRoomId: clearEditing ? null : (editingRoomId ?? this.editingRoomId),
     selectedPoint: clearEditing ? null : (selectedPoint ?? this.selectedPoint),
+    settingScale: settingScale ?? this.settingScale,
+    scalePoints: scalePoints ?? this.scalePoints,
     // Neither is sticky: a hint from one nudge must not outlive the next.
     hint: hint,
     error: error,
@@ -223,6 +260,8 @@ class PlanEditorState extends Equatable {
     selectedRoomId,
     editingRoomId,
     selectedPoint,
+    settingScale,
+    scalePoints,
     hint,
     error,
   ];

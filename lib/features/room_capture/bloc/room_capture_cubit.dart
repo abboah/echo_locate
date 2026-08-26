@@ -98,6 +98,31 @@ class RoomCaptureCubit extends Cubit<RoomCaptureState> {
 
   String _id(String prefix) => '$prefix-${_nextId++}';
 
+  /// ARCore's anchor for each door recorded this session, by opening id.
+  ///
+  /// Not on the state and not on [Opening]: an anchor id is a handle into a
+  /// live ARCore session, meaningless to the plan that gets saved and stale the
+  /// moment the session restarts. It is kept only so a door can be **drawn in
+  /// the viewfinder** while the session that measured it is still running, and
+  /// so removing a door releases the anchor rather than leaking it.
+  final Map<String, String> _doorAnchors = {};
+
+  /// Tells the preview what to draw over the camera.
+  ///
+  /// Called after every change to the draft or the doors. See
+  /// [ArCoreCaptureService.setMarkers] — the corners go in tapped order,
+  /// because native joins them into the outline in the order they arrive.
+  Future<void> _syncMarkers() => _capture.setMarkers(
+    cornerIds: [
+      for (final corner in state.draft)
+        if (corner.anchorId != null) corner.anchorId!,
+    ],
+    doorIds: [
+      for (final opening in state.plan.storedOpenings)
+        if (_doorAnchors[opening.id] case final anchorId?) anchorId,
+    ],
+  );
+
   /// Starts a new wing on [plan], parked clear of whatever is already there.
   ///
   /// Each AR session begins with ARCore's origin wherever the phone happens to
@@ -282,6 +307,7 @@ class RoomCaptureCubit extends Cubit<RoomCaptureState> {
     }
 
     emit(state.copyWith(draft: [...state.draft, corner], hint: null));
+    await _syncMarkers();
   }
 
   /// Switches between placing corners and placing doors.
@@ -376,6 +402,11 @@ class RoomCaptureCubit extends Cubit<RoomCaptureState> {
     if (_capture.isRunning) return;
 
     final abandoned = state.draft;
+    // Anchors belong to the session that created them, so every id held here
+    // names something the new session has never heard of. The doors themselves
+    // stay in the plan — it is only the handles into ARCore that are gone, and
+    // with them the ability to mark those doorways in the viewfinder.
+    _doorAnchors.clear();
     final failure = await _capture.start(
       viewWidth: viewWidth,
       viewHeight: viewHeight,
@@ -410,6 +441,7 @@ class RoomCaptureCubit extends Cubit<RoomCaptureState> {
     if (mode == state.mode) return;
     final abandoned = state.draft;
     emit(state.copyWith(mode: mode, draft: const [], hint: null));
+    await _syncMarkers();
     // The half-captured polygon is gone, so its surface lock goes with it —
     // otherwise the next room inherits a lock it never chose.
     if (abandoned.isNotEmpty) {
@@ -471,6 +503,9 @@ class RoomCaptureCubit extends Cubit<RoomCaptureState> {
           hint: 'That is not near a wall. Stand in the doorway and tap.',
         ),
       );
+      // A rejected tap still created an anchor, and an anchor nothing refers to
+      // is pure tracking cost for the rest of the walk.
+      await _capture.releaseCorners([corner]);
       return;
     }
 
@@ -479,7 +514,16 @@ class RoomCaptureCubit extends Cubit<RoomCaptureState> {
           (o) => o.touches(roomA.id) && o.touches(roomB.id),
         )) {
       emit(state.copyWith(hint: 'Those rooms already have a door.'));
+      await _capture.releaseCorners([corner]);
       return;
+    }
+
+    final openingId = _id('door');
+    // Kept so the doorway is marked in the viewfinder — which is what stops the
+    // same one being tapped again from the other side — and so removing the
+    // door releases it. See [_doorAnchors].
+    if (corner.anchorId case final anchorId?) {
+      _doorAnchors[openingId] = anchorId;
     }
 
     emit(
@@ -488,7 +532,7 @@ class RoomCaptureCubit extends Cubit<RoomCaptureState> {
           storedOpenings: [
             ...state.plan.storedOpenings,
             Opening(
-              id: _id('door'),
+              id: openingId,
               roomAId: roomA.id,
               roomBId: roomB?.id,
               at: RoomCorner.of(corner.position),
@@ -500,9 +544,10 @@ class RoomCaptureCubit extends Cubit<RoomCaptureState> {
             : 'Door recorded: ${roomA.spokenName} to ${roomB.spokenName}.',
       ),
     );
+    await _syncMarkers();
   }
 
-  void removeDoor(String openingId) {
+  Future<void> removeDoor(String openingId) async {
     emit(
       state.copyWith(
         plan: state.plan.copyWith(
@@ -513,6 +558,9 @@ class RoomCaptureCubit extends Cubit<RoomCaptureState> {
         ),
       ),
     );
+    final anchorId = _doorAnchors.remove(openingId);
+    await _syncMarkers();
+    if (anchorId != null) await _capture.releaseAnchorIds([anchorId]);
   }
 
   /// Records how many doors the contributor counted on a corridor's walls.
@@ -563,6 +611,9 @@ class RoomCaptureCubit extends Cubit<RoomCaptureState> {
     final removed = state.draft.last;
     final remaining = state.draft.sublist(0, state.draft.length - 1);
     emit(state.copyWith(draft: remaining, hint: null));
+    // Drawn before released, so the marker goes with the tap that undid it
+    // rather than lingering for one more frame on a corner that is gone.
+    await _syncMarkers();
     // Its anchor is no longer wanted, and anchors cost tracking work per frame.
     await _capture.releaseCorners([removed]);
     // Undoing back to nothing releases the surface lock as well.
@@ -578,6 +629,7 @@ class RoomCaptureCubit extends Cubit<RoomCaptureState> {
   Future<void> discardRoom() async {
     final abandoned = state.draft;
     emit(state.copyWith(draft: const [], hint: null));
+    await _syncMarkers();
     await _capture.releaseCorners(abandoned);
     await _capture.resetPlaneLock();
   }
@@ -650,6 +702,11 @@ class RoomCaptureCubit extends Cubit<RoomCaptureState> {
         hint: null,
       ),
     );
+
+    // The outline stops being drawn over the camera the moment it becomes a
+    // room: from here it is in the plan preview, and leaving it in the
+    // viewfinder would make the next room look like a continuation of it.
+    await _syncMarkers();
 
     // The corners are polygon now; their anchors have no further job.
     await _capture.releaseCorners(resolved);

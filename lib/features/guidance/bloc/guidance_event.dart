@@ -36,6 +36,28 @@ final class GuidanceLostReported extends GuidanceEvent {
   const GuidanceLostReported();
 }
 
+/// How far along the current leg the walker has come, in metres, from a source
+/// that measures it better than counting footfalls does — in practice ARCore.
+///
+/// Raised by [ArGuidanceCubit] while the AR view is up. Guidance is under no
+/// obligation to receive it: with no ARCore, or with a leg whose lengths are
+/// not really metres, the step counter drives the same clock and this event
+/// never arrives. **It never advances a leg.** Landmarks do that, and a
+/// distance that disagrees with a sign is the distance that is wrong.
+final class GuidanceDistanceReported extends GuidanceEvent {
+  const GuidanceDistanceReported(this.metres);
+
+  final double metres;
+
+  @override
+  List<Object?> get props => [metres];
+}
+
+/// Internal: the walker has been at an unconfirmed landmark for a while.
+final class _ArrivalNudged extends GuidanceEvent {
+  const _ArrivalNudged();
+}
+
 /// Internal: steps counted since the last landmark.
 final class _StepsTicked extends GuidanceEvent {
   const _StepsTicked(this.steps);

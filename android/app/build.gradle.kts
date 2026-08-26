@@ -57,4 +57,11 @@ dependencies {
     // ArCoreDepthHandler's availability check; everything else (sonar,
     // browse, navigate) keeps working.
     implementation("com.google.ar:core:1.42.0")
+
+    // `RegisteredRoute` is the route laid into ARCore's world, and it is pure
+    // geometry — no Android classes, no ARCore types, nothing that needs a
+    // device. It is also where the arrow's accuracy is decided, and it has
+    // twice been wrong in ways that look identical on a phone to the AR not
+    // working at all. Those are exactly the sums worth pinning on the desk.
+    testImplementation("junit:junit:4.13.2")
 }
