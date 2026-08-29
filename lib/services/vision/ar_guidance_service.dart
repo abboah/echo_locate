@@ -267,6 +267,28 @@ class ArGuidanceService implements AnalysisFrameSource {
     }
   }
 
+  /// Asks Play to install or update ARCore.
+  ///
+  /// Only worth calling when [checkAvailability] came back
+  /// [ArCoreAvailability.isUserFixable]. Returns true when ARCore is ready
+  /// *now* — the install turned out to be there already — and false when the
+  /// user has been sent to Play, or when nothing can be installed. In the
+  /// middle case this app is backgrounded while Play works, so the answer that
+  /// matters arrives on the next [checkAvailability] after the user returns.
+  Future<bool> requestInstall() async {
+    if (!_platformSupported) return false;
+    try {
+      final status = await _method.invokeMethod<String>('requestInstall');
+      AppLogger.info('ARCore install request: $status');
+      return status == 'installed';
+    } on PlatformException catch (e) {
+      AppLogger.warn('ARCore install request failed: ${e.message}');
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
   /// Starts the session for a view [viewWidth] x [viewHeight] device pixels.
   ///
   /// Returns null on success, or a readable reason it could not start. Every

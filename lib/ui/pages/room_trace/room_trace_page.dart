@@ -502,8 +502,16 @@ class _SetupMenu extends StatelessWidget {
             contentPadding: EdgeInsets.zero,
             leading: const Icon(PhosphorIcons.ruler),
             title: const Text('Set the scale'),
+            // Called optional once, back when the only thing it bought was
+            // spoken distances and a plan without it still routed correctly.
+            // It buys the AR arrow now: with no scale there is no route in
+            // metres, nothing for `route_registration` to solve against, and
+            // the arrow silently drops to dead reckoning — which looks exactly
+            // like a working arrow right up until it points at a wall.
             subtitle: Text(
-              state.hasScale ? 'Set — distances can be spoken' : 'Optional',
+              state.hasScale
+                  ? 'Set — distances and the AR arrow will work'
+                  : 'Needed for distances and the AR arrow',
             ),
           ),
         ),
@@ -586,7 +594,7 @@ class _TraceControls extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(top: AppDimens.space4),
                 child: Text(
-                  'Scale set — distances will be spoken.',
+                  'Scale set — distances and the AR arrow will work.',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: AppColors.success,
                   ),

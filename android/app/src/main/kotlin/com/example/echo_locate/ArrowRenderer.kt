@@ -35,9 +35,12 @@ import java.nio.FloatBuffer
  * - **They could all be off screen at once.** Turn thirty degrees too far and
  *   the corridor is empty, which is indistinguishable from guidance having
  *   died.
- * - **They rested on a guessed floor.** With no plane detection the floor is
- *   assumed to be [ArGuidanceHandler.EYE_HEIGHT_M] below the phone, so anyone
- *   holding it at chest height walked past arrows sunk into the terrazzo.
+ * - **They rested on a guessed floor.** The floor was assumed to be
+ *   [ArGuidanceHandler.EYE_HEIGHT_M] below the phone, so anyone holding it at
+ *   chest height walked past arrows sunk into the terrazzo. It is measured now
+ *   — `ArGuidanceHandler.serviceFloorSearch` — and that assumption is only the
+ *   fallback, but the ring is still the one thing on screen that depends on
+ *   getting it right.
  *
  * The needle is always on screen, always the same size, and owes nothing to
  * where the floor is. What it costs is the sense of the route being pinned to
@@ -532,12 +535,22 @@ class ArrowRenderer {
  * leg the walker has come, and nothing else here moves.
  */
 data class LegAnchor(
-    val startX: Float,
-    val startZ: Float,
-    val dirX: Float,
-    val dirZ: Float,
+    /**
+     * Where the leg starts and which way it runs.
+     *
+     * Mutable, and only one thing may write them: `ArGuidanceHandler`'s
+     * per-frame anchor follow, which re-reads them off the ARCore anchor the
+     * leg is pinned to so that a relocalisation moves the line with the
+     * building. Nothing else may — a leg that is re-aimed mid-corridor is the
+     * failure this whole class exists to avoid.
+     */
+    var startX: Float,
+    var startZ: Float,
+    var dirX: Float,
+    var dirZ: Float,
     val lengthM: Float,
-    val floorY: Float,
+    /** Replaced when the floor is measured rather than assumed. */
+    var floorY: Float,
     var cameraX: Float = 0f,
     var cameraZ: Float = 0f,
 )

@@ -12,6 +12,7 @@ import '../../../features/guidance/guidance_session.dart';
 import '../../../features/profile/profile_repository.dart';
 import '../../../features/routing/bloc/floor_map_bloc.dart';
 import '../../../services/injection_container.dart';
+import '../../../services/mapping/graph_route_path.dart';
 import '../../../services/motion/stride_profile.dart';
 import '../../widgets/floor_plan_painter.dart';
 
@@ -478,6 +479,12 @@ class _RoutePicker extends StatelessWidget {
         // A traced plan nobody measured routes correctly but cannot be spoken
         // in steps; guidance leans on landmark confirmation instead.
         metric: state.graph.metric,
+        // The line itself, read back out of the merged schematic, so the AR
+        // layer can register this walk into the room instead of dead-reckoning
+        // it. Null whenever the merge cannot honestly place the route — see
+        // [routePathThroughGraph], which refuses more often than it accepts and
+        // is meant to.
+        routePath: routePathThroughGraph(state.graph, plan),
       ),
     );
   }

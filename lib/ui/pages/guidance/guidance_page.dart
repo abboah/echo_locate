@@ -144,8 +144,15 @@ class _GuidancePageState extends State<GuidancePage>
     if (phase != null && phase != AppLifecycleState.resumed) return;
 
     final detection = getIt<DetectionService>();
-    // Already on its own camera, or the AR session is up and feeding it.
-    if (!detection.isUsingArFrames || _ar.state.running) return;
+    // The AR session is up, so its frames are feeding ML Kit.
+    if (_ar.state.running) return;
+    // Detection already has its own camera.
+    if (detection.camera != null) return;
+    // What is left is detection with no source at all: stranded on AR frames
+    // that have stopped arriving, or stopped outright because [_startAr] took
+    // the camera for a session that then failed to come up. Both are silent,
+    // and both mean a blind walker stops being told about the trolley in the
+    // corridor for the rest of the walk.
 
     AppLogger.warn('AR frames gone — moving detection back to the camera');
     await detection.stop();
@@ -167,12 +174,22 @@ class _GuidancePageState extends State<GuidancePage>
   /// not let go of — would otherwise leave the walker on a spinner instead of
   /// on the perfectly good voice guidance that needs none of this.
   Future<void> _startAr() async {
-    // If the camera plugin already has the camera — detection fell back to it,
-    // or another screen left it open — ARCore cannot take it, and asking costs
-    // half a second of retries and puts a failure on the state for something
-    // that was never going to work. Sensing keeps the camera in that contest:
-    // arrows are a nicety, obstacle callouts are the point of the app.
-    if (getIt<DetectionService>().camera != null) return;
+    // The camera plugin may already have the camera — detection fell back to
+    // it, or the Detect environment screen was visited on the way here — and
+    // ARCore cannot share.
+    //
+    // **This used to give up here**, on the reasoning that obstacle callouts
+    // matter more than arrows. That reasoning was wrong about the facts: an AR
+    // session feeds ML Kit from its own frames (`setAnalysis`), so taking the
+    // camera for ARCore costs sensing nothing, and refusing to take it cost
+    // the arrows entirely — silently, on a phone that had visited one earlier
+    // screen. If the session then fails to start, `DetectionService.start`
+    // finds the camera free and opens it, which is where the fallback belongs.
+    final detection = getIt<DetectionService>();
+    if (detection.camera != null) {
+      AppLogger.info('Taking the camera back from detection for the AR view');
+      await detection.stop();
+    }
 
     try {
       final supported = await _ar.checkAvailability().timeout(
@@ -305,7 +322,7 @@ class _GuidanceView extends StatelessWidget {
                                 ? _Arrived(
                                     destination: session?.destinationName ?? '',
                                   )
-                                : _Walking(state: state),
+                                : _Walking(state: state, ar: ar),
                           ),
                   ),
                 ),
@@ -602,9 +619,12 @@ class _ArChip extends StatelessWidget {
 }
 
 class _Walking extends StatelessWidget {
-  const _Walking({required this.state});
+  const _Walking({required this.state, this.ar});
 
   final GuidanceState state;
+
+  /// The AR layer's state, so this view can say why it is *this* view.
+  final ArGuidanceState? ar;
 
   @override
   Widget build(BuildContext context) {
@@ -612,10 +632,26 @@ class _Walking extends StatelessWidget {
     final session = state.session;
     final leg = state.currentLeg;
     final nextName = leg == null ? '' : session?.nameOf(leg.toLandmarkId) ?? '';
+    final noCamera = ar?.cameraReason;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // **Why the camera is not on.** Every reason the AR view fails to come
+        // up used to leave this screen looking exactly like a phone that had
+        // never supported it: correct directions, no camera, nothing said. Two
+        // of those reasons are one tap from being fixed and a third is a stale
+        // permission, so the screen names them rather than absorbing them.
+        if (noCamera != null)
+          Padding(
+            padding: const EdgeInsets.only(top: AppDimens.space8),
+            child: Text(
+              noCamera,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: AppColors.warning,
+              ),
+            ),
+          ),
         if (state.status == GuidanceStatus.recovering)
           _Banner(
             icon: state.askForHelp

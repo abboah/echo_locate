@@ -8,6 +8,7 @@ part of 'ar_guidance_cubit.dart';
 final class ArGuidanceState extends Equatable {
   const ArGuidanceState({
     this.availability = ArCoreAvailability.unknown,
+    this.awaitingInstall = false,
     this.running = false,
     this.cameraVisible = true,
     this.textureId,
@@ -28,6 +29,13 @@ final class ArGuidanceState extends Equatable {
   });
 
   final ArCoreAvailability availability;
+
+  /// Whether the user has been sent to Play to install or update ARCore.
+  ///
+  /// The one "no AR" state that is about to stop being true, so the screen
+  /// says something different about it: everything else in [availability] is a
+  /// fact about the phone, and this is a job in progress somewhere else.
+  final bool awaitingInstall;
   final bool running;
 
   /// Whether the camera and its arrow are on screen, as opposed to the plain
@@ -112,6 +120,48 @@ final class ArGuidanceState extends Equatable {
       hasLeg && distanceKnown && isTracking && overshootM >= overshootThresholdM;
 
   bool get isSupported => availability == ArCoreAvailability.supported;
+
+  /// Why there is no camera view, in a sentence, or null when there is one.
+  ///
+  /// ## Why a silent fallback was the wrong default
+  ///
+  /// The AR layer is optional by design and every one of its failures is
+  /// survivable, so each one was written to fall through to voice guidance
+  /// without complaint. Correct, and together they made the commonest outcome
+  /// on new hardware indistinguishable from the intended one: a phone that
+  /// supports ARCore but has not been sent to Play for it, a first-run
+  /// availability check that answered "ask me again", and a camera another
+  /// screen was still holding all produced the same screen as a phone Google
+  /// has never certified.
+  ///
+  /// Nothing here changes what the app *does* — the walk is unaffected either
+  /// way. It changes whether anybody can tell which of five things happened,
+  /// which on a phone one dialog away from working is the difference between a
+  /// missing feature and a fixable one.
+  String? get cameraReason {
+    if (running && cameraVisible) return null;
+    if (awaitingInstall) {
+      return 'Installing AR support from Play — come back to this screen when '
+          'it finishes and the camera view will start.';
+    }
+    if (error != null) return error;
+    return switch (availability) {
+      ArCoreAvailability.supported => running
+          // Running with the camera deliberately hidden is not a failure.
+          ? null
+          : 'The camera view could not start. Voice guidance is unaffected.',
+      ArCoreAvailability.supportedNotInstalled ||
+      ArCoreAvailability.supportedApkTooOld =>
+        'This phone can show the AR arrow once Google Play Services for AR is '
+            'installed.',
+      ArCoreAvailability.unsupported =>
+        'This phone does not support the AR arrow. Voice guidance works the '
+            'same either way.',
+      ArCoreAvailability.checking =>
+        'Still checking whether this phone can show the AR arrow.',
+      ArCoreAvailability.unknown => null,
+    };
+  }
 
   bool get isTracking => tracking == CaptureTrackingLike.tracking;
 
@@ -204,6 +254,7 @@ final class ArGuidanceState extends Equatable {
 
   ArGuidanceState copyWith({
     ArCoreAvailability? availability,
+    bool? awaitingInstall,
     bool? running,
     bool? cameraVisible,
     int? textureId,
@@ -225,6 +276,7 @@ final class ArGuidanceState extends Equatable {
     bool clearError = false,
   }) => ArGuidanceState(
     availability: availability ?? this.availability,
+    awaitingInstall: awaitingInstall ?? this.awaitingInstall,
     running: running ?? this.running,
     cameraVisible: cameraVisible ?? this.cameraVisible,
     // Cleared explicitly, never by passing null: a texture id that outlives its
@@ -252,6 +304,7 @@ final class ArGuidanceState extends Equatable {
   @override
   List<Object?> get props => [
     availability,
+    awaitingInstall,
     running,
     cameraVisible,
     textureId,

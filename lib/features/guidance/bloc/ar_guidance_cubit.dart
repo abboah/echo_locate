@@ -52,6 +52,16 @@ part 'ar_guidance_state.dart';
 /// Between confirmations nothing is recomputed, so the arrow points into the
 /// room instead of chasing the phone. The checkpoints the walker is actually
 /// sent to are positions along that one line.
+///
+/// ## What a landmark is worth once a route is registered
+///
+/// A registered route does not need re-anchoring at a landmark — it already
+/// covers every leg of the walk. It needs *correcting* at one. The transform
+/// between the plan and ARCore's world is solved once from a couple of metres
+/// of walking and then carries ARCore's odometry error, a few percent of
+/// distance, for the rest of the walk. A confirmed landmark is the only moment
+/// when both frames name the same place at the same time, so it is the only
+/// evidence that can take that error back out. See [_recentreOnConfirmation].
 class ArGuidanceCubit extends Cubit<ArGuidanceState> {
   ArGuidanceCubit(this._ar, this._guidance) : super(const ArGuidanceState()) {
     _guidanceSubscription = _guidance.stream.listen(_onGuidance);
@@ -98,6 +108,15 @@ class ArGuidanceCubit extends Cubit<ArGuidanceState> {
   /// they picked the room they were standing in.
   WorldPoint? _startWorld;
 
+  /// The last frame native sent, for the questions that are asked between
+  /// frames rather than on one.
+  ///
+  /// A landmark confirmation arrives on the guidance bloc's stream, not on this
+  /// one, and re-centring the registration on it needs to know where ARCore had
+  /// the phone at that moment. Sixty times a second, "the last frame" and "now"
+  /// are the same place.
+  ArGuidanceFrame? _lastFrame;
+
   /// Whether a registration has been attempted and refused for good.
   ///
   /// Set when the session carries no geometry — a recorded-walk route, or a
@@ -129,12 +148,62 @@ class ArGuidanceCubit extends Cubit<ArGuidanceState> {
   /// Checked before anything is started, because on most of the hardware this
   /// app targets the answer is no, and the honest response is to leave the
   /// guidance screen exactly as it was rather than to show a broken camera.
+  /// ## Why this is a loop and not a question
+  ///
+  /// `ArCoreApk.checkAvailability` answers asynchronously the first time it is
+  /// asked. The first call on a cold start returns `checking` — not "no", but
+  /// "ask me again" — and the old code read that as no, gave up, and left the
+  /// walker on voice guidance with no camera and nothing said about it. The
+  /// arrows then appeared on the *second* visit to the screen, which is the
+  /// kind of bug that survives a demo by embarrassing you in front of an
+  /// examiner rather than in front of a test.
+  ///
+  /// ## And why it can install
+  ///
+  /// "This phone supports ARCore" and "this phone has ARCore" are different
+  /// answers, and only the second lets a session start. A new device is
+  /// routinely the first without being the second, and the fix is a Play
+  /// dialog — so it is offered rather than treated as unsupported hardware.
+  /// The install itself backgrounds this app; [ArGuidanceState.awaitingInstall]
+  /// is what the screen says while that is happening, and the next call after
+  /// the user comes back finds ARCore there.
   Future<bool> checkAvailability() async {
-    final availability = await _ar.checkAvailability();
+    var availability = await _ar.checkAvailability();
+
+    for (var attempt = 0;
+        attempt < _availabilityRetries &&
+            availability == ArCoreAvailability.checking;
+        attempt++) {
+      await Future<void>.delayed(_availabilityRetryGap);
+      if (isClosed) return false;
+      availability = await _ar.checkAvailability();
+    }
+
     if (isClosed) return false;
-    emit(state.copyWith(availability: availability));
+
+    if (availability.isUserFixable) {
+      AppLogger.info('ARCore is $availability — asking Play for it');
+      emit(state.copyWith(availability: availability, awaitingInstall: true));
+      final ready = await _ar.requestInstall();
+      if (isClosed) return false;
+      if (!ready) {
+        // Either the user is in Play right now, or nothing can be installed.
+        // Both leave this screen walking on voice alone until they come back,
+        // and a resume runs this again.
+        return false;
+      }
+      availability = ArCoreAvailability.supported;
+    }
+
+    emit(
+      state.copyWith(availability: availability, awaitingInstall: false),
+    );
     return availability == ArCoreAvailability.supported;
   }
+
+  /// How many times `checking` is taken as "ask again" rather than as "no".
+  static const int _availabilityRetries = 6;
+  static const Duration _availabilityRetryGap = Duration(milliseconds: 250);
 
   /// Brings up the session behind the guidance screen.
   ///
@@ -208,6 +277,7 @@ class ArGuidanceCubit extends Cubit<ArGuidanceState> {
   /// should ever re-anchor one.
   void _onArFrame(ArGuidanceFrame frame) {
     if (isClosed) return;
+    _lastFrame = frame;
 
     // The session stopped without being asked — the camera went to another app,
     // or a call came in. Let the texture go: it points at nothing now, and a
@@ -407,10 +477,42 @@ class ArGuidanceCubit extends Cubit<ArGuidanceState> {
     final WorldPoint worldAt;
     final Offset planAt;
     final Offset planDirection;
+    var worldHeading = heading;
     if (_registration == null) {
-      worldAt = _startWorld ?? here;
+      final start = _startWorld ?? here;
+      worldAt = start;
       planAt = path.pointsM.first;
-      planDirection = _departureDirection(_planPath);
+
+      // How far they have got from where they set off. Normally under a metre
+      // — the direction of travel needs `MIN_TRAVEL_FOR_HEADING_M` of walking
+      // and no more — and then the departure direction is the right thing to
+      // match the trail against.
+      final chord = start.distanceTo(here);
+      if (chord <= _departureM * _lateRegistrationFactor) {
+        planDirection = _departureDirection(_planPath);
+      } else {
+        // Registering late, which means the trail is no longer describing the
+        // departure. It happens when tracking blinks in the first few metres:
+        // the trail is thrown away (`MAX_SAMPLE_JUMP_M`) and rebuilt from
+        // wherever the walker is by then, which can be round the first corner.
+        // Pairing that heading with the direction the route *leaves* in would
+        // rotate the whole building by the turn they have already made, and
+        // nothing downstream could tell — the route would simply be laid down
+        // the wrong corridor.
+        //
+        // So match chords instead of headings. Net displacement from the start
+        // is a direction that is still true after a corner, and the plan's
+        // counterpart is the chord to the point the same distance along it.
+        planDirection = _chordMatchingTravel(path, chord);
+        worldHeading = Registration.worldBearingOf(
+          here.x - start.x,
+          here.z - start.z,
+        );
+        AppLogger.info(
+          'Registering late — ${chord.toStringAsFixed(1)}m from the start, '
+          'matching chords rather than the departure direction',
+        );
+      }
     } else {
       worldAt = here;
       planAt = path.pointAtM(frame.walkedM);
@@ -421,7 +523,7 @@ class ArGuidanceCubit extends Cubit<ArGuidanceState> {
       planAt: planAt,
       planDirection: planDirection,
       worldAt: worldAt,
-      worldHeadingRad: heading,
+      worldHeadingRad: worldHeading,
       confidence: RegistrationConfidence.measured,
     );
     if (solved == null) {
@@ -432,18 +534,148 @@ class ArGuidanceCubit extends Cubit<ArGuidanceState> {
       return;
     }
 
-    _registration = solved;
-    _offRouteSince = null;
     AppLogger.info('REGISTERED $solved from ${_planPath.length} points');
+    _layRouteIntoTheRoom(solved);
+  }
+
+  /// Transforms the whole path and hands it to native, under [registration].
+  ///
+  /// The one place a registration becomes something the walker can see, so it
+  /// is also the one place that sets [ArGuidanceState.registered]: a transform
+  /// that has been solved but not sent is not a registered route, and the
+  /// screen must not say it is.
+  void _layRouteIntoTheRoom(Registration registration) {
+    _registration = registration;
+    _offRouteSince = null;
 
     final world = <double>[];
     for (final point in _planPath) {
-      final w = solved.worldFromPlan(point);
+      final w = registration.worldFromPlan(point);
       world..add(w.x)..add(w.z);
     }
     unawaited(_ar.setRoute(world));
-    emit(state.copyWith(registered: true, distanceKnown: true));
+    if (!isClosed) emit(state.copyWith(registered: true, distanceKnown: true));
   }
+
+  /// Takes the drift out of the transform at a landmark the walker has reached.
+  ///
+  /// ## The correspondence this is built on
+  ///
+  /// A confirmed landmark is the one moment in a walk when both frames name the
+  /// same place at the same time. The plan knows where the landmark is — it is
+  /// the end of the leg just finished, [RoutePath.legEndsM] — and ARCore knows
+  /// where the phone is. Everything between the last such moment and this one
+  /// is odometry, and odometry is a few percent of distance.
+  ///
+  /// Without this, that error accumulated over the whole walk and only one
+  /// thing could correct it: the off-line re-solve in [_tryRegister], which
+  /// waits for the walker to be more than [_registrationHoldsM] from the line
+  /// for [_offRouteSettles]. That is a correction that arrives *after* somebody
+  /// has been walked into a wall, and it cannot see along-track drift at all —
+  /// a route sliding forward under the walker keeps them dead on the line while
+  /// putting every ring metres past where it belongs.
+  ///
+  /// ## Why the rotation is left alone
+  ///
+  /// One point says nothing about it. [Registration.recentredAt] replaces the
+  /// translation only, which is why this cannot repair a registration that came
+  /// out facing the wrong way — motion does that, in [_tryRegister].
+  ///
+  /// ## What stops a misread sign from teleporting the route
+  ///
+  /// [_maxRecentreM]. The correction is the disagreement between two things
+  /// that should agree to within a stride, so a large one does not mean a large
+  /// drift — it means the confirmation was not the landmark it claimed, or the
+  /// registration is rotated and the whole line is elsewhere. Applying it would
+  /// pick the wrong one of those and act on it hard. Refusing leaves the walk
+  /// exactly as accurate as it already was, and the off-line re-solve is still
+  /// watching.
+  void _recentreOnConfirmation({
+    required int completedLeg,
+    required bool camePosition,
+  }) {
+    // This leg ended because [_advancePastFinishedLegs] said the walker had
+    // reached the end of it, and it said so by projecting onto this very
+    // registration. Re-centring on that is a measurement of itself: it would
+    // report whatever drift the projection already assumed away, which is
+    // none, and pull the route onto a walker who may be [_arrivedWithinM]
+    // short of the door. Only a landmark is outside evidence.
+    if (camePosition) return;
+
+    final registration = _registration;
+    final path = _path;
+    final frame = _lastFrame;
+    if (registration == null || path == null || frame == null) return;
+    if (completedLeg < 0 || completedLeg >= path.legEndsM.length) return;
+
+    final camX = frame.cameraX;
+    final camZ = frame.cameraZ;
+    if (!frame.isTracking || camX == null || camZ == null) return;
+
+    final planAt = path.pointAtM(path.legEndsM[completedLeg]);
+    final worldAt = WorldPoint(camX, camZ);
+    final shift = registration.worldFromPlan(planAt).distanceTo(worldAt);
+
+    if (shift > _maxRecentreM) {
+      AppLogger.warn(
+        'RECENTRE REFUSED at leg $completedLeg: the landmark and the '
+        'registration disagree by ${shift.toStringAsFixed(1)}m, which is too '
+        'much to be drift',
+      );
+      return;
+    }
+    if (shift < _worthRecentringM) return;
+
+    AppLogger.info(
+      'RECENTRE at leg $completedLeg: ${shift.toStringAsFixed(2)}m of drift '
+      'taken out at ${path.legEndsM[completedLeg].toStringAsFixed(1)}m along',
+    );
+    _layRouteIntoTheRoom(
+      registration.recentredAt(planAt: planAt, worldAt: worldAt),
+    );
+  }
+
+  /// A correction larger than this is not drift — see [_recentreOnConfirmation].
+  ///
+  /// Set at roughly what ARCore's odometry could plausibly lose over the
+  /// longest corridor in a teaching building, with room for the plan's own
+  /// error on top. Anything past it is a different kind of wrong.
+  static const double _maxRecentreM = 6;
+
+  /// Below this the correction is not worth the round trip: it is inside the
+  /// metre or so of slack in "the walker is standing at the door", and
+  /// re-laying the route every landmark for it would be churn.
+  static const double _worthRecentringM = 0.35;
+
+  /// How far past the departure window a first registration may be solved
+  /// before the trail stops describing the departure — see [_tryRegister].
+  static const double _lateRegistrationFactor = 1.5;
+
+  /// The plan-frame chord to the point [travelledM] of walking reaches.
+  ///
+  /// The plan's counterpart to net displacement in the world. Scanned rather
+  /// than solved because chord length along a path is not monotonic — a route
+  /// that doubles back passes the same chord twice — and the scan is bounded to
+  /// the stretch a walker could have covered so the far crossing is never a
+  /// candidate.
+  static Offset _chordMatchingTravel(RoutePath path, double travelledM) {
+    final start = path.pointsM.first;
+    final limit = math.min(path.totalM, travelledM * 2.5 + 2);
+    var best = path.pointsM.last - start;
+    var bestError = double.infinity;
+
+    for (var along = _chordScanStepM; along <= limit; along += _chordScanStepM) {
+      final chord = path.pointAtM(along) - start;
+      final error = (chord.distance - travelledM).abs();
+      if (error < bestError) {
+        bestError = error;
+        best = chord;
+      }
+    }
+    return best;
+  }
+
+  static const double _chordScanStepM = 0.25;
 
   /// Moves guidance on when the walker has measurably walked a leg.
   ///
@@ -633,8 +865,18 @@ class ArGuidanceCubit extends Cubit<ArGuidanceState> {
     // whole path, not the current corridor — so a leg change needs nothing
     // drawn for it. Anchoring one anyway would put a dead-reckoned line back
     // over a measured one at every landmark.
+    //
+    // It does need *correcting* at one, though, which is the whole reason a
+    // landmark is worth more to this layer than a metre of odometry.
     if (state.registered) {
+      final previous = _anchoredLeg;
       _anchoredLeg = guidance.legIndex;
+      if (previous != null && guidance.legIndex > previous) {
+        _recentreOnConfirmation(
+          completedLeg: guidance.legIndex - 1,
+          camePosition: _advancedLeg == guidance.legIndex - 1,
+        );
+      }
       return;
     }
 

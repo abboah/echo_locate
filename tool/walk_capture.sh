@@ -94,12 +94,103 @@ stop() {
 }
 
 tail_live() {
-  "$ADB" logcat -v time -s $TAGS | grep --line-buffered -E "Leg anchored|Walk |SAY|ADVANCE"
+  "$ADB" logcat -v time -s $TAGS | grep --line-buffered -E "Leg anchored|Walk |SAY|ADVANCE|RECENTRE"
+}
+
+# Reads a capture back as numbers instead of as a story.
+#
+# A walk you can only describe is a walk you cannot tune. These are the three
+# measurements that say whether AR navigation is accurate, and each one needs a
+# ground truth the phone cannot supply — so the tape measure goes in on the
+# command line and the log supplies the rest.
+#
+#   report <log> --straight=<metres>   odometry scale over a measured line
+#   report <log> --loop                misclosure of a walk back to its start
+#   report <log>                       whatever the walk happened to contain
+#
+# Targets, until a device says otherwise:
+#   * scale error under 5% of distance walked
+#   * loop misclosure under 5% of the loop's perimeter
+#   * off-route: mean under 1.0m and max under 2.5m over a whole walk
+#     (2.5m is `ArGuidanceCubit._registrationHoldsM`, the point at which the app
+#     stops believing its own registration — a walk that reaches it has already
+#     failed, whatever the walker thought)
+report() {
+  local log="${1:-}"
+  [ -f "$log" ] || { echo "usage: $0 report <capture.log> [--straight=M] [--loop]"; exit 2; }
+  shift
+
+  local truth=""
+  local loop=0
+  for arg in "$@"; do
+    case "$arg" in
+      --straight=*) truth="${arg#--straight=}" ;;
+      --loop) loop=1 ;;
+    esac
+  done
+
+  echo "=== $(basename "$log")"
+  sed -n '1,2p' "$log"
+  echo
+
+  echo "--- Registration"
+  grep -E "REGISTERED|Registering late|Route registered|RECENTRE|not registering" "$log" \
+    | sed 's/^/  /' | head -30
+  grep -cE "RECENTRE at" "$log" | sed 's/^/  landmark corrections applied: /'
+  grep -cE "RECENTRE REFUSED" "$log" | sed 's/^/  landmark corrections refused: /'
+  echo
+
+  echo "--- Floor"
+  grep -E "Floor measured|No floor plane" "$log" | sed 's/^/  /' | head -5
+  echo
+
+  # `Route ... off 1.2m ...` — the one number that says whether the building
+  # agrees with the app. Everything else in the log is the app agreeing with
+  # itself.
+  echo "--- Off-route"
+  awk '
+    match($0, /off ([0-9]+\.[0-9]+)m/, m) {
+      n++; sum += m[1]; if (m[1] > max) max = m[1]
+    }
+    END {
+      if (n == 0) { print "  no registered route in this capture"; exit }
+      printf "  samples %d   mean %.2fm   max %.2fm\n", n, sum / n, max
+      printf "  verdict %s\n", (sum / n < 1.0 && max < 2.5) ? "PASS" : "FAIL"
+    }
+  ' "$log"
+  echo
+
+  # `Pose x=1.20 z=-3.40 ...` — raw ARCore, the only thing in the log that a
+  # tape measure can be held against.
+  echo "--- Pose track"
+  awk -v truth="$truth" -v loop="$loop" '
+    match($0, /Pose x=(-?[0-9]+\.[0-9]+) z=(-?[0-9]+\.[0-9]+)/, m) {
+      x = m[1] + 0; z = m[2] + 0
+      if (n == 0) { x0 = x; z0 = z }
+      if (n > 0) { path += sqrt((x - px) ^ 2 + (z - pz) ^ 2) }
+      px = x; pz = z; n++
+    }
+    END {
+      if (n < 2) { print "  too few pose samples"; exit }
+      net = sqrt((px - x0) ^ 2 + (pz - z0) ^ 2)
+      printf "  samples %d   path walked %.2fm   net displacement %.2fm\n", n, path, net
+      if (truth != "") {
+        err = net - truth
+        printf "  straight-line truth %.2fm -> error %+.2fm (%+.1f%%)\n", truth, err, 100 * err / truth
+        printf "  verdict %s\n", (err < 0 ? -err : err) / truth < 0.05 ? "PASS" : "FAIL"
+      }
+      if (loop == 1) {
+        printf "  loop misclosure %.2fm over a %.2fm perimeter (%.1f%%)\n", net, path, 100 * net / path
+        printf "  verdict %s\n", (path > 0 && net / path < 0.05) ? "PASS" : "FAIL"
+      }
+    }
+  ' "$log"
 }
 
 case "${1:-}" in
   start) shift; start "${1:-walk}" ;;
   stop) stop ;;
   tail) tail_live ;;
-  *) echo "usage: $0 {start [name]|stop|tail}"; exit 2 ;;
+  report) shift; report "$@" ;;
+  *) echo "usage: $0 {start [name]|stop|tail|report <log> [--straight=M] [--loop]}"; exit 2 ;;
 esac

@@ -77,7 +77,31 @@ class _FakeAr implements ArGuidanceService {
   int? get textureId => _running ? 11 : null;
 
   @override
-  Future<ArCoreAvailability> checkAvailability() async => availability;
+  Future<ArCoreAvailability> checkAvailability() async {
+    availabilityCalls++;
+    // A device that answers `checking` first and settles afterwards, which is
+    // what `ArCoreApk` actually does on a cold start.
+    if (availabilitySettlesAfter > 0 &&
+        availabilityCalls <= availabilitySettlesAfter) {
+      return ArCoreAvailability.checking;
+    }
+    return availability;
+  }
+
+  /// How many calls answer `checking` before [availability] is returned.
+  int availabilitySettlesAfter = 0;
+  int availabilityCalls = 0;
+
+  /// Whether Play had ARCore ready when asked, and how many times it was.
+  bool installSucceeds = false;
+  int installRequests = 0;
+
+  @override
+  Future<bool> requestInstall() async {
+    installRequests++;
+    if (installSucceeds) availability = ArCoreAvailability.supported;
+    return installSucceeds;
+  }
 
   @override
   Future<String?> start({
@@ -549,6 +573,58 @@ void main() {
       expect(supported, isFalse);
       expect(cubit.state.isSupported, isFalse);
       expect(ar.legs, isEmpty);
+      // And says so, rather than looking like a phone whose AR view merely
+      // failed to draw.
+      expect(cubit.state.cameraReason, contains('does not support'));
+      await cubit.close();
+      await guidance.close();
+    });
+
+    test('THE POINT: "still checking" is not an answer of no', () async {
+      // `ArCoreApk.checkAvailability` answers asynchronously the first time it
+      // is asked, so a cold start returns `checking`. Read as "no", it left
+      // the arrows off on the first visit to this screen and on in every visit
+      // after — a phone that looked unsupported until you backed out and came
+      // in again.
+      ar.availabilitySettlesAfter = 3;
+      ar.availability = ArCoreAvailability.supported;
+      final guidance = guidanceOf();
+      final cubit = ArGuidanceCubit(ar, guidance);
+
+      expect(await cubit.checkAvailability(), isTrue);
+      expect(cubit.state.isSupported, isTrue);
+      await cubit.close();
+      await guidance.close();
+    });
+
+    test('a phone one Play dialog short of working is sent to Play', () async {
+      // "Supports ARCore" and "has ARCore" are different answers and only the
+      // second starts a session. A device out of the box is routinely the
+      // first without being the second, and nothing used to ask.
+      ar.availability = ArCoreAvailability.supportedNotInstalled;
+      ar.installSucceeds = true;
+      final guidance = guidanceOf();
+      final cubit = ArGuidanceCubit(ar, guidance);
+
+      expect(await cubit.checkAvailability(), isTrue);
+      expect(ar.installRequests, 1);
+      expect(cubit.state.isSupported, isTrue);
+      await cubit.close();
+      await guidance.close();
+    });
+
+    test('while Play installs, the screen says so', () async {
+      ar.availability = ArCoreAvailability.supportedApkTooOld;
+      ar.installSucceeds = false;
+      final guidance = guidanceOf();
+      final cubit = ArGuidanceCubit(ar, guidance);
+
+      expect(await cubit.checkAvailability(), isFalse);
+      expect(ar.installRequests, 1);
+      // The walk carries on either way; what changes is that the screen names
+      // a fixable state instead of showing the same nothing as unsupported
+      // hardware.
+      expect(cubit.state.cameraReason, contains('Play'));
       await cubit.close();
       await guidance.close();
     });
@@ -1024,6 +1100,158 @@ void main() {
 
       expect(guidance.state.legIndex, 1);
       expect(guidance.state.walkedM, closeTo(4, 1e-6));
+      await cubit.close();
+      await guidance.close();
+    });
+
+    /// A first registration solved after the walker has left the departure
+    /// window — see `_lateRegistrationFactor`.
+    test('a registration solved late matches chords, not the departure', () async {
+      final (guidance, cubit) = await walkingWithGeometry();
+
+      // Standing at the start. This frame fixes where the start is and no more:
+      // there is no direction of travel in it.
+      ar.emit(standingAt(0, 0));
+      await pump();
+
+      // Then nothing for the whole of the first corridor — tracking blinked,
+      // the trail was thrown away and rebuilt — and by the time a heading
+      // exists the walker is six metres round the corner, moving east.
+      //
+      // The departure direction is plan-north and they are travelling plan-east
+      // at this moment. Pairing those two would rotate the entire building 90°,
+      // which is not a wobble in the arrow: it is the route laid down a
+      // corridor that does not exist, with nothing downstream able to tell.
+      ar.emit(walked(x: 6, z: -20, headingDeg: 90));
+      await pump();
+
+      expect(cubit.state.registered, isTrue);
+      final world = ar.routes.single;
+      // Chord-matched instead: 20.9 m of net displacement in the world against
+      // the plan point 20.9 m of chord along the path. Both say the same
+      // thing, and the transform comes out as the identity it should be.
+      expect(world[0], closeTo(0, 0.05));
+      expect(world[1], closeTo(0, 0.05));
+      expect(world[2], closeTo(0, 0.05));
+      expect(world[3], closeTo(-20, 0.05));
+      expect(world[4], closeTo(12, 0.05));
+      expect(world[5], closeTo(-20, 0.05));
+
+      await cubit.close();
+      await guidance.close();
+    });
+
+    /// The walker at the first landmark, having read its sign, with ARCore two
+    /// metres behind where they actually are. The route runs plan-north from
+    /// the start, so the landmark at 20 m along the plan sits at world z = −20
+    /// and ARCore has them at −18.
+    ArGuidanceFrame atTheLandmarkButShort() => const ArGuidanceFrame(
+      tracking: CaptureTrackingLike.tracking,
+      issue: ArGuidanceIssue.none,
+      hasLeg: true,
+      hasRoute: true,
+      // Below the leg's end less `_arrivedWithinM`, so the position advance
+      // does not fire and the sign is what moves the walk on — which is the
+      // case this is about.
+      walkedM: 18,
+      cameraX: 0,
+      cameraZ: -18,
+      travelHeadingDeg: 0,
+    );
+
+    test('THE POINT: a confirmed landmark takes the drift out', () async {
+      final (guidance, cubit) = await walkingWithGeometry();
+
+      ar.emit(standingAt(0, 0));
+      await pump();
+      ar.emit(walked(x: 0, z: -2, headingDeg: 0));
+      await pump();
+      expect(ar.routes, hasLength(1));
+
+      ar.emit(atTheLandmarkButShort());
+      await pump();
+      guidance.add(const GuidanceLandmarkConfirmed());
+      await pump();
+
+      // The route is re-laid, and the whole of it has moved two metres back
+      // along the corridor so that the plan's landmark is where the walker is
+      // standing. Without this the two metres stay in the transform and every
+      // ring for the rest of the walk lands two metres past its mark.
+      expect(ar.routes, hasLength(2));
+      final world = ar.routes.last;
+      expect(world[0], closeTo(0, 1e-6));
+      expect(world[1], closeTo(2, 1e-6));
+      expect(world[2], closeTo(0, 1e-6));
+      expect(world[3], closeTo(-18, 1e-6));
+      expect(world[4], closeTo(12, 1e-6));
+      expect(world[5], closeTo(-18, 1e-6));
+
+      await cubit.close();
+      await guidance.close();
+    });
+
+    test('a correction too large to be drift is refused', () async {
+      final (guidance, cubit) = await walkingWithGeometry();
+
+      ar.emit(standingAt(0, 0));
+      await pump();
+      ar.emit(walked(x: 0, z: -2, headingDeg: 0));
+      await pump();
+
+      // Eight metres between where the sign says they are and where the route
+      // says that sign is. That is not odometry drift — it is a misread plate
+      // or a rotated registration — and acting on it would pick the wrong one
+      // of those and move the whole building by eight metres.
+      ar.emit(
+        const ArGuidanceFrame(
+          tracking: CaptureTrackingLike.tracking,
+          issue: ArGuidanceIssue.none,
+          hasLeg: true,
+          hasRoute: true,
+          walkedM: 12,
+          cameraX: 0,
+          cameraZ: -12,
+          travelHeadingDeg: 0,
+        ),
+      );
+      await pump();
+      guidance.add(const GuidanceLandmarkConfirmed());
+      await pump();
+
+      expect(ar.routes, hasLength(1));
+      await cubit.close();
+      await guidance.close();
+    });
+
+    test('an advance the position made does not correct the position', () async {
+      final (guidance, cubit) = await walkingWithGeometry();
+
+      ar.emit(standingAt(0, 0));
+      await pump();
+      ar.emit(walked(x: 0, z: -2, headingDeg: 0));
+      await pump();
+
+      // Past the end of the first leg with no sign read: `ArGuidanceCubit`
+      // advances guidance itself, off this same registration. Re-centring on
+      // that would be the registration measuring itself and finding no error,
+      // while dragging the route onto a walker who may still be a metre and a
+      // half short of the door.
+      ar.emit(
+        const ArGuidanceFrame(
+          tracking: CaptureTrackingLike.tracking,
+          issue: ArGuidanceIssue.none,
+          hasLeg: true,
+          hasRoute: true,
+          walkedM: 20,
+          cameraX: 0,
+          cameraZ: -21.2,
+          travelHeadingDeg: 0,
+        ),
+      );
+      await pump();
+
+      expect(guidance.state.legIndex, 1);
+      expect(ar.routes, hasLength(1));
       await cubit.close();
       await guidance.close();
     });

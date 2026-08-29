@@ -38,3 +38,32 @@ class App extends StatelessWidget {
     );
   }
 }
+
+/*
+  Top of ArGuidanceHandler.kt, lines 145 and 163:
+
+  private const val MEASURE_FLOOR = true    // line 145
+  private const val FOLLOW_ANCHORS = true   // line 163
+
+  Flip either to false, rebuild, and that half of yesterday's
+  work behaves exactly like the build you had before it.
+
+  MEASURE_FLOOR = false — no plane fitting at all, floor falls
+  back to the assumed 1.35 m below the phone. Turn this off
+  first if the session stutters when the guidance screen
+  opens. Your 60 fps measurement on the Infinix was taken
+  without plane finding, and I've now got it competing with
+  the ML Kit frame feed for the first 9 seconds. Cost of
+  turning it off is cosmetic: the ring sits at an assumed
+  height.
+
+  FOLLOW_ANCHORS = false — route and leg keep the raw world
+  coordinates they were laid down in. Turn this off if a
+  registered route looks wrong in a way a dead-reckoned leg
+  doesn't: arrow drifting sideways, the line slowly rotating,
+  rings landing off the corridor. This is the only code that
+  rewrites route geometry after registration, so if the
+  geometry is being mangled, it's this or nothing. Cost of
+  turning it off is that a relocalisation moves the building
+  out from under the route.
+*/

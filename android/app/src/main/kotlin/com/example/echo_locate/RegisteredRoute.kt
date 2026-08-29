@@ -45,8 +45,18 @@ import kotlin.math.sqrt
 class RegisteredRoute(
     private val xs: FloatArray,
     private val zs: FloatArray,
-    val floorY: Float,
+    floorY: Float,
 ) {
+    /**
+     * The height the arrows and rings are drawn at.
+     *
+     * Not final: it starts as an assumption about how far below the phone the
+     * floor is and is replaced by a measurement when ARCore fits a plane to the
+     * real one — see `ArGuidanceHandler.serviceFloorSearch`.
+     */
+    var floorY = floorY
+        private set
+
     companion object {
         /**
          * How far back along the route a projection may land before it is
@@ -308,6 +318,34 @@ class RegisteredRoute(
         shifted.alongM = alongM
         shifted.segment = segment
         return shifted
+    }
+
+    /**
+     * Moves the whole route onto a fresh set of world coordinates.
+     *
+     * **The caller must supply a rigid transform of the route it already
+     * holds** — the same shape, moved and turned. Nothing here re-measures
+     * anything: the cumulative distances, the total, how far the walker has
+     * come and which segment they are on all carry over untouched, because a
+     * rigid transform leaves every one of them true. Hand it a different shape
+     * and it will report progress against distances that no longer exist.
+     *
+     * This is how ARCore's corrections reach the walker. The route is pinned to
+     * an anchor and rebuilt from that anchor's pose every frame — see
+     * `ArGuidanceHandler.followAnchors` — so when the session recognises where
+     * it is and moves the world to fit, the line moves with the building rather
+     * than staying behind in the coordinates it was laid down in.
+     */
+    fun rebase(worldX: FloatArray, worldZ: FloatArray, y: Float) {
+        if (worldX.size != xs.size || worldZ.size != zs.size) return
+        worldX.copyInto(xs)
+        worldZ.copyInto(zs)
+        floorY = y
+    }
+
+    /** The floor, once it has been measured rather than assumed. */
+    fun setFloor(y: Float) {
+        floorY = y
     }
 
     private fun hypot(dx: Float, dz: Float): Float = sqrt(dx * dx + dz * dz)

@@ -12,11 +12,14 @@ import android.os.Looper
 import android.util.Log
 import android.view.Surface
 import androidx.core.content.ContextCompat
+import com.google.ar.core.Anchor
 import com.google.ar.core.ArCoreApk
 import com.google.ar.core.CameraConfig
 import com.google.ar.core.CameraConfigFilter
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
+import com.google.ar.core.Plane
+import com.google.ar.core.Pose
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
 import com.google.ar.core.exceptions.CameraNotAvailableException
@@ -112,16 +115,98 @@ class ArGuidanceHandler(
         const val FRAME_CHANNEL = "echo_locate/ar_guidance/frames"
         private const val TAG = "ArGuidance"
 
+        // --- Kill switches --------------------------------------------------
+        //
+        // Two changes made on 29 August 2026 that have never run on a device.
+        // Both are improvements on paper and both touch the frame loop, so each
+        // has a switch here: flip it to false, rebuild, and this file behaves
+        // exactly as the build that came before it. They are compile-time
+        // constants rather than settings on purpose — there is no scenario
+        // where a walker should be choosing between them mid-route, and a
+        // constant is the one kind of switch that cannot be in the wrong state
+        // for reasons nobody can reconstruct afterwards.
+        //
+        // Which line of the log says what a given capture was built with:
+        //
+        //     AR guidance session: floor=measured anchors=following
+        //
+        /**
+         * Whether the floor height is measured from a fitted plane.
+         *
+         * False falls back to [EYE_HEIGHT_M] and never turns plane finding on
+         * at all. **Turn this off first if the session stutters on entry**:
+         * plane fitting costs CPU for the first [FLOOR_SEARCH_MS], and it is
+         * competing with the ML Kit frame feed on hardware where the camera
+         * path was measured at 60 fps *without* it.
+         *
+         * The cost of false is cosmetic — the ring sits at an assumed height
+         * instead of a measured one.
+         */
+        private const val MEASURE_FLOOR = true
+
+        /**
+         * Whether the route and the leg are pinned to ARCore anchors and
+         * rebuilt from them each frame — see [followAnchors].
+         *
+         * False keeps the raw world coordinates they were laid down in, which
+         * is what every build before this one did.
+         *
+         * **Turn this off if a registered route looks wrong in a way a leg does
+         * not** — the arrow drifting sideways, the line rotating slowly, rings
+         * landing off the corridor. This is the only code that rewrites the
+         * route's geometry after it is registered, so if the geometry is being
+         * mangled it is either this or nothing.
+         *
+         * The cost of false is that a relocalisation moves the building out
+         * from under the route and the route stays where it was put.
+         */
+        private const val FOLLOW_ANCHORS = true
+
         /**
          * How far below the phone the floor is assumed to be, in metres.
          *
-         * There is no plane detection in this session, deliberately: the CPU it
-         * costs is being spent on ML Kit, and a plain terrazzo corridor under
-         * fluorescent light is where plane fitting is least reliable anyway. At
-         * the distances the arrows live at, a decimetre of error in this is a
-         * degree of elevation.
+         * **The fallback, not the answer.** [serviceFloorSearch] measures the
+         * floor for real in the first few seconds of a session and this is what
+         * stands in until it does — or permanently, on a corridor where plane
+         * fitting never converges.
+         *
+         * It is wrong for most people by construction: it is one number for a
+         * user who may be 1.5 m or 1.9 m tall, holding the phone at their chest
+         * or down by their hip for an eyes-free walk. The ring then sits above
+         * or below the floor, and a ring that floats reads as an arrow that is
+         * lying — which is why measuring it was worth the plane fitting the
+         * session otherwise avoids.
          */
         const val EYE_HEIGHT_M = 1.35f
+
+        /**
+         * How long plane finding runs before the session gives up on it.
+         *
+         * Plane fitting is on for these first seconds and then switched off for
+         * good — see [serviceFloorSearch]. The CPU it costs is CPU ML Kit is not
+         * getting, and ML Kit is what reads the door plates this app navigates
+         * by, so it is borrowed briefly rather than kept.
+         */
+        private const val FLOOR_SEARCH_MS = 9000L
+
+        /**
+         * How far below the phone a horizontal plane has to be to be the floor.
+         *
+         * The window exists to rule out the two things that are not the floor
+         * and look like it to a plane fitter: a desk or a handrail, which is too
+         * close under the phone, and a stairwell's lower landing seen over a
+         * banister, which is too far.
+         */
+        private const val FLOOR_MIN_DROP_M = 0.7f
+        private const val FLOOR_MAX_DROP_M = 2.1f
+
+        /**
+         * How much of a plane has to have been fitted before it is believed.
+         *
+         * A square metre — smaller than that and it is as likely to be a chair
+         * seat caught at the right height as a corridor.
+         */
+        private const val FLOOR_MIN_AREA_M2 = 1f
 
         /** Trajectory sample spacing, in metres. */
         private const val TRAIL_STEP_M = 0.15f
@@ -319,6 +404,21 @@ class ArGuidanceHandler(
     /** When tracking was lost, for telling a blink from a relocalisation. */
     private var lostTrackingAt = 0L
 
+    // --- The floor ----------------------------------------------------------
+
+    /**
+     * Where the floor actually is in world y, once a plane has been fitted to
+     * it. Null until then, and forever on a session that never finds one.
+     */
+    @Volatile
+    private var measuredFloorY: Float? = null
+
+    /** When the session started looking, for giving up on time. */
+    private var floorSearchStartedAt = 0L
+
+    /** Whether plane finding is still switched on. */
+    private var searchingForFloor = false
+
     // --- The leg ------------------------------------------------------------
 
     @Volatile
@@ -326,6 +426,21 @@ class ArGuidanceHandler(
 
     @Volatile
     private var legAnchor: LegAnchor? = null
+
+    /**
+     * The ARCore anchor holding the leg's origin in the building — see
+     * [followAnchors]. Null when the session refused one, which leaves the leg
+     * on the raw coordinates it was built from.
+     */
+    @Volatile
+    private var legAnchorPin: Anchor? = null
+
+    /** The pin's yaw when it was made, so its later yaw is a *change*. */
+    private var legAnchorYaw = 0f
+
+    /** The leg's direction in the pin's frame, which does not change. */
+    private var legLocalDirX = 0f
+    private var legLocalDirZ = 0f
 
     /** Whether the current leg was anchored off the camera rather than motion. */
     private var anchoredFromCamera = false
@@ -385,6 +500,28 @@ class ArGuidanceHandler(
     @Volatile
     private var pendingRoute: List<Double>? = null
 
+    /**
+     * The ARCore anchor the whole route hangs off — see [followAnchors].
+     *
+     * One anchor for the route rather than one per vertex, deliberately. A
+     * route is a rigid thing: the corridors of a building do not move relative
+     * to each other, and anchoring each corner separately would let ARCore's
+     * per-anchor noise bend the plan into shapes the building does not have.
+     */
+    @Volatile
+    private var routeAnchor: Anchor? = null
+
+    /** The anchor's yaw when it was made, so its later yaw is a *change*. */
+    private var routeAnchorYaw = 0f
+
+    /** The route in the anchor's frame — the copy that never changes. */
+    private var routeLocalX = FloatArray(0)
+    private var routeLocalZ = FloatArray(0)
+
+    /** Scratch for the rebuilt world coordinates, so no frame allocates. */
+    private var routeWorldX = FloatArray(0)
+    private var routeWorldZ = FloatArray(0)
+
     private var lastRouteLogAt = 0L
 
     /**
@@ -441,6 +578,7 @@ class ArGuidanceHandler(
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "checkAvailability" -> result.success(availabilityString())
+            "requestInstall" -> requestInstall(result)
             "start" -> start(call, result)
             "stop" -> {
                 stop()
@@ -467,6 +605,7 @@ class ArGuidanceHandler(
             }
             "clearLeg" -> {
                 legAnchor = null
+                releaseLegAnchorPin()
                 pendingLeg = null
                 activeLeg = null
                 walkedM = 0f
@@ -494,6 +633,7 @@ class ArGuidanceHandler(
             }
             "clearRoute" -> {
                 route = null
+                releaseRouteAnchor()
                 pendingRoute = null
                 result.success(null)
             }
@@ -511,6 +651,55 @@ class ArGuidanceHandler(
                 result.success(null)
             }
             else -> result.notImplemented()
+        }
+    }
+
+    /**
+     * Whether the user has already been shown the install prompt this run.
+     *
+     * ARCore's own contract: ask with `true` once, and if the install is
+     * requested the activity is paused while Play does its work. Asking with
+     * `true` again on the way back would show the prompt a second time to
+     * somebody who has just answered it.
+     */
+    private var userRequestedInstall = true
+
+    /**
+     * Asks Play to install or update ARCore, if that is what is missing.
+     *
+     * ## Why this has to exist
+     *
+     * "Supported" and "installed" are different questions, and only the second
+     * one lets a session start. A brand new phone off the shelf is
+     * `SUPPORTED_NOT_INSTALLED`: ARCore runs on it, and Google Play Services
+     * for AR is not on it yet. Without this call the app read that as "no AR
+     * here", fell back to voice guidance, and said nothing — a silent failure
+     * on hardware that was one Play dialog away from working.
+     *
+     * The install itself happens outside the app. The caller re-checks
+     * availability when the user comes back.
+     */
+    private fun requestInstall(result: MethodChannel.Result) {
+        try {
+            when (ArCoreApk.getInstance().requestInstall(activity, userRequestedInstall)) {
+                ArCoreApk.InstallStatus.INSTALLED -> {
+                    result.success("installed")
+                }
+                ArCoreApk.InstallStatus.INSTALL_REQUESTED -> {
+                    // Play has it now, and this activity is about to be paused.
+                    userRequestedInstall = false
+                    result.success("requested")
+                }
+                null -> result.success("unavailable")
+            }
+        } catch (e: UnavailableException) {
+            // A device Google has not certified. Permanent, and not an error:
+            // the app is built to walk people around buildings without ARCore.
+            Log.i(TAG, "ARCore cannot be installed on this device: $e")
+            result.success("unavailable")
+        } catch (e: Exception) {
+            Log.w(TAG, "ARCore install request failed: $e")
+            result.success("unavailable")
         }
     }
 
@@ -590,16 +779,37 @@ class ArGuidanceHandler(
             chooseCameraConfig(newSession)
             newSession.configure(
                 newSession.config.apply {
-                    // No planes and no depth. Guidance needs pose and nothing
-                    // else, and every cycle not spent fitting planes to a bare
-                    // corridor floor is a cycle ML Kit can have.
-                    planeFindingMode = Config.PlaneFindingMode.DISABLED
+                    // Horizontal planes, briefly, for one number: where the
+                    // floor is. [serviceFloorSearch] switches this off again the
+                    // moment it has one, or after [FLOOR_SEARCH_MS], because
+                    // every cycle not spent fitting planes to a bare corridor
+                    // floor is a cycle ML Kit can have — and ML Kit is what
+                    // reads the signs this app navigates by.
+                    //
+                    // Depth stays off. It would buy occlusion, so the arrow
+                    // stopped drawing through walls, and it costs more than
+                    // plane fitting does; that trade is one to make against
+                    // measured frame times, not in advance.
+                    planeFindingMode = if (MEASURE_FLOOR) {
+                        Config.PlaneFindingMode.HORIZONTAL
+                    } else {
+                        Config.PlaneFindingMode.DISABLED
+                    }
                     updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
                     focusMode = Config.FocusMode.AUTO
                 }
             )
             session = newSession
             sensorOrientation = readSensorOrientation(newSession)
+            // Which build this capture came from. Both switches are compile
+            // time, so without this line a log from a walk cannot be read back
+            // against the code that produced it.
+            Log.i(
+                TAG,
+                "AR guidance session: " +
+                    "floor=${if (MEASURE_FLOOR) "measured" else "assumed"} " +
+                    "anchors=${if (FOLLOW_ANCHORS) "following" else "raw"}",
+            )
 
             val textureId = gl.createProducer(viewWidth, viewHeight)
             startedTextureId = textureId
@@ -617,6 +827,9 @@ class ArGuidanceHandler(
             pendingRoute = null
             wasTracking = false
             analysisInFlight = false
+            measuredFloorY = null
+            searchingForFloor = MEASURE_FLOOR
+            floorSearchStartedAt = System.currentTimeMillis()
 
             renderHandler?.post {
                 try {
@@ -765,6 +978,12 @@ class ArGuidanceHandler(
         activeLeg = null
         route = null
         pendingRoute = null
+        // Before the session goes: an anchor outlives the object holding it,
+        // and a session closed with anchors still attached leaks them.
+        releaseRouteAnchor()
+        releaseLegAnchorPin()
+        searchingForFloor = false
+        measuredFloorY = null
         analysisEnabled = false
         analysisInFlight = false
         ArCoreSessionOwner.releaseIfHeld(releaseSelf)
@@ -821,9 +1040,15 @@ class ArGuidanceHandler(
             val frame = current.update()
             noteTracking(frame)
             trackTrajectory(frame)
+            logPose(frame)
+            serviceFloorSearch(current, frame)
             servicePendingRoute(frame)
             servicePendingLeg(frame)
             refineCameraAnchor(frame)
+            // After everything that can create an anchor and before anything
+            // that reads the geometry: this is where ARCore's corrections are
+            // carried into the arrows.
+            followAnchors()
             drawFrame(frame)
             emitState(frame)
             analyse(frame)
@@ -847,6 +1072,315 @@ class ArGuidanceHandler(
         } else {
             renderHandler?.postDelayed({ pumpFrames() }, IDLE_FRAME_MS)
         }
+    }
+
+    private var lastPoseLogAt = 0L
+
+    /**
+     * One line a second saying where ARCore believes the phone is.
+     *
+     * ## What this is for, given that everything else already logs
+     *
+     * Every other log line in this file reports the app's *conclusions* — how
+     * far along the route it thinks the walker has come, where it is pointing
+     * them. None of them can be checked against a tape measure, because they
+     * are all measured in the same frame that might be wrong.
+     *
+     * This one is the raw input. Two field tests fall out of it and nothing
+     * else in the app can run them:
+     *
+     *   * **Odometry scale.** Walk a tape-measured straight line. The net
+     *     displacement between the first and last of these lines against the
+     *     true distance is ARCore's scale error, which is the floor under every
+     *     distance the app quotes.
+     *   * **Yaw drift.** Walk a closed square back to the start. The gap
+     *     between the first and last position is the loop misclosure — the same
+     *     measure `FloorGraph` reports for a recorded walk, for the same
+     *     reason.
+     *
+     * `tool/walk_capture.sh report` reads both off a capture.
+     */
+    private fun logPose(frame: Frame) {
+        val now = System.currentTimeMillis()
+        if (now - lastPoseLogAt < WALK_LOG_MS) return
+        val camera = frame.camera
+        if (camera.trackingState != TrackingState.TRACKING) return
+        lastPoseLogAt = now
+
+        val t = camera.pose.translation
+        val travel = travelHeading
+        Log.i(
+            TAG,
+            "Pose x=${"%.2f".format(t[0])} z=${"%.2f".format(t[2])} " +
+                "y=${"%.2f".format(t[1])} " +
+                "facing=${"%.0f".format(cameraYaw(frame) * 180f / Math.PI.toFloat())}deg " +
+                "travel=" +
+                (travel?.let { "${"%.0f".format(it * 180f / Math.PI.toFloat())}deg" } ?: "-") +
+                " floor=" + (measuredFloorY?.let { "%.2f".format(it) } ?: "assumed"),
+        )
+    }
+
+    /**
+     * Measures the floor once, then stops paying for the measurement.
+     *
+     * ## Why this is worth doing at all
+     *
+     * Everything the walker sees on the floor — the ring on the next
+     * checkpoint, the arrow lying flat ahead of it — is drawn at a single y.
+     * That y used to be the camera's height less [EYE_HEIGHT_M], one number for
+     * every user and every way of holding a phone. A tall walker got a ring
+     * sunk into the floor and somebody carrying the phone low got one hovering
+     * at their knees, and neither reads as "the arrow is a few centimetres
+     * off" — it reads as the arrow being wrong about everything.
+     *
+     * ## Why it is switched off again
+     *
+     * Plane fitting competes for exactly the CPU that ML Kit needs to read a
+     * door plate, which is the app's actual positioning system. The floor does
+     * not move, so the fitting is worth its cost once and never again: the
+     * first plane that qualifies ends the search, and so does
+     * [FLOOR_SEARCH_MS] passing without one.
+     *
+     * ## What qualifies
+     *
+     * The **lowest** upward-facing horizontal plane in the right window below
+     * the phone, with enough area fitted to be a floor rather than furniture.
+     * Lowest rather than largest, because in a room with a big table the table
+     * is the larger plane and the walker is not standing on it.
+     */
+    private fun serviceFloorSearch(session: Session, frame: Frame) {
+        if (!searchingForFloor) return
+        val camera = frame.camera
+        if (camera.trackingState != TrackingState.TRACKING) {
+            // A session that cannot see the room cannot see its floor either,
+            // and the clock should not run while it is not looking.
+            floorSearchStartedAt = System.currentTimeMillis()
+            return
+        }
+
+        val cameraY = camera.pose.translation[1]
+        var lowest: Float? = null
+        for (plane in session.getAllTrackables(Plane::class.java)) {
+            if (plane.trackingState != TrackingState.TRACKING) continue
+            if (plane.type != Plane.Type.HORIZONTAL_UPWARD_FACING) continue
+            // A plane ARCore has merged into a larger one. Its pose is stale.
+            if (plane.subsumedBy != null) continue
+            if (plane.extentX * plane.extentZ < FLOOR_MIN_AREA_M2) continue
+
+            val y = plane.centerPose.ty()
+            val drop = cameraY - y
+            if (drop < FLOOR_MIN_DROP_M || drop > FLOOR_MAX_DROP_M) continue
+            if (lowest == null || y < lowest) lowest = y
+        }
+
+        if (lowest != null) {
+            measuredFloorY = lowest
+            Log.i(
+                TAG,
+                "Floor measured at y=${"%.2f".format(lowest)}, " +
+                    "${"%.2f".format(cameraY - lowest)}m below the phone " +
+                    "(assumed ${EYE_HEIGHT_M}m)",
+            )
+            adoptMeasuredFloor(lowest)
+            stopSearchingForFloor(session)
+            return
+        }
+
+        if (System.currentTimeMillis() - floorSearchStartedAt >= FLOOR_SEARCH_MS) {
+            Log.i(
+                TAG,
+                "No floor plane in ${FLOOR_SEARCH_MS}ms — keeping the assumed " +
+                    "${EYE_HEIGHT_M}m",
+            )
+            stopSearchingForFloor(session)
+        }
+    }
+
+    /** Gives the CPU back to ML Kit. */
+    private fun stopSearchingForFloor(session: Session) {
+        searchingForFloor = false
+        try {
+            session.configure(
+                session.config.apply {
+                    planeFindingMode = Config.PlaneFindingMode.DISABLED
+                }
+            )
+        } catch (e: Exception) {
+            // Reconfiguring failed, so plane finding stays on. That costs
+            // frames and nothing else — the measurement is already taken.
+            Log.w(TAG, "Could not switch plane finding off: $e")
+        }
+    }
+
+    /**
+     * Drops whatever is already drawn onto the floor that was just measured.
+     *
+     * A route registered in the first second of a session was built against the
+     * assumed height. Leaving it there would mean the arrows on this walk sit
+     * at one height and the ones on the next walk sit at another, for no reason
+     * the walker could ever see.
+     */
+    private fun adoptMeasuredFloor(y: Float) {
+        route?.setFloor(y)
+        legAnchor?.floorY = y
+    }
+
+    /** The floor, measured where it could be and assumed where it could not. */
+    private fun floorYFor(cameraY: Float): Float =
+        measuredFloorY ?: (cameraY - EYE_HEIGHT_M)
+
+    // --- Anchoring ----------------------------------------------------------
+
+    /**
+     * Carries ARCore's own corrections into the route and the leg.
+     *
+     * ## The problem this exists for
+     *
+     * A world coordinate in ARCore is not a place in the building. It is a
+     * place in ARCore's *current opinion* of the building, and that opinion is
+     * revised: when the session recognises somewhere it has been before it
+     * closes the loop and moves everything to fit — by a few centimetres
+     * usually, by a metre and several degrees after a bad stretch. Raw
+     * coordinates do not move with it. The route stays where it was put, the
+     * building moves out from under it, and nothing in the app can tell.
+     *
+     * An [Anchor] is ARCore's answer: a point it undertakes to keep pinned to
+     * the same physical place across those revisions. So the route is stored
+     * once as offsets from an anchor and rebuilt from the anchor's current pose
+     * every frame. When ARCore corrects itself the whole line follows, which is
+     * the difference between odometry error that accumulates and odometry error
+     * that gets fixed.
+     *
+     * ## Yaw only
+     *
+     * A correction is a full six-degree-of-freedom adjustment, and this applies
+     * its translation and its rotation about the vertical, discarding pitch and
+     * roll. Those two describe the floor tilting, which it does not; carrying
+     * them would let a noisy anchor rock the arrows in place.
+     */
+    private fun followAnchors() {
+        if (!FOLLOW_ANCHORS) return
+        followRouteAnchor()
+        followLegAnchor()
+    }
+
+    private fun followRouteAnchor() {
+        val anchor = routeAnchor ?: return
+        val current = route ?: return
+        if (anchor.trackingState != TrackingState.TRACKING) return
+
+        val pose = anchor.pose
+        val turned = yawOf(pose) - routeAnchorYaw
+        val cos = cos(turned)
+        val sin = sin(turned)
+        val originX = pose.tx()
+        val originZ = pose.tz()
+
+        for (i in routeLocalX.indices) {
+            val lx = routeLocalX[i]
+            val lz = routeLocalZ[i]
+            // Rotation about +y: x' = x cos + z sin, z' = -x sin + z cos.
+            routeWorldX[i] = originX + lx * cos + lz * sin
+            routeWorldZ[i] = originZ - lx * sin + lz * cos
+        }
+        current.rebase(routeWorldX, routeWorldZ, pose.ty())
+    }
+
+    /**
+     * The same for a dead-reckoned leg, which is a line rather than a path.
+     *
+     * The pin was made at the leg's origin, so the origin is wherever the pin
+     * is now, and the direction turns by however much the pin has turned. The
+     * walker's progress along the leg is measured by projection onto that line
+     * each frame, so it needs nothing carried across.
+     *
+     * This overlaps with [noteTracking], which throws a leg away entirely after
+     * a long enough loss of tracking. Both are wanted. An anchor absorbs the
+     * *correction* — the world moving under a leg that is still the right leg —
+     * and the re-anchor there handles the other thing that happens across a
+     * blind stretch, which is the walker having walked on and possibly turned
+     * while the phone could not see.
+     */
+    private fun followLegAnchor() {
+        val pin = legAnchorPin ?: return
+        val leg = legAnchor ?: return
+        if (pin.trackingState != TrackingState.TRACKING) return
+
+        val pose = pin.pose
+        val turned = yawOf(pose) - legAnchorYaw
+        val cos = cos(turned)
+        val sin = sin(turned)
+
+        leg.startX = pose.tx()
+        leg.startZ = pose.tz()
+        leg.dirX = legLocalDirX * cos + legLocalDirZ * sin
+        leg.dirZ = -legLocalDirX * sin + legLocalDirZ * cos
+        leg.floorY = pose.ty()
+    }
+
+    /**
+     * Which way a pose faces about the vertical, in radians.
+     *
+     * The quaternion is (x, y, z, w) and this is the standard yaw extraction
+     * for a y-up frame. Anything but the yaw is deliberately thrown away — see
+     * [followAnchors].
+     */
+    private fun yawOf(pose: Pose): Float {
+        val q = pose.rotationQuaternion
+        return atan2(
+            2f * (q[3] * q[1] + q[0] * q[2]),
+            1f - 2f * (q[1] * q[1] + q[2] * q[2]),
+        )
+    }
+
+    /**
+     * Pins [x], [z] in the world and remembers which way the pin was facing.
+     *
+     * Returns null when the session will not give an anchor out, which is not
+     * fatal: everything still works off the raw coordinates it was given, it
+     * simply stops following ARCore's corrections.
+     */
+    private fun anchorAt(x: Float, y: Float, z: Float): Anchor? = try {
+        session?.createAnchor(Pose.makeTranslation(x, y, z))
+    } catch (e: Exception) {
+        Log.w(TAG, "Could not anchor at ($x, $z): $e")
+        null
+    }
+
+    /**
+     * Pins the leg that was just built, at its own origin.
+     *
+     * Its origin is where the walker is standing, so the "anchor it where
+     * tracking is best" argument in [pinRoute] is satisfied for free here.
+     */
+    private fun pinLeg() {
+        releaseLegAnchorPin()
+        if (!FOLLOW_ANCHORS) return
+        val leg = legAnchor ?: return
+
+        val pin = anchorAt(leg.startX, leg.floorY, leg.startZ) ?: return
+        legAnchorPin = pin
+        legAnchorYaw = yawOf(pin.pose)
+        legLocalDirX = leg.dirX
+        legLocalDirZ = leg.dirZ
+    }
+
+    private fun releaseRouteAnchor() {
+        try {
+            routeAnchor?.detach()
+        } catch (e: Exception) {
+            Log.w(TAG, "Route anchor would not detach: $e")
+        }
+        routeAnchor = null
+    }
+
+    private fun releaseLegAnchorPin() {
+        try {
+            legAnchorPin?.detach()
+        } catch (e: Exception) {
+            Log.w(TAG, "Leg anchor would not detach: $e")
+        }
+        legAnchorPin = null
     }
 
     /**
@@ -894,6 +1428,7 @@ class ArGuidanceHandler(
                     "${"%.1f".format(remaining)}m of leg along the way ahead",
             )
             legAnchor = null
+            releaseLegAnchorPin()
             activeLeg = null
             // Carried across the re-anchor: the walker really has walked this
             // much of the leg, whatever the new anchor's origin thinks.
@@ -995,10 +1530,11 @@ class ArGuidanceHandler(
             dirX = sin(heading),
             dirZ = -cos(heading),
             lengthM = pending.distanceM.coerceAtLeast(0.5f),
-            floorY = translation[1] - EYE_HEIGHT_M,
+            floorY = floorYFor(translation[1]),
             cameraX = translation[0],
             cameraZ = translation[2],
         )
+        pinLeg()
         walkedM = 0f
         // The one moment worth a log line on a walk: everything the arrow does
         // for the next corridor follows from these four numbers, and none of
@@ -1052,10 +1588,11 @@ class ArGuidanceHandler(
             dirZ = -cos(corrected),
             // What is left of the leg from here, not the whole of it again.
             lengthM = (leg.distanceM - travelled).coerceAtLeast(0.5f),
-            floorY = translation[1] - EYE_HEIGHT_M,
+            floorY = floorYFor(translation[1]),
             cameraX = translation[0],
             cameraZ = translation[2],
         )
+        pinLeg()
         // Those first steps still happened, so they stay on the leg's clock
         // even though the anchor they were measured against has been replaced.
         // Measured as `travelled` rather than as [walkedM] to match the length
@@ -1211,9 +1748,10 @@ class ArGuidanceHandler(
             zs[i] = flat[i * 2 + 1].toFloat()
         }
 
+        val floorY = floorYFor(camera.pose.translation[1])
         val previous = route
         val built = try {
-            RegisteredRoute(xs, zs, camera.pose.translation[1] - EYE_HEIGHT_M)
+            RegisteredRoute(xs, zs, floorY)
         } catch (e: IllegalArgumentException) {
             Log.w(TAG, "Refused a degenerate route: $e")
             return
@@ -1225,18 +1763,65 @@ class ArGuidanceHandler(
             built.resumeFrom(previous)
         }
         route = built
+        pinRoute(xs, zs, floorY, camera.pose)
         // The leg is redundant the moment a route exists, and leaving it
         // behind would leave `emitState` reporting a dead-reckoned distance
         // next to a measured one.
         legAnchor = null
+        releaseLegAnchorPin()
         pendingLeg = null
         activeLeg = null
 
         Log.i(
             TAG,
             "Route registered: $count points, ${"%.1f".format(built.totalM)}m, " +
-                "resuming at ${"%.1f".format(built.alongM)}m",
+                "resuming at ${"%.1f".format(built.alongM)}m, " +
+                "floor y=${"%.2f".format(floorY)}" +
+                (if (measuredFloorY == null) " (assumed)" else " (measured)"),
         )
+    }
+
+    /**
+     * Hangs the route off a fresh anchor under the walker's feet.
+     *
+     * ## Where the anchor goes, and why not on the route
+     *
+     * Under the camera, on the floor — not at the route's first point, which
+     * would be the obvious place. An anchor is only as good as ARCore's
+     * knowledge of the space around it, and the space ARCore knows best is the
+     * one the phone is standing in and looking at. The start of a route is
+     * frequently behind the walker by the time the registration solves, and on
+     * a re-registration it can be a corridor away.
+     *
+     * The offsets are taken from the anchor in the world frame as it stands
+     * right now, and its yaw is recorded alongside them. From here on the two
+     * together *are* the route: [followAnchors] rebuilds the world coordinates
+     * from the anchor's current pose every frame, so a relocalisation that
+     * moves the world moves the route with it.
+     */
+    private fun pinRoute(xs: FloatArray, zs: FloatArray, floorY: Float, camera: Pose) {
+        releaseRouteAnchor()
+        // Not merely unused when the switch is off — an anchor ARCore is
+        // maintaining for nobody still costs it work every frame.
+        if (!FOLLOW_ANCHORS) return
+
+        val originX = camera.tx()
+        val originZ = camera.tz()
+        val anchor = anchorAt(originX, floorY, originZ)
+        if (anchor == null) {
+            // No anchor, so no corrections — the route stays exactly where it
+            // was laid, which is what it did before any of this existed.
+            routeLocalX = FloatArray(0)
+            routeLocalZ = FloatArray(0)
+            return
+        }
+
+        routeAnchor = anchor
+        routeAnchorYaw = yawOf(anchor.pose)
+        routeLocalX = FloatArray(xs.size) { xs[it] - originX }
+        routeLocalZ = FloatArray(zs.size) { zs[it] - originZ }
+        routeWorldX = FloatArray(xs.size)
+        routeWorldZ = FloatArray(zs.size)
     }
 
     /**
