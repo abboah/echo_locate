@@ -130,6 +130,9 @@ class RoomNavigateCubit extends Cubit<RoomNavigateState> {
         fromRoomId: from,
         toRoomId: to,
       ),
+      // The floor itself, so the guidance screen can draw the route through
+      // the rooms it passes rather than across an empty card.
+      floorPlan: plan,
     );
   }
 }

@@ -89,6 +89,31 @@ stop() {
   echo "Saved:"
   ls -la "${base}"* 2>/dev/null
   echo
+
+  # A capture nobody checked is how a walk gets thrown away. The header is
+  # written by `start` before adb is even asked for anything, so a file that
+  # still has only the header is not a quiet walk — it is a capture that never
+  # attached, and the walk is gone. Say so here, loudly, while the walker is
+  # still standing in the building and can do it again.
+  local lines
+  lines="$(grep -cE "ArGuidance|ArrowRenderer|flutter" "${base}.log" 2>/dev/null || echo 0)"
+  if [ "$lines" -eq 0 ]; then
+    echo "!! NOTHING WAS CAPTURED — the log has its header and no log lines."
+    echo "   The walk cannot be read back. Before walking again, check:"
+    echo "     * a device is attached and authorised:  $ADB devices"
+    echo "       (an 'unauthorized' or empty list is the usual cause)"
+    echo "     * the app was actually on the guidance screen during the walk"
+    echo "     * logcat is not being drained elsewhere:  $ADB logcat -v time -s ArGuidance:I"
+    echo "       should print lines while the guidance screen is open"
+    return 1
+  fi
+
+  if ! grep -q "REGISTERED" "${base}.log"; then
+    echo "!! No REGISTERED line: this capture tests the dead-reckoned fallback,"
+    echo "   not AR navigation. See docs/ar-navigation-accuracy.md section 1."
+    echo
+  fi
+
   echo "The walk, in order:"
   grep -E "Leg anchored|ADVANCE|SAY" "${base}.log" | tail -40
 }
@@ -142,6 +167,32 @@ report() {
 
   echo "--- Floor"
   grep -E "Floor measured|No floor plane" "$log" | sed 's/^/  /' | head -5
+  echo
+
+  # Where the rotation came from. A registration's yaw turns the whole
+  # building and no landmark corrects it, so "which of these two lines is
+  # present" matters more than any single number below.
+  echo "--- Yaw"
+  grep -E "Wall grid measured|Wall grid rejected|No wall grid|GRID SNAP" "$log" \
+    | sed 's/^/  /' | head -10
+  awk '
+    match($0, /GRID SNAP (-?[0-9]+\.[0-9]+)deg/, m) {
+      n++; v = m[1] < 0 ? -m[1] : m[1]
+      sum += v; if (v > max) max = v
+    }
+    END {
+      if (n == 0) {
+        print "  no grid snap in this capture — yaw came from the travel heading alone"
+        exit
+      }
+      printf "  snaps %d   mean %.1fdeg   max %.1fdeg\n", n, sum / n, max
+      # Under a degree the walls are only confirming a heading that was
+      # already right; several degrees means they were carrying the walk.
+      printf "  %s\n", (sum / n < 1.0) \
+        ? "the departure heading was already good" \
+        : "the walls were doing real work"
+    }
+  ' "$log"
   echo
 
   # `Route ... off 1.2m ...` — the one number that says whether the building

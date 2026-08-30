@@ -201,6 +201,13 @@ class RoomPlanBridge {
     return RoutePath(
       pointsM: [for (final point in line) point * scale],
       legEndsM: legEnds,
+      // The room the walker said they were in. Kept off the route — the walk
+      // still starts at the doorway — and used only to place them on it. See
+      // [RoutePath.approachFromM].
+      approachFromM: switch (plan.roomOf(fromRoomId)?.centre) {
+        final Offset centre => centre * scale,
+        null => null,
+      },
     );
   }
 
@@ -378,10 +385,53 @@ class RoomPlanBridge {
 /// cannot say where anything is, which is why an arrow driven from one could
 /// only ever point along a guess. This carries the geometry that answers that.
 class RoutePath {
-  const RoutePath({required this.pointsM, required this.legEndsM});
+  const RoutePath({
+    required this.pointsM,
+    required this.legEndsM,
+    this.approachFromM,
+  });
 
   /// Every vertex of the path, bent round the corridors it follows.
+  ///
+  /// Runs **door to door**: the first point is the origin room's doorway, not
+  /// the middle of that room, because a walker needs no directions to a door
+  /// they can see. See `RoomNavGraph._doorToDoor`.
   final List<Offset> pointsM;
+
+  /// Where the walker was standing when they said which room they were in.
+  ///
+  /// **Not part of the route, and deliberately not its first point.** The route
+  /// starts at the doorway; this is the place the walker walks *from* to reach
+  /// that doorway, and it is the origin room's centre because that is the best
+  /// the app can know from "I am in room 12".
+  ///
+  /// It exists for exactly one job: registration. ARCore's origin is fixed
+  /// wherever the phone was when the session opened, which is inside the room —
+  /// so pairing that world position with the route's first point declares the
+  /// walker to be standing in their own doorway when they are not. In a reading
+  /// room twenty metres across that is ten metres of pure translation error
+  /// applied to the whole building, and it is the same ten metres however
+  /// accurate the scale and the rotation are.
+  ///
+  /// Null when the origin room has no usable centre, in which case registration
+  /// falls back to treating the doorway as the starting point — the old
+  /// behaviour, and wrong by however far into the room they were standing.
+  final Offset? approachFromM;
+
+  /// How far the walker travels to reach the route's first point.
+  ///
+  /// Zero when there is no [approachFromM] to measure from.
+  double get approachM => approachFromM == null || pointsM.isEmpty
+      ? 0
+      : (pointsM.first - approachFromM!).distance;
+
+  /// The line the walker actually covers, from where they stood to the end.
+  ///
+  /// [pointsM] with the approach stretch on the front. Used only to work out
+  /// how far along they have got — never sent to ARCore, which is given the
+  /// door-to-door route and nothing else.
+  List<Offset> get walkedLineM =>
+      approachFromM == null ? pointsM : [approachFromM!, ...pointsM];
 
   /// How far along the path each leg of the spoken route ends.
   ///

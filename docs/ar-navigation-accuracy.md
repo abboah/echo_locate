@@ -142,9 +142,11 @@ app believes; this reports whether the building agrees.
   6 m. One of the two is badly wrong. Check whether the sign that was confirmed
   is the sign the route expected.
 - **`Floor measured at y=…`** — plane fitting found the floor. If this says
-  `No floor plane in 9000ms` on every walk, the rings are being drawn at the
+  `No floor plane in 20000ms` on every walk, the rings are being drawn at the
   assumed 1.35 m below the phone and will look wrong to anybody not holding it
   at that height.
+- **`Wall grid measured …` / `GRID SNAP …deg`** — where the rotation came from.
+  See §5.4; these are the lines that say whether the yaw fix is doing anything.
 
 ---
 
@@ -161,5 +163,136 @@ app believes; this reports whether the building agrees.
   re-solve. A registration that comes out rotated announces itself as a climbing
   `off …m` and is re-solved after 4 s beyond 2.5 m — after the walker has already
   acted on a bad arrow for a few strides.
+
+  Since 2026-08-30 the yaw no longer *starts* from motion alone — see §5 — but
+  once solved it is still only motion that can revise it.
 - **Floor height is measured once per session.** Walking up a ramp within one
   session leaves the rings at the height of the floor the session started on.
+
+---
+
+## 5. Where the yaw comes from — added 2026-08-30
+
+Written after a walk where the rings landed in the wrong room and the capture
+turned out to be empty. Both of those are addressed here.
+
+### 5.1 Why rotation was the whole error
+
+Registration is a similarity transform: scale, rotation, and two of translation.
+Three of those four were already sound. Scale is measured by the user and
+applied in `room_plan_bridge.dart`. Translation comes from the walker having
+told the app which room they are standing in. **Rotation was the only unknown,
+and it was also the only one nothing downstream could repair.**
+
+It is worth being precise about why knowing the destination does not help. The
+end of the route is known *on the plan*; it is not known in ARCore's world,
+because the walker has not been there yet. One point correspondence carries zero
+information about rotation. So the yaw had exactly one source: comparing the
+direction the walker was travelling against the direction the route leaves in.
+
+And it is a lever. A yaw error of θ puts a ring at distance *d* off the line by
+*d*·sin θ:
+
+| yaw error | off the line at 10 m | at 20 m | at 40 m |
+| --- | --- | --- | --- |
+| 5° | 0.9 m | 1.7 m | 3.5 m |
+| 10° | 1.7 m | 3.5 m | 6.9 m |
+| 15° | 2.6 m | 5.2 m | 10.4 m |
+
+Against a target of "mean under 1.0 m", anything past about 5° has already
+failed, and it fails *worse the further the walker goes* — which is exactly what
+a ring landing in the wrong room looks like.
+
+### 5.2 The two fixes
+
+**Matched baselines.** Native used to release a travel heading after 0.7 m of
+net displacement (`MIN_TRAVEL_FOR_HEADING_M`) and Dart matched it against the
+route's departure direction measured over 3 m (`_departureM`). Those describe
+different stretches of walking, and the difference went straight into the yaw —
+0.7 m out of a room is largely the act of getting through the doorway.
+
+There is now a second, longer threshold, `MIN_TRAVEL_FOR_REGISTRATION_M = 3 m`,
+published as `registrationHeadingDeg`. The short one still exists and still
+anchors legs, because a leg can be corrected a few metres later
+(`refineCameraAnchor`) and a registration cannot. `TRAIL_SAMPLES` went from 24 to
+40 so the ring buffer can actually hold 3 m of net displacement on a walk that
+is not perfectly straight.
+
+**The wall grid.** ARCore has no idea what a corridor is — it has no semantics
+at all, and no amount of asking will get it to recognise one. What it does have
+is vertical planes, and a corridor's walls are vertical planes whose normals
+point along the building.
+
+Plane finding is now `HORIZONTAL_AND_VERTICAL`. Wall normals are flattened onto
+the floor, folded onto a quarter turn — so both sides of a corridor and the end
+wall all vote for the same answer — and averaged as unit vectors at four times
+their bearing, which is what makes the fold work. The result is `wallGridDeg`:
+the building's rectilinear grid, in ARCore's frame, owing nothing to how the
+walker set off.
+
+The plan has a grid too, read off the route's own legs (`Registration.planGridOf`)
+— in a rectilinear building, the corridors a route runs down *are* the axes.
+
+`Registration.snappedToGrid` puts the two together. Exactly four yaws carry the
+plan's grid onto the world's, a quarter turn apart. **The measured heading picks
+which of the four; the walls supply the value.** That split is the point: picking
+among four candidates 90° apart only needs the heading right to within 45°,
+which even a poor walk manages, while the precision comes from fitted planes
+rather than footsteps.
+
+It refuses in three cases, all logged: no walls fitted, a plan too unsquare to
+have a grid, and a correction over 25° — which is not departure slop but a
+heading in the wrong quadrant or planes fitted to something that is not a wall.
+
+### 5.3 What this does not fix
+
+- **Buildings that are not rectilinear.** A curved or splayed plan has no grid,
+  `planGridOf` returns null, and the yaw falls back to the heading alone.
+- **Rotation after registration.** Unchanged: landmarks still correct only
+  translation. The grid is read once, during the plane-search window.
+- **A wrong quadrant.** If the measured heading is more than 45° out, the snap
+  picks the wrong candidate — and it will do so *confidently*. This is the one
+  failure mode the change introduces, and `off …m` is still what catches it.
+
+### 5.4 New lines in a capture
+
+```
+Wall grid measured at 3.2deg from 4 walls, spread 1.1deg
+GRID SNAP -7.4deg onto the wall grid
+REGISTERED Registration(yaw 3deg, …)
+```
+
+- **`Wall grid measured … spread …deg`** — the walls agreed. Spread is the
+  circular scatter after folding; over `WALL_GRID_MAX_SPREAD_DEG` (6°) it is
+  rejected instead.
+- **`Wall grid rejected: N walls disagree by …`** — planes were found and were
+  not a building. An out-of-square room, or a door and a bookcase.
+- **`No wall grid in …ms`** — the search window closed with too few walls. The
+  registration is back to pre-2026-08-30 behaviour, and the `off …m` numbers
+  should be read as a test of the old path.
+- **`GRID SNAP …deg`** — how much skew the walls took out. **This is the number
+  that says whether any of this was worth it.** Consistently under a degree
+  means the departure heading was already fine and the walls are only
+  confirming it. Consistently 5–15° means they were carrying the walk.
+
+### 5.5 The floor search window
+
+`FLOOR_SEARCH_MS` went from 9 s to 20 s, because the search picked up a second
+job. A floor is underfoot from the first frame; a corridor's walls are only
+fitted once the walker has moved along them far enough to give ARCore parallax,
+and that is the same three metres the registration heading waits for. A window
+that shuts before the walker has set off cannot see what it is looking for.
+
+The search now ends when *both* the floor and the grid are in hand, or when the
+window expires — and it logs which of the two it failed to get. A capture that
+says `No floor plane` on every walk means the rings are drawn at the assumed
+1.35 m and will look wrong to anyone not holding the phone at that height, which
+is a separate complaint from the rings being in the wrong place.
+
+### 5.6 None of this is measured yet
+
+Everything above is reasoned from the geometry and covered by unit tests
+(`test/route_registration_test.dart`, `test/ar_guidance_cubit_test.dart`). **No
+walk on a real device has confirmed any of it.** The numbers that would are the
+ones in §2, and the specific question to ask of the first capture is whether
+`GRID SNAP` is doing anything and whether the `off …m` mean came down.

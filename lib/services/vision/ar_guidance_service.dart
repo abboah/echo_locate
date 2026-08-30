@@ -32,6 +32,8 @@ class ArGuidanceFrame {
     this.cameraX,
     this.cameraZ,
     this.travelHeadingDeg,
+    this.registrationHeadingDeg,
+    this.wallGridDeg,
   });
 
   final CaptureTrackingLike tracking;
@@ -108,6 +110,29 @@ class ArGuidanceFrame {
   /// direction the last couple of metres of walking went in.
   final double? travelHeadingDeg;
 
+  /// The same direction, measured over a much longer baseline, or null until
+  /// the walker has covered it.
+  ///
+  /// **This is the one a registration is solved from, and the distinction is
+  /// the whole accuracy of the AR layer.** [travelHeadingDeg] is released after
+  /// 0.7 m so a leg can be anchored promptly and corrected a few metres later.
+  /// A registration gets no such second chance — its yaw rotates the entire
+  /// building and no landmark can take it back out — so it waits for metres of
+  /// walking instead of centimetres.
+  final double? registrationHeadingDeg;
+
+  /// The building's rectilinear grid, folded to [0, 90), in degrees.
+  ///
+  /// Measured from the normals of vertical planes: an absolute direction that
+  /// owes nothing to how the walker happened to set off. Null when too few
+  /// walls have been fitted, or when the ones that were disagree — an
+  /// out-of-square room, or a plane fitted to something that is not a wall.
+  ///
+  /// Folded, so it names the grid rather than a direction on it. Which of the
+  /// four quarter-turns applies is resolved against the travel heading in
+  /// `Registration.snappedToGrid`.
+  final double? wallGridDeg;
+
   bool get isTracking => tracking == CaptureTrackingLike.tracking;
 
   /// Whether this frame carries what a registration needs to be solved.
@@ -115,7 +140,7 @@ class ArGuidanceFrame {
       isTracking &&
       cameraX != null &&
       cameraZ != null &&
-      travelHeadingDeg != null;
+      registrationHeadingDeg != null;
 
   static ArGuidanceFrame fromNative(Map<Object?, Object?> map) => ArGuidanceFrame(
     tracking: switch (map['trackingState'] as String?) {
@@ -141,6 +166,9 @@ class ArGuidanceFrame {
     cameraX: (map['camX'] as num?)?.toDouble(),
     cameraZ: (map['camZ'] as num?)?.toDouble(),
     travelHeadingDeg: (map['travelHeadingDeg'] as num?)?.toDouble(),
+    registrationHeadingDeg:
+        (map['registrationHeadingDeg'] as num?)?.toDouble(),
+    wallGridDeg: (map['wallGridDeg'] as num?)?.toDouble(),
   );
 }
 

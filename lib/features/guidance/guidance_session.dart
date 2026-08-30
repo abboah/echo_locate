@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 
 import '../../core/models/landmark.dart';
+import '../../core/models/room_plan.dart';
 import '../../services/mapping/floor_graph.dart';
 import '../../services/mapping/room_plan_bridge.dart';
 import '../../services/mapping/route_planner.dart';
@@ -20,6 +21,7 @@ class GuidanceSession extends Equatable {
     this.graph,
     this.metric = true,
     this.routePath,
+    this.floorPlan,
   });
 
   final PlannedRoute plan;
@@ -35,6 +37,19 @@ class GuidanceSession extends Equatable {
   /// `route_registration.dart`) and the arrow points at real corners rather
   /// than dead-reckoning a chain of turns from a guessed starting direction.
   final RoutePath? routePath;
+
+  /// The floor the walk crosses, for drawing it.
+  ///
+  /// Nothing about the *walk* needs this — the route, the distances and the
+  /// spoken turns are all settled before guidance starts, which is why the
+  /// session never carried it. It is here so the screen can show the walker
+  /// where they are on the floor rather than a line on an empty card: a route
+  /// drawn with no rooms round it is a shape, and a route drawn through the
+  /// rooms it passes is a map.
+  ///
+  /// Null for a walk with no plan behind it — a route stitched out of recorded
+  /// walks — and the drawing falls back to the bare line.
+  final RoomPlan? floorPlan;
 
   /// Every landmark in the building, not just this route's.
   ///
@@ -88,6 +103,7 @@ class GuidanceSession extends Equatable {
         // the arrow registered to a route the walker has left. A caller that
         // replans has to supply fresh geometry or go without.
         routePath: plan == null ? routePath : null,
+        floorPlan: floorPlan,
       );
 
   @override
@@ -99,5 +115,6 @@ class GuidanceSession extends Equatable {
     graph,
     metric,
     routePath,
+    floorPlan,
   ];
 }

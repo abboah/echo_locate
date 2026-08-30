@@ -1032,8 +1032,10 @@ void main() {
         ).route(fromRoomId: a.id, toRoomId: c.id);
 
         expect(route, isNotNull);
-        expect(route!.roomsPassed, hasLength(3));
-        expect(plan.roomOf(route.roomsPassed[1])!.isCirculation, isTrue);
+        // Corridor then Room C: door to door, so Room A is where the walker is
+        // standing rather than a room the route crosses.
+        expect(route!.roomsPassed, hasLength(2));
+        expect(plan.roomOf(route.roomsPassed[0])!.isCirculation, isTrue);
         await cubit.close();
       },
     );

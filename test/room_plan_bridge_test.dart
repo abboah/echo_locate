@@ -176,9 +176,11 @@ void main() {
         initialHeading: east,
       )!;
 
-      // lobby → corridor → n2.
-      expect(route.legs, hasLength(2));
-      expect(route.landmarkIds, ['room-lobby', 'room-corridor', 'room-n2']);
+      // Door to door: out of the lobby's doorway, down the corridor, stop at
+      // n2's door. The leg that used to cross the lobby to reach its own door
+      // is gone, and with it the only leg nobody needed directions for.
+      expect(route.legs, hasLength(1));
+      expect(route.landmarkIds, ['room-corridor', 'room-n2']);
     });
 
     test('THE POINT: the door count reaches guidance as spoken words', () {
@@ -236,8 +238,9 @@ void main() {
       )!;
 
       // Same total the nav graph reported for this walk — the legs partition
-      // the polyline rather than re-measuring it centre to centre.
-      expect(route.totalDistanceM, closeTo(17.54, 0.05));
+      // the polyline rather than re-measuring it centre to centre. Door to
+      // door now, so the corridor and neither room's interior.
+      expect(route.totalDistanceM, closeTo(12.04, 0.05));
     });
 
     test('turns are carried in the repo convention: positive is right', () {
@@ -298,7 +301,7 @@ void main() {
 
       final spoken = route.legs.map((l) => l.instruction ?? '').join(' ');
 
-      expect(route.legs, hasLength(2));
+      expect(route.legs, hasLength(1));
       expect(spoken, isNot(contains('door on your')));
       expect(spoken, contains('Digital Forensic Office'));
     });

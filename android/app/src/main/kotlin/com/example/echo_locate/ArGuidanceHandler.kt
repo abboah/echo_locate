@@ -29,6 +29,8 @@ import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.view.TextureRegistry
+import kotlin.math.abs
+import kotlin.math.asin
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.floor
@@ -165,7 +167,7 @@ class ArGuidanceHandler(
         /**
          * How far below the phone the floor is assumed to be, in metres.
          *
-         * **The fallback, not the answer.** [serviceFloorSearch] measures the
+         * **The fallback, not the answer.** [servicePlaneSearch] measures the
          * floor for real in the first few seconds of a session and this is what
          * stands in until it does — or permanently, on a corridor where plane
          * fitting never converges.
@@ -183,11 +185,59 @@ class ArGuidanceHandler(
          * How long plane finding runs before the session gives up on it.
          *
          * Plane fitting is on for these first seconds and then switched off for
-         * good — see [serviceFloorSearch]. The CPU it costs is CPU ML Kit is not
+         * good — see [servicePlaneSearch]. The CPU it costs is CPU ML Kit is not
          * getting, and ML Kit is what reads the door plates this app navigates
          * by, so it is borrowed briefly rather than kept.
+         *
+         * Raised from 9 s once the search acquired a second job. Nine seconds
+         * was tuned for a floor, which is underfoot from the first frame; a
+         * corridor's *walls* are only fitted once the walker has moved along
+         * them far enough to give ARCore parallax, and that is the same three
+         * metres [MIN_TRAVEL_FOR_REGISTRATION_M] waits for. A window that shuts
+         * before the walker has set off cannot see the thing it is looking for.
          */
-        private const val FLOOR_SEARCH_MS = 9000L
+        private const val FLOOR_SEARCH_MS = 20000L
+
+        /**
+         * How much of a vertical plane has to be fitted before it counts as a
+         * wall.
+         *
+         * Larger than [FLOOR_MIN_AREA_M2] because the things that are vertical
+         * and are not walls — a door left ajar, the side of a bookcase, a
+         * person standing still — are small, and a wrong bearing here rotates
+         * the whole building. A corridor wall gives several square metres
+         * within a few paces of walking down it.
+         */
+        private const val WALL_MIN_AREA_M2 = 1.5f
+
+        /**
+         * How far a wall may lean off true vertical and still be believed.
+         *
+         * ARCore labels a plane VERTICAL on a tolerance of its own, and a
+         * badly fitted one tilts. A tilted plane's normal projects onto the
+         * floor shortened and rotated, which is exactly the error this whole
+         * mechanism exists to remove.
+         */
+        private const val WALL_MAX_TILT_DEG = 12f
+
+        /**
+         * How many walls must agree before the grid they imply is used.
+         *
+         * One wall is an object. Several walls that agree — after folding to
+         * the 90-degree grid, so the two sides of a corridor and the end of it
+         * all count toward the same answer — is a building.
+         */
+        private const val WALL_GRID_MIN_PLANES = 2
+
+        /**
+         * How tightly the walls have to agree, in degrees on the folded grid.
+         *
+         * A rectilinear building fits inside a couple of degrees. Anything
+         * looser is a room that is not square, or a plane fitted to something
+         * that is not a wall, and a grid solved from it is worse than the
+         * heading it would replace.
+         */
+        private const val WALL_GRID_MAX_SPREAD_DEG = 6f
 
         /**
          * How far below the phone a horizontal plane has to be to be the floor.
@@ -211,16 +261,48 @@ class ArGuidanceHandler(
         /** Trajectory sample spacing, in metres. */
         private const val TRAIL_STEP_M = 0.15f
 
-        /** How many samples back the travel direction is measured over. */
-        private const val TRAIL_SAMPLES = 24
+        /**
+         * How many samples back the travel direction is measured over.
+         *
+         * Sized so the ring can still hold [MIN_TRAVEL_FOR_REGISTRATION_M] of
+         * *net* displacement with room to spare. At [TRAIL_STEP_M] spacing this
+         * is 6 m of path, and a walker who curves a little covers less ground
+         * than they walk — a ring sized exactly to the threshold would never
+         * reach it on anything but a perfectly straight corridor.
+         */
+        private const val TRAIL_SAMPLES = 40
 
         /**
          * Net movement needed before the travel direction is trusted.
          *
          * Below this, the samples describe somebody shuffling on the spot and
          * the direction they imply is noise pointed at a corridor.
+         *
+         * This is the *leg* threshold, and it is deliberately short: a leg
+         * anchored from a rough heading is corrected a few metres later by
+         * [refineCameraAnchor], so being early costs little and waiting costs
+         * the walker arrows on the first stretch of every corridor.
          */
         private const val MIN_TRAVEL_FOR_HEADING_M = 0.7f
+
+        /**
+         * Net movement needed before a heading may be used to *register*.
+         *
+         * Much longer than [MIN_TRAVEL_FOR_HEADING_M], and the reason is the
+         * lever arm. A leg's heading is wrong for one corridor and is fixed at
+         * the next landmark; a registration's heading rotates the entire
+         * building and nothing downstream can correct it (`recentredAt` keeps
+         * the yaw — one point says nothing about rotation). An error of theta
+         * puts a ring at distance d off the line by d*sin(theta), so fifteen
+         * degrees solved from a doorway lands a ring five metres out at twenty.
+         *
+         * Matched to `ArGuidanceCubit._departureM`, which measures the plan's
+         * departure direction over three metres of route. Both sides of the
+         * correspondence now describe the same length of walking; before this
+         * they were 3 m of plan against 0.7 m of world, and the mismatch went
+         * straight into the yaw.
+         */
+        private const val MIN_TRAVEL_FOR_REGISTRATION_M = 3f
 
         /**
          * A jump this big between two trajectory samples is not walking.
@@ -397,6 +479,16 @@ class ArGuidanceHandler(
     /** The direction of travel in radians, or null when there is no motion. */
     private var travelHeading: Float? = null
 
+    /**
+     * The same direction, withheld until it is worth registering against.
+     *
+     * Null until the trail carries [MIN_TRAVEL_FOR_REGISTRATION_M] of net
+     * displacement, and null again after every [resetTrail] — a heading built
+     * from a rebuilt trail describes wherever the walker happens to be going
+     * now, which is what the late-registration path in Dart exists to handle.
+     */
+    private var registrationHeading: Float? = null
+
     /** Tracking as of the previous frame, for spotting the transitions. */
     @Volatile
     private var wasTracking = false
@@ -418,6 +510,29 @@ class ArGuidanceHandler(
 
     /** Whether plane finding is still switched on. */
     private var searchingForFloor = false
+
+    // --- The walls ----------------------------------------------------------
+
+    /**
+     * The building's rectilinear grid in world radians, folded to [0, pi/2).
+     *
+     * This is the one absolute direction ARCore can give that does not come
+     * from the walker's own motion, and it is the missing input to the
+     * registration. A corridor's walls run along the building; their normals,
+     * flattened onto the floor and folded by ninety degrees, all name the same
+     * angle whichever wall was seen and whichever way round it faced.
+     *
+     * Folded rather than absolute because a normal cannot say which side of
+     * the wall it is on and a plan cannot say which of its four rectilinear
+     * directions is "north". Dart resolves the quarter-turn ambiguity against
+     * the travel heading, which only has to be right to within forty-five
+     * degrees to pick the right quadrant — and it comfortably is, even at the
+     * short baseline. See `Registration.snappedToGrid`.
+     *
+     * Null until enough walls agree, and on any session where they never do.
+     */
+    @Volatile
+    private var wallGridRad: Float? = null
 
     // --- The leg ------------------------------------------------------------
 
@@ -779,19 +894,29 @@ class ArGuidanceHandler(
             chooseCameraConfig(newSession)
             newSession.configure(
                 newSession.config.apply {
-                    // Horizontal planes, briefly, for one number: where the
-                    // floor is. [serviceFloorSearch] switches this off again the
-                    // moment it has one, or after [FLOOR_SEARCH_MS], because
-                    // every cycle not spent fitting planes to a bare corridor
-                    // floor is a cycle ML Kit can have — and ML Kit is what
-                    // reads the signs this app navigates by.
+                    // Planes, briefly, for two numbers: where the floor is and
+                    // which way the building runs. [servicePlaneSearch]
+                    // switches this off again the moment it has both, or after
+                    // [FLOOR_SEARCH_MS], because every cycle not spent fitting
+                    // planes to a bare corridor floor is a cycle ML Kit can
+                    // have — and ML Kit is what reads the signs this app
+                    // navigates by.
+                    //
+                    // Vertical planes were previously off, and the wall grid
+                    // is why they are on: it is the only absolute direction
+                    // ARCore can supply that does not come from the walker's
+                    // own motion, and the registration's yaw — which rotates
+                    // the entire building and is never corrected afterwards —
+                    // had nothing else to lean on. Walls cost more to fit than
+                    // a floor, which is the other half of why the window was
+                    // widened rather than the search made permanent.
                     //
                     // Depth stays off. It would buy occlusion, so the arrow
                     // stopped drawing through walls, and it costs more than
                     // plane fitting does; that trade is one to make against
                     // measured frame times, not in advance.
                     planeFindingMode = if (MEASURE_FLOOR) {
-                        Config.PlaneFindingMode.HORIZONTAL
+                        Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
                     } else {
                         Config.PlaneFindingMode.DISABLED
                     }
@@ -828,6 +953,7 @@ class ArGuidanceHandler(
             wasTracking = false
             analysisInFlight = false
             measuredFloorY = null
+            wallGridRad = null
             searchingForFloor = MEASURE_FLOOR
             floorSearchStartedAt = System.currentTimeMillis()
 
@@ -1041,7 +1167,7 @@ class ArGuidanceHandler(
             noteTracking(frame)
             trackTrajectory(frame)
             logPose(frame)
-            serviceFloorSearch(current, frame)
+            servicePlaneSearch(current, frame)
             servicePendingRoute(frame)
             servicePendingLeg(frame)
             refineCameraAnchor(frame)
@@ -1148,7 +1274,7 @@ class ArGuidanceHandler(
      * Lowest rather than largest, because in a room with a big table the table
      * is the larger plane and the walker is not standing on it.
      */
-    private fun serviceFloorSearch(session: Session, frame: Frame) {
+    private fun servicePlaneSearch(session: Session, frame: Frame) {
         if (!searchingForFloor) return
         val camera = frame.camera
         if (camera.trackingState != TrackingState.TRACKING) {
@@ -1160,20 +1286,90 @@ class ArGuidanceHandler(
 
         val cameraY = camera.pose.translation[1]
         var lowest: Float? = null
+        // Wall bearings folded onto the 90-degree grid, as unit vectors at
+        // *double* the folded angle — see [meanGrid] for why the averaging has
+        // to happen there rather than on the angles themselves.
+        var gridSin = 0f
+        var gridCos = 0f
+        var walls = 0
+
         for (plane in session.getAllTrackables(Plane::class.java)) {
             if (plane.trackingState != TrackingState.TRACKING) continue
-            if (plane.type != Plane.Type.HORIZONTAL_UPWARD_FACING) continue
             // A plane ARCore has merged into a larger one. Its pose is stale.
             if (plane.subsumedBy != null) continue
-            if (plane.extentX * plane.extentZ < FLOOR_MIN_AREA_M2) continue
 
-            val y = plane.centerPose.ty()
-            val drop = cameraY - y
-            if (drop < FLOOR_MIN_DROP_M || drop > FLOOR_MAX_DROP_M) continue
-            if (lowest == null || y < lowest) lowest = y
+            when (plane.type) {
+                Plane.Type.HORIZONTAL_UPWARD_FACING -> {
+                    if (plane.extentX * plane.extentZ < FLOOR_MIN_AREA_M2) continue
+                    val y = plane.centerPose.ty()
+                    val drop = cameraY - y
+                    if (drop < FLOOR_MIN_DROP_M || drop > FLOOR_MAX_DROP_M) continue
+                    if (lowest == null || y < lowest) lowest = y
+                }
+
+                Plane.Type.VERTICAL -> {
+                    if (plane.extentX * plane.extentZ < WALL_MIN_AREA_M2) continue
+
+                    // A plane's normal is its pose's y axis, whatever the
+                    // plane's orientation: ARCore builds the pose so that the
+                    // surface lies in x–z and y points out of it.
+                    val normal = plane.centerPose.yAxis
+                    val nx = normal[0]
+                    val ny = normal[1]
+                    val nz = normal[2]
+
+                    // A true wall's normal is horizontal, so its y component is
+                    // zero. Anything leaning is a bad fit, and its flattened
+                    // normal is rotated away from the wall it came from.
+                    val tilt = abs(asin(ny.coerceIn(-1f, 1f))) * 180f / Math.PI.toFloat()
+                    if (tilt > WALL_MAX_TILT_DEG) continue
+
+                    val flat = kotlin.math.sqrt(nx * nx + nz * nz)
+                    if (flat < 1e-3f) continue
+
+                    // The wall's own direction is perpendicular to its normal,
+                    // but folding by 90 degrees makes the two the same angle —
+                    // so the normal's bearing is taken directly and the fold
+                    // does the rest.
+                    val bearing = atan2(nx, -nz)
+                    // Doubled before averaging: two bearings 90 degrees apart
+                    // are the same grid, and doubling maps them onto the same
+                    // direction where a vector mean is meaningful.
+                    val doubled = 4f * bearing
+                    gridSin += sin(doubled)
+                    gridCos += cos(doubled)
+                    walls++
+                }
+
+                else -> continue
+            }
         }
 
-        if (lowest != null) {
+        if (walls >= WALL_GRID_MIN_PLANES && wallGridRad == null) {
+            // Resultant length says how tightly they agreed. A perfect
+            // rectilinear set gives 1; walls pointing every way cancel to 0.
+            val resultant = kotlin.math.sqrt(gridSin * gridSin + gridCos * gridCos) / walls
+            val spreadDeg = spreadFromResultant(resultant)
+            if (spreadDeg <= WALL_GRID_MAX_SPREAD_DEG) {
+                val grid = normaliseGrid(atan2(gridSin, gridCos) / 4f)
+                wallGridRad = grid
+                Log.i(
+                    TAG,
+                    "Wall grid measured at " +
+                        "${"%.1f".format(grid * 180f / Math.PI.toFloat())}deg " +
+                        "from $walls walls, spread " +
+                        "${"%.1f".format(spreadDeg)}deg",
+                )
+            } else {
+                Log.i(
+                    TAG,
+                    "Wall grid rejected: $walls walls disagree by " +
+                        "${"%.1f".format(spreadDeg)}deg",
+                )
+            }
+        }
+
+        if (lowest != null && measuredFloorY == null) {
             measuredFloorY = lowest
             Log.i(
                 TAG,
@@ -1182,18 +1378,64 @@ class ArGuidanceHandler(
                     "(assumed ${EYE_HEIGHT_M}m)",
             )
             adoptMeasuredFloor(lowest)
+        }
+
+        // Both jobs done, or out of time. The floor alone is no longer enough
+        // to stop the search: the walls are what the registration needs and
+        // they take longer to fit than the floor underfoot does.
+        if (measuredFloorY != null && wallGridRad != null) {
             stopSearchingForFloor(session)
             return
         }
 
         if (System.currentTimeMillis() - floorSearchStartedAt >= FLOOR_SEARCH_MS) {
-            Log.i(
-                TAG,
-                "No floor plane in ${FLOOR_SEARCH_MS}ms — keeping the assumed " +
-                    "${EYE_HEIGHT_M}m",
-            )
+            if (measuredFloorY == null) {
+                Log.i(
+                    TAG,
+                    "No floor plane in ${FLOOR_SEARCH_MS}ms — keeping the assumed " +
+                        "${EYE_HEIGHT_M}m",
+                )
+            }
+            if (wallGridRad == null) {
+                Log.i(
+                    TAG,
+                    "No wall grid in ${FLOOR_SEARCH_MS}ms — registration falls " +
+                        "back to the travel heading alone",
+                )
+            }
             stopSearchingForFloor(session)
         }
+    }
+
+    /**
+     * Circular spread of the folded wall bearings, in degrees.
+     *
+     * [resultant] is the mean vector's length on the quadrupled angle, so it
+     * runs 1 for perfect agreement down to 0 for none. The inverse of the
+     * standard circular-variance relation turns it back into an angle, and the
+     * quarter undoes the quadrupling so the number is in the same degrees the
+     * threshold is written in.
+     */
+    private fun spreadFromResultant(resultant: Float): Float {
+        val clamped = resultant.coerceIn(1e-6f, 1f)
+        val spread = kotlin.math.sqrt(-2f * kotlin.math.ln(clamped))
+        return spread * 180f / Math.PI.toFloat() / 4f
+    }
+
+    /**
+     * Folds an angle onto [0, pi/2), the range a rectilinear grid lives in.
+     *
+     * The epsilon matches `Registration.foldToQuarter` on the Dart side, and
+     * for the same reason: walls square to ARCore's own axes average out a hair
+     * either side of zero, and the negative side folds to a hair *under* a
+     * quarter turn. Both name the same grid, but a log line reading 89.9deg for
+     * a square corridor is one nobody can act on.
+     */
+    private fun normaliseGrid(angle: Float): Float {
+        val quarter = (Math.PI / 2).toFloat()
+        var a = angle % quarter
+        if (a < 0f) a += quarter
+        return if (quarter - a < 1e-5f) 0f else a
     }
 
     /** Gives the CPU back to ML Kit. */
@@ -1477,13 +1719,30 @@ class ArGuidanceHandler(
         val newest = (trailHead - 1 + TRAIL_SAMPLES) % TRAIL_SAMPLES
         val netX = trailX[newest] - trailX[oldest]
         val netZ = trailZ[newest] - trailZ[oldest]
-        travelHeading = if (netX * netX + netZ * netZ >=
+        val netSq = netX * netX + netZ * netZ
+        // Yaw measured from -z (ARCore's forward) toward +x, so a positive
+        // turn is a turn to the right — the same convention as
+        // `PlannedLeg.turnDeg` and `route_layout`'s heading.
+        val bearing = atan2(netX, -netZ)
+
+        travelHeading = if (netSq >=
             MIN_TRAVEL_FOR_HEADING_M * MIN_TRAVEL_FOR_HEADING_M
         ) {
-            // Yaw measured from -z (ARCore's forward) toward +x, so a positive
-            // turn is a turn to the right — the same convention as
-            // `PlannedLeg.turnDeg` and `route_layout`'s heading.
-            atan2(netX, -netZ)
+            bearing
+        } else {
+            null
+        }
+
+        // The same bearing, released only once it has been earned over a much
+        // longer baseline. Separate from [travelHeading] rather than replacing
+        // it because the two are asked for different things: a leg wants a
+        // direction soon and can be corrected later, a registration wants one
+        // right and never gets a second chance. See the note on
+        // [MIN_TRAVEL_FOR_REGISTRATION_M].
+        registrationHeading = if (netSq >=
+            MIN_TRAVEL_FOR_REGISTRATION_M * MIN_TRAVEL_FOR_REGISTRATION_M
+        ) {
+            bearing
         } else {
             null
         }
@@ -1500,6 +1759,7 @@ class ArGuidanceHandler(
         trailCount = 0
         trailHead = 0
         travelHeading = null
+        registrationHeading = null
     }
 
     /**
@@ -1985,6 +2245,20 @@ class ArGuidanceHandler(
             payload["camZ"] = quantise(translation[2], 0.05f)
             travelHeading?.let {
                 payload["travelHeadingDeg"] = quantise(it * 180f / Math.PI.toFloat(), 1f)
+            }
+            // The long-baseline heading, which is the only one Dart registers
+            // against. Sent alongside rather than instead of the short one:
+            // the screen's "walk a few steps" hint keys off the short one, and
+            // a walker who has moved at all should not be told they haven't.
+            registrationHeading?.let {
+                payload["registrationHeadingDeg"] =
+                    quantise(it * 180f / Math.PI.toFloat(), 0.5f)
+            }
+            // Quantised finer than any other angle here. It is folded to a
+            // quarter turn, so a degree of rounding is a degree of building
+            // rotation with no averaging left to absorb it.
+            wallGridRad?.let {
+                payload["wallGridDeg"] = quantise(it * 180f / Math.PI.toFloat(), 0.25f)
             }
         }
 

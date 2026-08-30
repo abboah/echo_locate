@@ -201,6 +201,172 @@ class Registration {
   double worldBearingFor(Offset planDirection) =>
       yawRad + planBearingOf(planDirection);
 
+  /// This transform with its rotation snapped onto a measured building grid.
+  ///
+  /// ## The problem this exists for
+  ///
+  /// [solve] gets its rotation from one comparison: the direction the walker
+  /// was travelling against the direction the route leaves in. Both are honest
+  /// and neither is precise. The walker's is measured over a few metres of real
+  /// walking, which includes stepping out of a doorway, going round somebody,
+  /// and the ordinary sway of holding a phone; the route's is a straight line
+  /// between two points on a drawing. A few degrees between them is normal.
+  ///
+  /// A few degrees is not a small error here. It rotates the *whole building*,
+  /// so a ring at distance d lands d*sin(theta) off the line — at twenty metres,
+  /// ten degrees is three and a half. And nothing downstream removes it:
+  /// [recentredAt] deliberately keeps the yaw, because one point correspondence
+  /// carries no information about rotation.
+  ///
+  /// ## What a wall grid adds that motion cannot
+  ///
+  /// [worldGridRad] is measured from the normals of vertical planes — an
+  /// absolute direction that owes nothing to how the walker set off. Folded to
+  /// a quarter turn, it names the building's rectilinear grid without claiming
+  /// to know which way round it runs.
+  ///
+  /// The plan has a grid too, and [planGridRad] is it, read off the route's own
+  /// legs: in a rectilinear building the corridors a route runs down *are* the
+  /// building's axes. So the correct yaw is one that carries the plan's grid
+  /// onto the world's — and there are exactly four such yaws, a quarter turn
+  /// apart.
+  ///
+  /// **The measured yaw picks which of the four; the grid supplies the value.**
+  /// That split is what makes this robust: choosing among four candidates
+  /// ninety degrees apart only needs the measured yaw to be right to within
+  /// forty-five degrees, which it comfortably is even on a poor walk, while the
+  /// precision comes from planes fitted to walls rather than from footsteps.
+  ///
+  /// ## When it refuses
+  ///
+  /// Returns this registration unchanged when either grid is null, and when the
+  /// correction exceeds [maxCorrectionRad]. A snap larger than that is not the
+  /// few degrees of slop this is meant to remove — it means the measured yaw
+  /// landed in the wrong quadrant, or the walls fitted are not the corridor's,
+  /// and rotating a building onto that is worse than leaving the error in.
+  Registration snappedToGrid({
+    required double? worldGridRad,
+    required double? planGridRad,
+    double maxCorrectionRad = _defaultMaxSnapRad,
+  }) {
+    if (worldGridRad == null || planGridRad == null) return this;
+
+    // The yaw that carries the plan's grid onto the world's, before choosing a
+    // quarter turn. Both grids are folded, so this is too.
+    final base = foldToQuarter(worldGridRad - planGridRad);
+
+    // The four candidates, and the one nearest the yaw actually measured.
+    var best = yawRad;
+    var bestError = double.infinity;
+    for (var turn = 0; turn < 4; turn++) {
+      final candidate = base + turn * math.pi / 2;
+      final error = signedAngleBetween(candidate, yawRad).abs();
+      if (error < bestError) {
+        bestError = error;
+        best = candidate;
+      }
+    }
+
+    if (bestError > maxCorrectionRad) return this;
+
+    return Registration(
+      yawRad: best,
+      planAnchor: planAnchor,
+      worldAnchor: worldAnchor,
+      confidence: confidence,
+    );
+  }
+
+  /// How far [snappedToGrid] may rotate a registration before it refuses.
+  ///
+  /// Half a quadrant would be the most it could ever need — beyond that the
+  /// nearest candidate is a different quarter turn — so this is well inside
+  /// that: it is sized to the error a travel heading plausibly carries, not to
+  /// the error it could theoretically carry.
+  static const double _defaultMaxSnapRad = 25 * math.pi / 180;
+
+  /// The grid a run of route legs implies, folded to [0, pi/2).
+  ///
+  /// Every leg long enough to have a direction votes, weighted by its length:
+  /// a twenty-metre corridor says more about which way a building runs than the
+  /// two-metre dogleg round a pillar does.
+  ///
+  /// Votes are summed as unit vectors at four times their bearing, which is
+  /// what makes the fold work — four times a quarter turn is a full turn, so
+  /// legs at 0, 90, 180 and 270 degrees all land on the same direction and
+  /// reinforce rather than cancel. Averaging the angles directly would put a
+  /// corridor and the one crossing it at forty-five degrees, which is the one
+  /// answer that cannot be right.
+  ///
+  /// Returns null for a path with no leg long enough to be believed, and for
+  /// one whose legs disagree too much to be a grid at all — a curved ramp, or a
+  /// building that simply is not square.
+  static double? planGridOf(
+    List<Offset> path, {
+    double minLegM = _minGridLegM,
+    double maxSpreadRad = _maxGridSpreadRad,
+  }) {
+    var sumSin = 0.0;
+    var sumCos = 0.0;
+    var weight = 0.0;
+
+    for (var i = 0; i + 1 < path.length; i++) {
+      final delta = path[i + 1] - path[i];
+      final length = delta.distance;
+      if (length < minLegM) continue;
+      final quadrupled = 4 * planBearingOf(delta);
+      sumSin += length * math.sin(quadrupled);
+      sumCos += length * math.cos(quadrupled);
+      weight += length;
+    }
+
+    if (weight <= 0) return null;
+
+    final resultant = math.sqrt(sumSin * sumSin + sumCos * sumCos) / weight;
+    if (spreadOfResultant(resultant) > maxSpreadRad) return null;
+
+    return foldToQuarter(math.atan2(sumSin, sumCos) / 4);
+  }
+
+  /// Circular spread of a set of quadrupled bearings, in radians.
+  ///
+  /// [resultant] is the mean vector's length, 1 for perfect agreement down to 0
+  /// for none. The quarter undoes the quadrupling, so the result is in the same
+  /// radians the thresholds are written in.
+  static double spreadOfResultant(double resultant) {
+    final clamped = resultant.clamp(1e-9, 1.0);
+    return math.sqrt(-2 * math.log(clamped)) / 4;
+  }
+
+  /// Folds an angle onto [0, pi/2), the range a rectilinear grid lives in.
+  ///
+  /// The epsilon is not decoration. A grid solved from legs that are exactly
+  /// axis-aligned comes back as a hair either side of zero, and the negative
+  /// side folds to a hair *under* a quarter turn — so a building squarely on
+  /// ARCore's axes reports 90 degrees instead of 0. Both name the same grid and
+  /// [snappedToGrid] cannot tell them apart, but a log line that says 89.9 for
+  /// a square room is a log line nobody can read.
+  static double foldToQuarter(double angle) {
+    const quarter = math.pi / 2;
+    var folded = angle % quarter;
+    if (folded < 0) folded += quarter;
+    return quarter - folded < 1e-9 ? 0 : folded;
+  }
+
+  /// The signed difference between two angles, in (-pi, pi].
+  static double signedAngleBetween(double a, double b) {
+    var delta = (a - b) % (2 * math.pi);
+    if (delta > math.pi) delta -= 2 * math.pi;
+    if (delta <= -math.pi) delta += 2 * math.pi;
+    return delta;
+  }
+
+  /// Shorter than this and a leg is a step round a doorway, not a corridor.
+  static const double _minGridLegM = 2.5;
+
+  /// How far the legs may disagree before they are not a grid.
+  static const double _maxGridSpreadRad = 10 * math.pi / 180;
+
   /// The same transform re-solved against a fresh correspondence.
   ///
   /// What a confirmed landmark buys: the walker is standing at a known place,

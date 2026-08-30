@@ -223,4 +223,195 @@ void main() {
       );
     });
   });
+
+  group('plan grid', () {
+    test('a rectilinear route reports the axis its corridors run on', () {
+      // North 10, east 8, north 6: three legs on two perpendicular axes, which
+      // is one grid.
+      final path = [
+        const Offset(0, 0),
+        const Offset(0, 10),
+        const Offset(8, 10),
+        const Offset(8, 16),
+      ];
+      expect(deg(Registration.planGridOf(path)!), closeTo(0, 1e-6));
+    });
+
+    test('a route on a building rotated 30 degrees reports 30', () {
+      final turn = rad(30);
+      // Rotated the way a *bearing* runs — clockwise from plan north — so that
+      // turning the building by thirty degrees turns every leg's bearing by
+      // thirty too. The other sign convention would be just as correct and
+      // would read as sixty, which is the same folded grid seen from its other
+      // axis.
+      Offset rotate(Offset p) => Offset(
+        p.dx * math.cos(turn) + p.dy * math.sin(turn),
+        -p.dx * math.sin(turn) + p.dy * math.cos(turn),
+      );
+      final path = [
+        const Offset(0, 0),
+        const Offset(0, 10),
+        const Offset(8, 10),
+      ].map(rotate).toList();
+
+      // Folded to a quarter turn, so a 30-degree building reads as 30 whichever
+      // of its axes the route happened to start along.
+      expect(deg(Registration.planGridOf(path)!), closeTo(30, 1e-6));
+    });
+
+    test('legs shorter than a corridor do not vote', () {
+      // A 20m corridor with a 1m dogleg round a pillar at 45 degrees. The
+      // dogleg is the one leg that is not on the grid, and it is excluded by
+      // length before it can drag the answer off.
+      final path = [
+        const Offset(0, 0),
+        const Offset(0, 20),
+        const Offset(0.7, 20.7),
+        const Offset(0.7, 40),
+      ];
+      expect(deg(Registration.planGridOf(path)!), closeTo(0, 1e-6));
+    });
+
+    test('a path with no leg long enough has no grid', () {
+      final path = [
+        const Offset(0, 0),
+        const Offset(0, 1),
+        const Offset(1, 1),
+      ];
+      expect(Registration.planGridOf(path), isNull);
+    });
+
+    test('legs that disagree too much are not a grid', () {
+      // A curve: every leg long, none of them on a common axis.
+      final path = <Offset>[];
+      for (var i = 0; i <= 8; i++) {
+        final a = rad(i * 11.0);
+        path.add(Offset(math.sin(a) * 40, math.cos(a) * 40));
+      }
+      expect(Registration.planGridOf(path), isNull);
+    });
+  });
+
+  group('snapping to a wall grid', () {
+    // A walk straight up the plan, where ARCore's forward happens to be plan
+    // north, so the true yaw is zero.
+    final path = [
+      const Offset(0, 0),
+      const Offset(0, 20),
+      const Offset(8, 20),
+    ];
+
+    Registration solvedWithYawError(double errorDeg) => Registration.solve(
+      planAt: Offset.zero,
+      planDirection: north,
+      worldAt: origin,
+      // The walker set off a few degrees off the corridor — out of a doorway,
+      // round somebody — and the whole building inherits it.
+      worldHeadingRad: rad(errorDeg),
+      confidence: RegistrationConfidence.measured,
+    )!;
+
+    test('takes a few degrees of departure error back out', () {
+      final wrong = solvedWithYawError(9);
+      expect(deg(wrong.yawRad), closeTo(9, 1e-9));
+
+      // 9 degrees at 20 metres is over three metres off the line.
+      expect(
+        wrong.worldFromPlan(const Offset(0, 20)).distanceTo(
+          const WorldPoint(0, -20),
+        ),
+        greaterThan(3),
+      );
+
+      final snapped = wrong.snappedToGrid(
+        // The walls say the building runs along ARCore's own axes.
+        worldGridRad: 0,
+        planGridRad: Registration.planGridOf(path),
+      );
+
+      expect(deg(snapped.yawRad), closeTo(0, 1e-9));
+      expect(
+        snapped.worldFromPlan(const Offset(0, 20)),
+        closeToPoint(0, -20),
+      );
+    });
+
+    test('picks the quarter turn the measured yaw is nearest', () {
+      // The walker set off down a corridor that runs east in the plan, so the
+      // true yaw is a quarter turn away from the previous case. The grid is
+      // identical — that is what folding costs — and the measured yaw is the
+      // only thing that can choose.
+      final wrong = solvedWithYawError(87);
+      final snapped = wrong.snappedToGrid(
+        worldGridRad: 0,
+        planGridRad: Registration.planGridOf(path),
+      );
+      expect(deg(snapped.yawRad), closeTo(90, 1e-9));
+    });
+
+    test('a building at an angle snaps onto that angle, not onto zero', () {
+      final wrong = Registration.solve(
+        planAt: Offset.zero,
+        planDirection: north,
+        worldAt: origin,
+        worldHeadingRad: rad(28),
+        confidence: RegistrationConfidence.measured,
+      )!;
+
+      // Walls measured at 33 degrees: the building really is skewed relative to
+      // where the session started, and the answer is the walls' angle.
+      final snapped = wrong.snappedToGrid(
+        worldGridRad: rad(33),
+        planGridRad: Registration.planGridOf(path),
+      );
+      expect(deg(snapped.yawRad), closeTo(33, 1e-9));
+    });
+
+    test('refuses a correction too large to be departure error', () {
+      // 40 degrees is not a walker leaving a doorway untidily. Either the
+      // measured yaw landed in the wrong quadrant or the planes fitted are not
+      // the corridor's, and rotating the building onto that is worse than the
+      // error already there.
+      final wrong = solvedWithYawError(40);
+      final snapped = wrong.snappedToGrid(
+        worldGridRad: 0,
+        planGridRad: Registration.planGridOf(path),
+      );
+      expect(snapped.yawRad, wrong.yawRad);
+    });
+
+    test('no walls means the registration is left exactly as solved', () {
+      final wrong = solvedWithYawError(9);
+      expect(
+        wrong
+            .snappedToGrid(
+              worldGridRad: null,
+              planGridRad: Registration.planGridOf(path),
+            )
+            .yawRad,
+        wrong.yawRad,
+      );
+    });
+
+    test('an unsquare plan means the registration is left as solved', () {
+      final wrong = solvedWithYawError(9);
+      expect(
+        wrong.snappedToGrid(worldGridRad: 0, planGridRad: null).yawRad,
+        wrong.yawRad,
+      );
+    });
+
+    test('the anchor is untouched by a snap', () {
+      final wrong = solvedWithYawError(9);
+      final snapped = wrong.snappedToGrid(
+        worldGridRad: 0,
+        planGridRad: Registration.planGridOf(path),
+      );
+      // The walker is still standing where they are standing. Only the
+      // building's rotation about them changed.
+      expect(snapped.planAnchor, wrong.planAnchor);
+      expect(snapped.worldAnchor, wrong.worldAnchor);
+      expect(snapped.confidence, wrong.confidence);
+    });
+  });
 }

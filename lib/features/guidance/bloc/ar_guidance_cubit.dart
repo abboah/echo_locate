@@ -117,6 +117,21 @@ class ArGuidanceCubit extends Cubit<ArGuidanceState> {
   /// are the same place.
   ArGuidanceFrame? _lastFrame;
 
+  /// Whether the current rotation was solved before the walker reached a
+  /// corridor, and should be replaced as soon as one can be measured.
+  ///
+  /// A registration made while they are still crossing the room they started
+  /// in has only one direction available: the chord from where they set off,
+  /// which assumes they set off from the middle of the room they named. That
+  /// assumption is usually a few degrees out and occasionally ninety — a
+  /// walker who was already standing by the door walks the corridor's
+  /// direction, not the room's.
+  ///
+  /// Arrows still go up on it, because a walker leaving a room needs something
+  /// to walk out on. This flag is what stops it being mistaken for the
+  /// finished article.
+  bool _provisionalRotation = false;
+
   /// Whether a registration has been attempted and refused for good.
   ///
   /// Set when the session carries no geometry — a recorded-walk route, or a
@@ -442,9 +457,18 @@ class ArGuidanceCubit extends Cubit<ArGuidanceState> {
 
     if (!frame.canRegister) return;
 
-    // Already registered and the walker is following the line: nothing to fix,
-    // and re-solving would move the route under somebody who is doing fine.
-    if (_registration != null && frame.offRouteM <= _registrationHoldsM) {
+    // Already registered from corridor evidence and following the line:
+    // nothing to fix, and re-solving would move the route under somebody who
+    // is doing fine.
+    //
+    // A *provisional* rotation is exempt. That one was solved while the walker
+    // was still crossing the room they started in, where the only direction
+    // available is "roughly towards the door" — see [_provisionalRotation].
+    // It stays up so there are arrows to walk out on, and it is replaced the
+    // moment the corridor can speak for itself.
+    if (_registration != null &&
+        !_provisionalRotation &&
+        frame.offRouteM <= _registrationHoldsM) {
       _offRouteSince = null;
       return;
     }
@@ -452,21 +476,24 @@ class ArGuidanceCubit extends Cubit<ArGuidanceState> {
     // Off the line, but give them a moment. A walker stepping round somebody
     // coming the other way is off the line for two seconds and back on it,
     // and re-registering against those steps would take their swerve for the
-    // corridor's direction.
-    if (_registration != null) {
+    // corridor's direction. A provisional rotation does not wait: it is known
+    // to be a guess and the upgrade is not a reaction to drift.
+    if (_registration != null && !_provisionalRotation) {
       final since = _offRouteSince ??= DateTime.now();
       if (DateTime.now().difference(since) < _offRouteSettles) return;
     }
 
-    final heading = frame.travelHeadingDeg! * math.pi / 180;
+    // The long-baseline heading, not [ArGuidanceFrame.travelHeadingDeg]. See
+    // the note on [ArGuidanceFrame.registrationHeadingDeg]: a leg's heading is
+    // released early because a leg can be corrected, and a registration cannot.
+    final heading = frame.registrationHeadingDeg! * math.pi / 180;
     final here = WorldPoint(frame.cameraX!, frame.cameraZ!);
     final path = _path!;
 
     // The correspondence, and which of two it is.
     //
-    // **First registration.** The walker was at the start of the route when
-    // they set off, and [_startWorld] is where ARCore had them then. The
-    // direction is the one the route leaves in.
+    // **First registration.** Solved from the walker's displacement since the
+    // session opened, matched against the line they have actually covered.
     //
     // **Re-registration.** They are mid-walk and the old transform is what
     // went wrong, so there is no setting-off moment to appeal to. What is
@@ -480,43 +507,94 @@ class ArGuidanceCubit extends Cubit<ArGuidanceState> {
     var worldHeading = heading;
     if (_registration == null) {
       final start = _startWorld ?? here;
-      worldAt = start;
-      planAt = path.pointsM.first;
-
-      // How far they have got from where they set off. Normally under a metre
-      // — the direction of travel needs `MIN_TRAVEL_FOR_HEADING_M` of walking
-      // and no more — and then the departure direction is the right thing to
-      // match the trail against.
       final chord = start.distanceTo(here);
-      if (chord <= _departureM * _lateRegistrationFactor) {
-        planDirection = _departureDirection(_planPath);
+
+      // **The walker is not standing in their own doorway.**
+      //
+      // The route runs door to door — `RoomNavGraph._doorToDoor` trims the
+      // room nodes off, deliberately, because nobody needs directions to a
+      // door they can see. So `pointsM.first` is the origin room's *doorway*.
+      // ARCore's origin, meanwhile, is wherever the phone was when the session
+      // opened, which is inside the room.
+      //
+      // Equating those two — which is what anchoring `_startWorld` to
+      // `pointsM.first` did — declared the walker to be standing in their own
+      // doorway. The whole building was then translated by however far into
+      // the room they actually were: a few metres in a teaching room, ten or
+      // more in a reading hall, in a constant direction, and completely
+      // independent of how good the scale and the rotation were.
+      //
+      // Instead the correspondence is made where the walker demonstrably is.
+      // Their displacement from the session origin is matched against the same
+      // displacement along [RoutePath.walkedLineM] — the approach out of the
+      // room, then the route. Matching displacement rather than path length is
+      // what keeps this true after a corner: net displacement is a chord in
+      // both frames whatever bends lie between its ends.
+      //
+      // The route handed to ARCore is untouched and still runs door to door.
+      // This only decides where on it the walker is.
+      final walked = path.walkedLineM;
+      final (planAtChord, alongWalkedM) = _chordMatching(walked, chord);
+
+      // Anchored at the session origin against the place the walker was
+      // standing, rather than at their position now.
+      //
+      // Both are correspondences and both are available, but anchoring on
+      // "where they are this instant" folds their lateral deviation into the
+      // building: a walker half a metre to the left of where the plan says
+      // they should be drags the whole route half a metre left with them. The
+      // origin pairing has no such term — the phone really was at that point
+      // when ARCore fixed its origin there.
+      //
+      // What is left is the uncertainty in "which room am I in", which is
+      // half a room wide and which no amount of walking removes. The first
+      // confirmed landmark does — see [_recentreOnConfirmation].
+      worldAt = start;
+      planAt = walked.first;
+
+      // How far onto the route proper they have come. Negative while they are
+      // still crossing the room they started in.
+      final alongRouteM = alongWalkedM - path.approachM;
+
+      if (alongRouteM >= _corridorEvidenceM) {
+        // **The corridor speaks for itself.** They are demonstrably walking
+        // down a stretch of the route, so the direction to match is that
+        // stretch's own — and the walker's recent travel is the same line seen
+        // in the other frame. Neither term knows or cares where they were
+        // standing when the session opened, which is what makes this the
+        // rotation worth having.
+        planDirection = path.directionAtM(alongRouteM);
+        worldHeading = heading;
+        _provisionalRotation = false;
+        AppLogger.info(
+          'REGISTERING on the corridor — ${alongRouteM.toStringAsFixed(1)}m '
+          'along the route',
+        );
       } else {
-        // Registering late, which means the trail is no longer describing the
-        // departure. It happens when tracking blinks in the first few metres:
-        // the trail is thrown away (`MAX_SAMPLE_JUMP_M`) and rebuilt from
-        // wherever the walker is by then, which can be round the first corner.
-        // Pairing that heading with the direction the route *leaves* in would
-        // rotate the whole building by the turn they have already made, and
-        // nothing downstream could tell — the route would simply be laid down
-        // the wrong corridor.
-        //
-        // So match chords instead of headings. Net displacement from the start
-        // is a direction that is still true after a corner, and the plan's
-        // counterpart is the chord to the point the same distance along it.
-        planDirection = _chordMatchingTravel(path, chord);
+        // **Still crossing the room.** The only direction available is the
+        // chord from where they set off, which assumes they set off from the
+        // middle of the room they named and walked towards its door. That is
+        // the app's model of them and it is often a little wrong, so the
+        // result is flagged and replaced as soon as the branch above can run.
+        planDirection = planAtChord - walked.first;
         worldHeading = Registration.worldBearingOf(
           here.x - start.x,
           here.z - start.z,
         );
+        _provisionalRotation = true;
         AppLogger.info(
-          'Registering late — ${chord.toStringAsFixed(1)}m from the start, '
-          'matching chords rather than the departure direction',
+          'REGISTERING provisionally — still crossing the room, '
+          '${chord.toStringAsFixed(1)}m out across a '
+          '${path.approachM.toStringAsFixed(1)}m approach',
         );
       }
     } else {
       worldAt = here;
       planAt = path.pointAtM(frame.walkedM);
       planDirection = path.directionAtM(frame.walkedM);
+      // Solved against a stretch of route the walker has measurably covered,
+      // which is the good evidence the provisional flag exists to wait for.
+      _provisionalRotation = false;
     }
 
     final solved = Registration.solve(
@@ -534,8 +612,28 @@ class ArGuidanceCubit extends Cubit<ArGuidanceState> {
       return;
     }
 
-    AppLogger.info('REGISTERED $solved from ${_planPath.length} points');
-    _layRouteIntoTheRoom(solved);
+    // The measured yaw chose a quadrant; the walls, if any were fitted, supply
+    // the angle within it. See [Registration.snappedToGrid] — this is the only
+    // input to the rotation that does not come from the walker's own footsteps.
+    final snapped = solved.snappedToGrid(
+      worldGridRad: frame.wallGridDeg == null
+          ? null
+          : frame.wallGridDeg! * math.pi / 180,
+      planGridRad: Registration.planGridOf(_planPath),
+    );
+
+    if (snapped.yawRad != solved.yawRad) {
+      final correction =
+          Registration.signedAngleBetween(snapped.yawRad, solved.yawRad) *
+          180 /
+          math.pi;
+      AppLogger.info(
+        'GRID SNAP ${correction.toStringAsFixed(1)}deg onto the wall grid',
+      );
+    }
+
+    AppLogger.info('REGISTERED $snapped from ${_planPath.length} points');
+    _layRouteIntoTheRoom(snapped);
   }
 
   /// Transforms the whole path and hands it to native, under [registration].
@@ -647,35 +745,82 @@ class ArGuidanceCubit extends Cubit<ArGuidanceState> {
   /// re-laying the route every landmark for it would be churn.
   static const double _worthRecentringM = 0.35;
 
-  /// How far past the departure window a first registration may be solved
-  /// before the trail stops describing the departure — see [_tryRegister].
-  static const double _lateRegistrationFactor = 1.5;
-
-  /// The plan-frame chord to the point [travelledM] of walking reaches.
+  /// The point on [line] whose straight-line distance from its start best
+  /// matches [chordM].
   ///
-  /// The plan's counterpart to net displacement in the world. Scanned rather
-  /// than solved because chord length along a path is not monotonic — a route
-  /// that doubles back passes the same chord twice — and the scan is bounded to
-  /// the stretch a walker could have covered so the far crossing is never a
-  /// candidate.
-  static Offset _chordMatchingTravel(RoutePath path, double travelledM) {
-    final start = path.pointsM.first;
-    final limit = math.min(path.totalM, travelledM * 2.5 + 2);
-    var best = path.pointsM.last - start;
-    var bestError = double.infinity;
+  /// The plan's counterpart to net displacement in ARCore's world. The walker
+  /// has moved [chordM] as the crow flies since the session opened; this is
+  /// where on the plan that puts them.
+  ///
+  /// **Displacement, not distance walked.** A walker who has rounded a corner
+  /// has covered more path than ground, and the two frames only agree about
+  /// the ground: a chord is the same chord whatever bends lie between its ends,
+  /// which is what makes this survive a corner that the departure direction
+  /// could not.
+  ///
+  /// Scanned rather than solved because chord length along a path is not
+  /// monotonic — a route that doubles back passes the same chord twice — and
+  /// the scan is bounded to the stretch a walker could plausibly have covered
+  /// so the far crossing is never a candidate.
+  ///
+  /// Falls back to the far end of [line] when nothing matches, which is the
+  /// answer for a walker who has already covered the whole thing.
+  ///
+  /// Returns the point and how far along [line] it sits, because the caller
+  /// needs both: the point to take a direction to, and the distance to know
+  /// whether they have reached the corridor yet.
+  static (Offset, double) _chordMatching(List<Offset> line, double chordM) {
+    if (line.length < 2) {
+      return (line.isEmpty ? Offset.zero : line.first, 0);
+    }
 
+    final start = line.first;
+    var totalM = 0.0;
+    for (var i = 0; i + 1 < line.length; i++) {
+      totalM += (line[i + 1] - line[i]).distance;
+    }
+    final limit = math.min(totalM, chordM * 2.5 + 2);
+
+    var best = line.last;
+    var bestAlong = totalM;
+    var bestError = double.infinity;
     for (var along = _chordScanStepM; along <= limit; along += _chordScanStepM) {
-      final chord = path.pointAtM(along) - start;
-      final error = (chord.distance - travelledM).abs();
+      final at = _pointAlong(line, along);
+      final error = ((at - start).distance - chordM).abs();
       if (error < bestError) {
         bestError = error;
-        best = chord;
+        best = at;
+        bestAlong = along;
       }
     }
-    return best;
+    return (best, bestAlong);
+  }
+
+  /// The point [alongM] metres along [line], measured as path length.
+  static Offset _pointAlong(List<Offset> line, double alongM) {
+    if (line.isEmpty) return Offset.zero;
+    if (alongM <= 0) return line.first;
+
+    var remaining = alongM;
+    for (var i = 0; i + 1 < line.length; i++) {
+      final span = (line[i + 1] - line[i]).distance;
+      if (span >= remaining) {
+        return line[i] + (line[i + 1] - line[i]) * (remaining / span);
+      }
+      remaining -= span;
+    }
+    return line.last;
   }
 
   static const double _chordScanStepM = 0.25;
+
+  /// How far onto the route the walker must be before the corridor is allowed
+  /// to supply the rotation.
+  ///
+  /// Long enough that they are unambiguously walking the route rather than
+  /// still turning out of a doorway, and short enough that the provisional
+  /// rotation is replaced within a few strides of the corridor beginning.
+  static const double _corridorEvidenceM = 2;
 
   /// Moves guidance on when the walker has measurably walked a leg.
   ///
@@ -772,25 +917,17 @@ class ArGuidanceCubit extends Cubit<ArGuidanceState> {
     return path.legEndsM.length - 1;
   }
 
-  /// The direction the route leaves its start in.
-  ///
-  /// Measured over the first [_departureM] of the path rather than between its
-  /// first two vertices: those are typically a step apart inside the room the
-  /// walker is leaving, and a rotation solved from a one-metre baseline
-  /// carries the noise in that metre across the whole building. Falls back to
-  /// the whole path when it is shorter than that.
-  static Offset _departureDirection(List<Offset> path) {
-    final start = path.first;
-    var travelled = 0.0;
-    for (var i = 1; i < path.length; i++) {
-      travelled += (path[i] - path[i - 1]).distance;
-      if (travelled >= _departureM) return path[i] - start;
-    }
-    return path.last - start;
-  }
-
-  /// How much of the route's start the departure direction is measured over.
-  static const double _departureM = 3;
+  // How much walking a registration is solved over lives on the native side
+  // now, as `ArGuidanceHandler.MIN_TRAVEL_FOR_REGISTRATION_M`: it gates
+  // `registrationHeadingDeg`, and a frame without that never reaches
+  // [_tryRegister]. Holding a second copy here would be two thresholds that
+  // have to agree and no way to notice when they stop.
+  //
+  // The departure *direction* this file used to measure is gone with it. That
+  // compared the route's own opening stretch against the walker's, and the two
+  // are not the same stretch — the walker's begins inside the room they are
+  // standing in, the route's begins at that room's door. [_chordMatching]
+  // replaced it.
 
   /// How far off the line the walker may be before the registration is
   /// re-solved. Wider than a corridor is deliberate: this is the threshold for
@@ -843,6 +980,9 @@ class ArGuidanceCubit extends Cubit<ArGuidanceState> {
       if (_anchoredLeg != null || state.registered) {
         _anchoredLeg = null;
         _registration = null;
+        // Cleared with the transform it describes, or the next walk would
+        // inherit this one's opinion of its own rotation.
+        _provisionalRotation = false;
         unawaited(_ar.clearLeg());
         unawaited(_ar.clearRoute());
         // Said here rather than waited for on the next heartbeat: half a second

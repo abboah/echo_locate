@@ -52,10 +52,22 @@ class App extends StatelessWidget {
   back to the assumed 1.35 m below the phone. Turn this off
   first if the session stutters when the guidance screen
   opens. Your 60 fps measurement on the Infinix was taken
-  without plane finding, and I've now got it competing with
-  the ML Kit frame feed for the first 9 seconds. Cost of
-  turning it off is cosmetic: the ring sits at an assumed
-  height.
+  without plane finding, and it now competes with the ML Kit
+  frame feed for the first 20 seconds rather than 9.
+
+  **The cost of turning it off is no longer only cosmetic.**
+  It used to be: an assumed floor height, a ring floating a
+  few centimetres off. The same switch now also turns off
+  vertical plane finding, and the wall grid those planes
+  supply is the only thing correcting the registration's yaw
+  — which rotates the entire building and which no landmark
+  can repair. Without it the rotation falls back to the
+  direction the walker happened to set off in, which is the
+  thing that was putting rings in the wrong room.
+
+  So: turn it off to get frames back, and expect the arrow to
+  be roughly right rather than right. Read `off …m` in the
+  capture before and after, not the frame rate alone.
 
   FOLLOW_ANCHORS = false — route and leg keep the raw world
   coordinates they were laid down in. Turn this off if a

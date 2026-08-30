@@ -13,9 +13,11 @@ import '../../../features/guidance/bloc/guidance_bloc.dart';
 import '../../../features/guidance/guidance_session.dart';
 import '../../../features/profile/profile_repository.dart';
 import '../../../services/injection_container.dart';
+import '../../../services/mapping/route_sketch.dart';
 import '../../../services/motion/stride_profile.dart';
 import '../../../services/sensing/detection_service.dart';
 import '../../../services/vision/ar_guidance_service.dart';
+import '../../widgets/route_map_view.dart';
 
 /// Following a route by voice, and — where the phone can — by an arrow on the
 /// floor.
@@ -633,6 +635,10 @@ class _Walking extends StatelessWidget {
     final leg = state.currentLeg;
     final nextName = leg == null ? '' : session?.nameOf(leg.toLandmarkId) ?? '';
     final noCamera = ar?.cameraReason;
+    // Laid out once per build rather than held in state: it is a pure function
+    // of the session, which does not change during a walk, and a route of a
+    // dozen vertices costs less to recompute than to invalidate correctly.
+    final sketch = session == null ? null : RouteSketch.of(session);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -669,6 +675,40 @@ class _Walking extends StatelessWidget {
           liveRegion: true,
           child: Text(state.instruction, style: theme.textTheme.headlineSmall),
         ),
+        // The whole route, under the one instruction it is currently on. The
+        // instruction is what to do next; this is where that sits in the walk —
+        // the question a spoken leg cannot answer and a line between two points
+        // answers at a glance.
+        if (sketch != null) ...[
+          const SizedBox(height: AppDimens.space16),
+          RouteMapView(
+            sketch: sketch,
+            along: sketch.progressAlong(
+              legIndex: state.legIndex,
+              walkedM: state.walkedM,
+              legMetres: state.legMetres,
+            ),
+            legIndex: state.legIndex,
+            destinationName: session?.destinationName,
+            plan: session?.floorPlan,
+          ),
+          if (!sketch.surveyed)
+            Padding(
+              padding: const EdgeInsets.only(top: AppDimens.space4),
+              child: Text(
+                // Said plainly, because the drawing cannot say it for itself.
+                // Without a scale the corners are where the turns were tapped
+                // rather than where the building put them — a diagram of the
+                // way, not a picture of the floor.
+                'Sketch of the way — corners are approximate.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.textTheme.bodySmall?.color?.withValues(
+                    alpha: 0.7,
+                  ),
+                ),
+              ),
+            ),
+        ],
         const SizedBox(height: AppDimens.space24),
         if (state.expectedSteps > 0) ...[
           Text(

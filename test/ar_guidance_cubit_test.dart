@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:echo_locate/core/models/landmark.dart';
 import 'package:echo_locate/core/models/walk_route.dart';
@@ -843,12 +844,15 @@ void main() {
   group('registering the plan into the room', () {
     /// A route that leaves the start heading plan-north for 20 m, then turns
     /// east for 12 m — the same walk `sessionOf` describes, with geometry.
-    RoutePath pathOf() => const RoutePath(
-      pointsM: [Offset(0, 0), Offset(0, 20), Offset(12, 20)],
-      legEndsM: [20, 32],
+    RoutePath pathOf({Offset? approachFrom}) => RoutePath(
+      pointsM: const [Offset(0, 0), Offset(0, 20), Offset(12, 20)],
+      legEndsM: const [20, 32],
+      approachFromM: approachFrom,
     );
 
-    Future<(GuidanceBloc, ArGuidanceCubit)> walkingWithGeometry() async {
+    Future<(GuidanceBloc, ArGuidanceCubit)> walkingWithGeometry({
+      Offset? approachFrom,
+    }) async {
       final guidance = guidanceOf();
       final cubit = ArGuidanceCubit(ar, guidance);
       await cubit.checkAvailability();
@@ -860,7 +864,7 @@ void main() {
             landmarks: base.landmarks,
             destinationName: base.destinationName,
             stride: base.stride,
-            routePath: pathOf(),
+            routePath: pathOf(approachFrom: approachFrom),
           ),
         ),
       );
@@ -871,12 +875,21 @@ void main() {
     }
 
     /// A frame carrying everything a registration needs.
+    ///
+    /// Both headings are set, because both are true of a walker who has gone
+    /// far enough: native releases the short-baseline one first and the
+    /// registration one only after several metres, so a frame that has the
+    /// second necessarily has the first. Pass [farEnoughToRegister] as false
+    /// for the frames in between — moving, but not yet by enough to rotate a
+    /// building on.
     ArGuidanceFrame walked({
       required double x,
       required double z,
       required double headingDeg,
       double offRoute = 0,
       bool hasRoute = false,
+      bool farEnoughToRegister = true,
+      double? wallGridDeg,
     }) => ArGuidanceFrame(
       tracking: CaptureTrackingLike.tracking,
       issue: ArGuidanceIssue.none,
@@ -885,6 +898,8 @@ void main() {
       cameraX: x,
       cameraZ: z,
       travelHeadingDeg: headingDeg,
+      registrationHeadingDeg: farEnoughToRegister ? headingDeg : null,
+      wallGridDeg: wallGridDeg,
       hasRoute: hasRoute,
       offRouteM: offRoute,
     );
@@ -907,6 +922,30 @@ void main() {
 
       expect(ar.routes, isEmpty);
       expect(cubit.state.registered, isFalse);
+      await cubit.close();
+      await guidance.close();
+    });
+
+    test('a first step is not enough to rotate a building on', () async {
+      final (guidance, cubit) = await walkingWithGeometry();
+
+      // Moving, and native has released the short-baseline heading a leg is
+      // anchored from — but not the long-baseline one a registration needs.
+      // Registering here is what put every ring metres off the corridor: the
+      // yaw would come from the walker's first stride out of a doorway.
+      ar.emit(
+        walked(x: 0, z: -0.8, headingDeg: 0, farEnoughToRegister: false),
+      );
+      await pump();
+
+      expect(ar.routes, isEmpty);
+      expect(cubit.state.registered, isFalse);
+
+      // Several metres later the same heading is worth registering on.
+      ar.emit(walked(x: 0, z: -3.2, headingDeg: 0));
+      await pump();
+
+      expect(cubit.state.registered, isTrue);
       await cubit.close();
       await guidance.close();
     });
@@ -976,6 +1015,158 @@ void main() {
       await guidance.close();
     });
 
+    test('walls take the skew out of a departure heading', () async {
+      final (guidance, cubit) = await walkingWithGeometry();
+
+      ar.emit(standingAt(0, 0));
+      await pump();
+      // The walker left the room at an angle — out of a doorway, round
+      // somebody — so the measured heading is 8° off the corridor it was
+      // supposed to describe. Without the walls, that 8° rotates the whole
+      // building and the landmark 20 m away lands nearly 3 m off.
+      ar.emit(
+        walked(x: 0.45, z: -3.2, headingDeg: 8, wallGridDeg: 0),
+      );
+      await pump();
+
+      final world = ar.routes.single;
+      // The corridor's far end is back on the axis the walls say it runs on,
+      // not 8° off it.
+      expect(world[2], closeTo(0, 1e-6));
+      expect(world[3], closeTo(-20, 1e-6));
+
+      await cubit.close();
+      await guidance.close();
+    });
+
+    test('THE LANDSLIDE: the walker is not standing in their own doorway',
+        () async {
+      // The route runs door to door, so its first point is the doorway of the
+      // room the walker is in. They are standing 8 m back inside that room —
+      // an ordinary distance in a reading hall — and ARCore's origin is fixed
+      // there, not at the door.
+      //
+      // Anchoring the session origin to the route's first point declared those
+      // two the same place and slid the entire building 8 m south. Every ring
+      // landed 8 m past where it belonged, in a constant direction, however
+      // good the scale and the rotation were.
+      final (guidance, cubit) = await walkingWithGeometry(
+        approachFrom: const Offset(0, -8),
+      );
+
+      ar.emit(standingAt(0, 0));
+      await pump();
+      // They have walked 4 m north: still inside the room, not yet at the door.
+      ar.emit(walked(x: 0, z: -4, headingDeg: 0));
+      await pump();
+
+      final world = ar.routes.single;
+      // The doorway is 8 m ahead of where they set off, so it belongs 8 m
+      // along −z — not underneath them.
+      expect(world[0], closeTo(0, 1e-6));
+      expect(world[1], closeTo(-8, 1e-6));
+      // And the far end of the first corridor is 20 m past the door.
+      expect(world[2], closeTo(0, 1e-6));
+      expect(world[3], closeTo(-28, 1e-6));
+
+      await cubit.close();
+      await guidance.close();
+    });
+
+    test('an approach across a room does not rotate the building', () async {
+      // Same 8 m approach, but the room is entered from the side: the walker
+      // crosses it heading north-east before turning up the corridor. The
+      // rotation must come from the whole displacement, not from the route's
+      // opening stretch, which describes a walk that starts at the door.
+      final (guidance, cubit) = await walkingWithGeometry(
+        approachFrom: const Offset(-6, -6),
+      );
+
+      ar.emit(standingAt(0, 0));
+      await pump();
+      // Displacement of ~4.2 m along the plan's north-east diagonal, which in
+      // ARCore's frame is straight ahead: the two frames are aligned.
+      ar.emit(walked(x: 0, z: -4.24, headingDeg: 0));
+      await pump();
+
+      final world = ar.routes.single;
+      // The approach runs (-6,-6) → (0,0), so the doorway lies along exactly
+      // the diagonal they walked: it belongs dead ahead, at the approach's full
+      // length of sqrt(72) — **not** at the 4.24 m they have actually covered,
+      // which is the error the old anchoring made when it put the door under
+      // the walker's feet.
+      expect(world[0], closeTo(0, 1e-6));
+      expect(world[1], closeTo(-math.sqrt(72), 1e-6));
+
+      // The corridor then runs plan-north from the door, which after the
+      // 45-degree rotation is up and to the left of the walker.
+      expect(world[2], closeTo(-math.sqrt(200), 1e-6));
+      expect(world[3], closeTo(-math.sqrt(72) - math.sqrt(200), 1e-6));
+
+      await cubit.close();
+      await guidance.close();
+    });
+
+    test('THE CORRIDOR WINS: a walker who set off from the wrong spot',
+        () async {
+      // The app thinks they are in the middle of the room, 8 m south of the
+      // door. They are actually standing *at* the door already, and they walk
+      // straight up the corridor.
+      //
+      // Their travel is therefore the corridor's direction, while the plan's
+      // chord from the room centre is the room-to-door direction. Under the
+      // chord rotation alone the building comes out turned by the angle
+      // between those two. Once they are properly on the corridor, its own
+      // direction replaces the guess and the turn comes back out.
+      final (guidance, cubit) = await walkingWithGeometry(
+        approachFrom: const Offset(-8, -8),
+      );
+
+      ar.emit(standingAt(0, 0));
+      await pump();
+
+      // First registration, made while the app still believes they are
+      // crossing the room. It is provisional and allowed to be wrong.
+      ar.emit(walked(x: 0, z: -3.2, headingDeg: 0));
+      await pump();
+      expect(ar.routes, hasLength(1));
+
+      // Now they are 12 m up the corridor — well past the 8 m approach the
+      // app expected, so the route's own direction is measurable.
+      ar.emit(walked(x: 0, z: -12, headingDeg: 0));
+      await pump();
+
+      // Re-laid, and this time the first corridor runs straight along −z,
+      // which is the direction they have actually been walking.
+      expect(ar.routes.length, greaterThan(1));
+      final world = ar.routes.last;
+      expect(world[2] - world[0], closeTo(0, 1e-6));
+      expect(world[3] - world[1], closeTo(-20, 1e-6));
+
+      await cubit.close();
+      await guidance.close();
+    });
+
+    test('walls that disagree wildly are not believed', () async {
+      final (guidance, cubit) = await walkingWithGeometry();
+
+      ar.emit(standingAt(0, 0));
+      await pump();
+      // A grid 40° from the measured heading. Either the heading landed in the
+      // wrong quadrant or the planes fitted are not the corridor's, and
+      // rotating the building onto that would be worse than the skew already
+      // in it — so the registration stands as solved.
+      ar.emit(walked(x: 0, z: -3.2, headingDeg: 0, wallGridDeg: 40));
+      await pump();
+
+      final world = ar.routes.single;
+      expect(world[2], closeTo(0, 1e-6));
+      expect(world[3], closeTo(-20, 1e-6));
+
+      await cubit.close();
+      await guidance.close();
+    });
+
     test('a walker holding the line is not re-registered', () async {
       final (guidance, cubit) = await walkingWithGeometry();
 
@@ -1017,6 +1208,7 @@ void main() {
           cameraX: 0,
           cameraZ: -20,
           travelHeadingDeg: 0,
+          registrationHeadingDeg: 0,
         ),
       );
       await pump();
@@ -1048,6 +1240,7 @@ void main() {
           cameraX: 8,
           cameraZ: -20,
           travelHeadingDeg: 0,
+          registrationHeadingDeg: 0,
         ),
       );
       await pump();
@@ -1094,6 +1287,7 @@ void main() {
           cameraX: 0,
           cameraZ: -24,
           travelHeadingDeg: 0,
+          registrationHeadingDeg: 0,
         ),
       );
       await pump();
@@ -1157,6 +1351,7 @@ void main() {
       cameraX: 0,
       cameraZ: -18,
       travelHeadingDeg: 0,
+      registrationHeadingDeg: 0,
     );
 
     test('THE POINT: a confirmed landmark takes the drift out', () async {
@@ -1212,6 +1407,7 @@ void main() {
           cameraX: 0,
           cameraZ: -12,
           travelHeadingDeg: 0,
+          registrationHeadingDeg: 0,
         ),
       );
       await pump();
@@ -1246,6 +1442,7 @@ void main() {
           cameraX: 0,
           cameraZ: -21.2,
           travelHeadingDeg: 0,
+          registrationHeadingDeg: 0,
         ),
       );
       await pump();
