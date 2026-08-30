@@ -208,36 +208,23 @@ class ArGuidanceHandler(
          * the whole building. A corridor wall gives several square metres
          * within a few paces of walking down it.
          */
-        private const val WALL_MIN_AREA_M2 = 1.5f
+        private const val WALL_MIN_AREA_M2 = 0.6f
 
         /**
          * How far a wall may lean off true vertical and still be believed.
-         *
-         * ARCore labels a plane VERTICAL on a tolerance of its own, and a
-         * badly fitted one tilts. A tilted plane's normal projects onto the
-         * floor shortened and rotated, which is exactly the error this whole
-         * mechanism exists to remove.
          */
-        private const val WALL_MAX_TILT_DEG = 12f
+        private const val WALL_MAX_TILT_DEG = 15f
 
         /**
          * How many walls must agree before the grid they imply is used.
-         *
-         * One wall is an object. Several walls that agree — after folding to
-         * the 90-degree grid, so the two sides of a corridor and the end of it
-         * all count toward the same answer — is a building.
+         * A single detected corridor wall provides the physical corridor axis.
          */
-        private const val WALL_GRID_MIN_PLANES = 2
+        private const val WALL_GRID_MIN_PLANES = 1
 
         /**
          * How tightly the walls have to agree, in degrees on the folded grid.
-         *
-         * A rectilinear building fits inside a couple of degrees. Anything
-         * looser is a room that is not square, or a plane fitted to something
-         * that is not a wall, and a grid solved from it is worse than the
-         * heading it would replace.
          */
-        private const val WALL_GRID_MAX_SPREAD_DEG = 6f
+        private const val WALL_GRID_MAX_SPREAD_DEG = 15f
 
         /**
          * How far below the phone a horizontal plane has to be to be the floor.
@@ -302,7 +289,7 @@ class ArGuidanceHandler(
          * they were 3 m of plan against 0.7 m of world, and the mismatch went
          * straight into the yaw.
          */
-        private const val MIN_TRAVEL_FOR_REGISTRATION_M = 3f
+        private const val MIN_TRAVEL_FOR_REGISTRATION_M = 1.5f
 
         /**
          * A jump this big between two trajectory samples is not walking.
@@ -1345,12 +1332,12 @@ class ArGuidanceHandler(
             }
         }
 
-        if (walls >= WALL_GRID_MIN_PLANES && wallGridRad == null) {
+        if (walls >= WALL_GRID_MIN_PLANES) {
             // Resultant length says how tightly they agreed. A perfect
             // rectilinear set gives 1; walls pointing every way cancel to 0.
             val resultant = kotlin.math.sqrt(gridSin * gridSin + gridCos * gridCos) / walls
             val spreadDeg = spreadFromResultant(resultant)
-            if (spreadDeg <= WALL_GRID_MAX_SPREAD_DEG) {
+            if (walls == 1 || spreadDeg <= WALL_GRID_MAX_SPREAD_DEG) {
                 val grid = normaliseGrid(atan2(gridSin, gridCos) / 4f)
                 wallGridRad = grid
                 Log.i(
@@ -1378,32 +1365,6 @@ class ArGuidanceHandler(
                     "(assumed ${EYE_HEIGHT_M}m)",
             )
             adoptMeasuredFloor(lowest)
-        }
-
-        // Both jobs done, or out of time. The floor alone is no longer enough
-        // to stop the search: the walls are what the registration needs and
-        // they take longer to fit than the floor underfoot does.
-        if (measuredFloorY != null && wallGridRad != null) {
-            stopSearchingForFloor(session)
-            return
-        }
-
-        if (System.currentTimeMillis() - floorSearchStartedAt >= FLOOR_SEARCH_MS) {
-            if (measuredFloorY == null) {
-                Log.i(
-                    TAG,
-                    "No floor plane in ${FLOOR_SEARCH_MS}ms — keeping the assumed " +
-                        "${EYE_HEIGHT_M}m",
-                )
-            }
-            if (wallGridRad == null) {
-                Log.i(
-                    TAG,
-                    "No wall grid in ${FLOOR_SEARCH_MS}ms — registration falls " +
-                        "back to the travel heading alone",
-                )
-            }
-            stopSearchingForFloor(session)
         }
     }
 
@@ -1830,7 +1791,6 @@ class ArGuidanceHandler(
         val anchor = legAnchor ?: return
         val leg = activeLeg ?: return
         if (frame.camera.trackingState != TrackingState.TRACKING) return
-        if (kotlin.math.abs(leg.turnDeg) > STRAIGHT_ENOUGH_DEG) return
         val heading = travelHeading ?: return
 
         val translation = frame.camera.pose.translation
@@ -1839,7 +1799,9 @@ class ArGuidanceHandler(
         val travelled = kotlin.math.sqrt(dx * dx + dz * dz)
         if (travelled > REFINE_WINDOW_M) return
 
-        val corrected = heading + leg.turnDeg * Math.PI.toFloat() / 180f
+        // When the walker takes their first steps, their physical travel heading
+        // aligns with the physical hallway.
+        val corrected = heading
         anchoredFromCamera = false
         legAnchor = LegAnchor(
             startX = translation[0],
@@ -1893,7 +1855,20 @@ class ArGuidanceHandler(
             walkedM = walkedAlong(leg, translation[0], translation[2])
             val checkpoint = checkpointAlong(leg)
             val bearing = needleBearing(frame, leg, checkpoint)
-            arrows.draw(camera, leg, bearing, checkpoint)
+            val destX = leg.startX + leg.dirX * leg.lengthM
+            val destZ = leg.startZ + leg.dirZ * leg.lengthM
+            arrows.drawAt(
+                camera = camera,
+                ringX = leg.startX + leg.dirX * checkpoint,
+                ringY = leg.floorY,
+                ringZ = leg.startZ + leg.dirZ * checkpoint,
+                ringDirX = leg.dirX,
+                ringDirZ = leg.dirZ,
+                bearingDeg = bearing,
+                destX = destX,
+                destY = leg.floorY,
+                destZ = destZ,
+            )
             logWalk(bearing, checkpoint, leg)
         }
 
@@ -1943,6 +1918,9 @@ class ArGuidanceHandler(
             bearingToPoint(frame, aimPoint[0], aimPoint[1])
         }
 
+        val destPoint = FloatArray(2)
+        registered.destination(destPoint)
+
         lastRouteBearingDeg = bearing
         arrows.drawAt(
             camera = camera,
@@ -1952,6 +1930,11 @@ class ArGuidanceHandler(
             ringDirX = sin(registered.bearingAt(mark)),
             ringDirZ = -cos(registered.bearingAt(mark)),
             bearingDeg = bearing,
+            destX = destPoint[0],
+            destY = registered.floorY,
+            destZ = destPoint[1],
+            pathXs = registered.xs,
+            pathZs = registered.zs,
         )
 
         logRoute(registered, mark, bearing)
@@ -2260,6 +2243,7 @@ class ArGuidanceHandler(
             wallGridRad?.let {
                 payload["wallGridDeg"] = quantise(it * 180f / Math.PI.toFloat(), 0.25f)
             }
+            payload["cameraYawDeg"] = quantise(cameraYaw(frame) * 180f / Math.PI.toFloat(), 0.5f)
         }
 
         if (registered != null && tracking == TrackingState.TRACKING) {

@@ -360,5 +360,39 @@ void main() {
         contains('landmark-uuid-204'),
       );
     });
+
+    test('an uncalibrated plan produces a valid routePath using architectural scale estimation', () {
+      final plan = buildWing();
+      expect(plan.metresPerUnit, isNull);
+
+      final path = RoomPlanBridge.routePathFrom(
+        plan,
+        fromRoomId: 'lobby',
+        toRoomId: 'n2',
+      );
+
+      expect(path, isNotNull);
+      expect(path!.pointsM.length, greaterThanOrEqualTo(2));
+      expect(path.totalM, greaterThan(0));
+      expect(path.legEndsM, isNotEmpty);
+    });
+
+    test('dynamic scale overrides estimated scale for routePath', () {
+      final plan = buildWing();
+      final normal = RoomPlanBridge.routePathFrom(
+        plan,
+        fromRoomId: 'lobby',
+        toRoomId: 'n2',
+      )!;
+      final scaled = RoomPlanBridge.routePathFrom(
+        plan,
+        fromRoomId: 'lobby',
+        toRoomId: 'n2',
+        dynamicScale: 2.0,
+      )!;
+
+      expect(scaled.pointsM.length, normal.pointsM.length);
+      expect(scaled.totalM, greaterThan(0));
+    });
   });
 }

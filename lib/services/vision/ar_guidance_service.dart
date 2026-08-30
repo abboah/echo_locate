@@ -34,6 +34,7 @@ class ArGuidanceFrame {
     this.travelHeadingDeg,
     this.registrationHeadingDeg,
     this.wallGridDeg,
+    this.cameraYawDeg,
   });
 
   final CaptureTrackingLike tracking;
@@ -133,6 +134,9 @@ class ArGuidanceFrame {
   /// `Registration.snappedToGrid`.
   final double? wallGridDeg;
 
+  /// The optical forward gaze direction of the camera relative to ARCore world.
+  final double? cameraYawDeg;
+
   bool get isTracking => tracking == CaptureTrackingLike.tracking;
 
   /// Whether this frame carries what a registration needs to be solved.
@@ -169,6 +173,7 @@ class ArGuidanceFrame {
     registrationHeadingDeg:
         (map['registrationHeadingDeg'] as num?)?.toDouble(),
     wallGridDeg: (map['wallGridDeg'] as num?)?.toDouble(),
+    cameraYawDeg: (map['cameraYawDeg'] as num?)?.toDouble(),
   );
 }
 

@@ -43,8 +43,8 @@ import kotlin.math.sqrt
  * steering somebody into a wall.
  */
 class RegisteredRoute(
-    private val xs: FloatArray,
-    private val zs: FloatArray,
+    val xs: FloatArray,
+    val zs: FloatArray,
     floorY: Float,
 ) {
     /**

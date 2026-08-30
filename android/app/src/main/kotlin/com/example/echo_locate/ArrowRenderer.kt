@@ -262,14 +262,11 @@ class ArrowRenderer {
             bearingDeg = bearingDeg,
         )
 
+    private var pathBuffer: FloatBuffer? = null
+    private var pathNormalsBuffer: FloatBuffer? = null
+
     /**
-     * The same, for a ring whose position is known outright.
-     *
-     * A route registered into the room (see `route_registration.dart`) is a
-     * polyline, not a single straight leg, and the place the walker is being
-     * sent to is a corner or a doorway on it rather than a distance along one
-     * direction. There is nothing for the leg form above to interpolate, so
-     * the caller works out the point and this draws it.
+     * Draws a registered route: the floor ribbon, the ring on the next place, the destination marker, and the arrow.
      */
     fun drawAt(
         camera: Camera,
@@ -279,6 +276,11 @@ class ArrowRenderer {
         ringDirX: Float,
         ringDirZ: Float,
         bearingDeg: Float,
+        destX: Float? = null,
+        destY: Float? = null,
+        destZ: Float? = null,
+        pathXs: FloatArray? = null,
+        pathZs: FloatArray? = null,
     ) {
         if (program == 0) return
 
@@ -293,12 +295,27 @@ class ArrowRenderer {
         GLES20.glEnableVertexAttribArray(positionAttribute)
         GLES20.glEnableVertexAttribArray(normalAttribute)
 
-        // The ring first: it is the farthest thing, and with no depth buffer
+        // 1. Draw the floor route ribbon (connected path along the corridor)
+        if (pathXs != null && pathZs != null && pathXs.size >= 2) {
+            renderPathRibbon(pathXs, pathZs, ringY)
+        }
+
+        // 2. Destination beacon: coral ring marking the final target if far enough from intermediate mark
+        if (destX != null && destY != null && destZ != null) {
+            val ddx = ringX - destX
+            val ddz = ringZ - destZ
+            if (ddx * ddx + ddz * ddz > 1.0f) {
+                setWorldModel(destX, destY, destZ, 0f, -1f)
+                submit(ringPositions, ringNormals, ringData.size / 3, CORAL, 0.85f, lit = false)
+            }
+        }
+
+        // 3. The intermediate checkpoint ring: it is the farthest thing, and with no depth buffer
         // the draw order is what puts the arrow over it.
         setWorldModel(ringX, ringY, ringZ, ringDirX, ringDirZ)
         submit(ringPositions, ringNormals, ringData.size / 3, WHITE, 0.9f, lit = false)
 
-        // A flat white silhouette behind the solid, slightly larger, so the
+        // 4. A flat white silhouette behind the solid, slightly larger, so the
         // needle keeps its edge against a corridor that might be any colour at
         // all — including a coral-coloured door at the end of it. Unlit, so it
         // stays a clean outline rather than a second arrow showing through.
@@ -310,6 +327,69 @@ class ArrowRenderer {
         GLES20.glDisableVertexAttribArray(positionAttribute)
         GLES20.glDisableVertexAttribArray(normalAttribute)
         GLES20.glDisable(GLES20.GL_BLEND)
+    }
+
+    private fun renderPathRibbon(xs: FloatArray, zs: FloatArray, floorY: Float) {
+        val segmentCount = xs.size - 1
+        if (segmentCount < 1 || xs.size != zs.size) return
+
+        val floatCount = segmentCount * 18
+        if (pathBuffer == null || pathBuffer!!.capacity() < floatCount) {
+            val cap = maxOf(floatCount, 1024)
+            pathBuffer = allocate(FloatArray(cap))
+            pathNormalsBuffer = allocate(FloatArray(cap) { if (it % 3 == 1) 1f else 0f })
+        }
+
+        val buf = pathBuffer ?: return
+        buf.clear()
+
+        val halfWidth = 0.16f // 32cm wide ribbon on floor
+        for (i in 0 until segmentCount) {
+            val ax = xs[i]
+            val az = zs[i]
+            val bx = xs[i + 1]
+            val bz = zs[i + 1]
+            val dx = bx - ax
+            val dz = bz - az
+            val len = kotlin.math.sqrt(dx * dx + dz * dz)
+            if (len < 1e-4f) continue
+
+            val nx = -dz / len * halfWidth
+            val nz = dx / len * halfWidth
+
+            val lAx = ax + nx; val lAz = az + nz
+            val rAx = ax - nx; val rAz = az - nz
+            val lBx = bx + nx; val lBz = bz + nz
+            val rBx = bx - nx; val rBz = bz - nz
+
+            // Triangle 1: lA, rA, lB
+            buf.put(lAx); buf.put(floorY); buf.put(lAz)
+            buf.put(rAx); buf.put(floorY); buf.put(rAz)
+            buf.put(lBx); buf.put(floorY); buf.put(lBz)
+
+            // Triangle 2: rA, rB, lB
+            buf.put(rAx); buf.put(floorY); buf.put(rAz)
+            buf.put(rBx); buf.put(floorY); buf.put(rBz)
+            buf.put(lBx); buf.put(floorY); buf.put(lBz)
+        }
+
+        val vertexCount = buf.position() / 3
+        buf.position(0)
+        pathNormalsBuffer?.position(0)
+
+        if (vertexCount > 0) {
+            Matrix.setIdentityM(model, 0)
+            Matrix.multiplyMM(mvp, 0, viewProjection, 0, model, 0)
+            GLES20.glUniformMatrix4fv(mvpUniform, 1, false, mvp, 0)
+            GLES20.glUniformMatrix4fv(modelUniform, 1, false, model, 0)
+            GLES20.glUniform1f(litUniform, 0f)
+            // Draw corridor path ribbon in translucent Coral
+            GLES20.glUniform4f(colourUniform, CORAL[0], CORAL[1], CORAL[2], 0.65f)
+
+            GLES20.glVertexAttribPointer(positionAttribute, 3, GLES20.GL_FLOAT, false, 0, buf)
+            GLES20.glVertexAttribPointer(normalAttribute, 3, GLES20.GL_FLOAT, false, 0, pathNormalsBuffer)
+            GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, vertexCount)
+        }
     }
 
     fun release() {

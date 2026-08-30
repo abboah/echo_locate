@@ -6,10 +6,12 @@ import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
 
 import '../../../core/utils/logger.dart';
+import '../../../services/injection_container.dart';
 import '../../../services/mapping/room_plan_bridge.dart';
 import '../../../services/mapping/route_registration.dart';
 import '../../../services/vision/ar_guidance_service.dart';
 import '../../../services/vision/depth_frame.dart' show ArCoreAvailability;
+import '../../room_trace/room_plan_repository.dart';
 import 'guidance_bloc.dart';
 
 part 'ar_guidance_state.dart';
@@ -457,36 +459,38 @@ class ArGuidanceCubit extends Cubit<ArGuidanceState> {
 
     if (!frame.canRegister) return;
 
-    // Already registered from corridor evidence and following the line:
-    // nothing to fix, and re-solving would move the route under somebody who
-    // is doing fine.
-    //
-    // A *provisional* rotation is exempt. That one was solved while the walker
-    // was still crossing the room they started in, where the only direction
-    // available is "roughly towards the door" — see [_provisionalRotation].
-    // It stays up so there are arrows to walk out on, and it is replaced the
-    // moment the corridor can speak for itself.
-    if (_registration != null &&
-        !_provisionalRotation &&
-        frame.offRouteM <= _registrationHoldsM) {
-      _offRouteSince = null;
-      return;
-    }
-
-    // Off the line, but give them a moment. A walker stepping round somebody
-    // coming the other way is off the line for two seconds and back on it,
-    // and re-registering against those steps would take their swerve for the
-    // corridor's direction. A provisional rotation does not wait: it is known
-    // to be a guess and the upgrade is not a reaction to drift.
+    // Already registered from corridor evidence:
+    // Once we have a measured corridor registration, keep it stable unless
+    // the walker has diverged into a wall (off-route > 1.2m) for over 1.2s!
     if (_registration != null && !_provisionalRotation) {
-      final since = _offRouteSince ??= DateTime.now();
-      if (DateTime.now().difference(since) < _offRouteSettles) return;
+      if (frame.offRouteM > 1.2 &&
+          (frame.travelHeadingDeg != null ||
+              frame.registrationHeadingDeg != null)) {
+        final now = DateTime.now();
+        _offRouteSince ??= now;
+        if (now.difference(_offRouteSince!) >
+            const Duration(milliseconds: 1200)) {
+          AppLogger.info(
+            'OFF-ROUTE RECALIBRATION: off by ${frame.offRouteM.toStringAsFixed(1)}m — re-aligning to corridor',
+          );
+          _offRouteSince = null;
+          // Fall through to re-register against current corridor position!
+        } else {
+          return;
+        }
+      } else {
+        _offRouteSince = null;
+        return;
+      }
     }
 
-    // The long-baseline heading, not [ArGuidanceFrame.travelHeadingDeg]. See
-    // the note on [ArGuidanceFrame.registrationHeadingDeg]: a leg's heading is
-    // released early because a leg can be corrected, and a registration cannot.
-    final heading = frame.registrationHeadingDeg! * math.pi / 180;
+    final hasMeasuredHeading =
+        frame.registrationHeadingDeg != null || frame.travelHeadingDeg != null;
+    final headingDeg = frame.registrationHeadingDeg ??
+        frame.travelHeadingDeg ??
+        frame.cameraYawDeg ??
+        0.0;
+    final heading = headingDeg * math.pi / 180;
     final here = WorldPoint(frame.cameraX!, frame.cameraZ!);
     final path = _path!;
 
@@ -536,19 +540,6 @@ class ArGuidanceCubit extends Cubit<ArGuidanceState> {
       final walked = path.walkedLineM;
       final (planAtChord, alongWalkedM) = _chordMatching(walked, chord);
 
-      // Anchored at the session origin against the place the walker was
-      // standing, rather than at their position now.
-      //
-      // Both are correspondences and both are available, but anchoring on
-      // "where they are this instant" folds their lateral deviation into the
-      // building: a walker half a metre to the left of where the plan says
-      // they should be drags the whole route half a metre left with them. The
-      // origin pairing has no such term — the phone really was at that point
-      // when ARCore fixed its origin there.
-      //
-      // What is left is the uncertainty in "which room am I in", which is
-      // half a room wide and which no amount of walking removes. The first
-      // confirmed landmark does — see [_recentreOnConfirmation].
       worldAt = start;
       planAt = walked.first;
 
@@ -556,16 +547,16 @@ class ArGuidanceCubit extends Cubit<ArGuidanceState> {
       // still crossing the room they started in.
       final alongRouteM = alongWalkedM - path.approachM;
 
-      if (alongRouteM >= _corridorEvidenceM) {
+      if (alongRouteM >= _corridorEvidenceM || path.approachM == 0) {
         // **The corridor speaks for itself.** They are demonstrably walking
         // down a stretch of the route, so the direction to match is that
         // stretch's own — and the walker's recent travel is the same line seen
-        // in the other frame. Neither term knows or cares where they were
-        // standing when the session opened, which is what makes this the
-        // rotation worth having.
-        planDirection = path.directionAtM(alongRouteM);
+        // in the other frame.
+        planDirection = alongRouteM <= _corridorEvidenceM
+            ? path.corridorDepartureDirection
+            : path.directionAtM(alongRouteM);
         worldHeading = heading;
-        _provisionalRotation = false;
+        _provisionalRotation = !hasMeasuredHeading;
         AppLogger.info(
           'REGISTERING on the corridor — ${alongRouteM.toStringAsFixed(1)}m '
           'along the route',
@@ -938,9 +929,61 @@ class ArGuidanceCubit extends Cubit<ArGuidanceState> {
   static const Duration _offRouteSettles = Duration(seconds: 4);
 
   DateTime? _offRouteSince;
+  double? _learnedScale;
 
   void _onGuidance(GuidanceState guidance) {
     if (!state.running) return;
+
+    // When GuidanceBloc learns or refines the scale from actual walking:
+    final scale = guidance.learnedScale;
+    if (scale != null && scale > 0 && scale != _learnedScale) {
+      _learnedScale = scale;
+      final session = guidance.session;
+      final floorPlan = session?.floorPlan;
+      if (session != null && floorPlan != null && floorPlan.rooms.isNotEmpty) {
+        final originRoom = floorPlan.rooms.firstWhere(
+          (r) => session.landmarks.any((l) => l.roomId == r.id),
+          orElse: () => floorPlan.rooms.first,
+        );
+        final destLandmark = session.destinationLandmarkId;
+        final destRoom = destLandmark == null
+            ? floorPlan.drawableRooms.last
+            : floorPlan.drawableRooms.firstWhere(
+                (r) => RoomPlanBridge.landmarkIdFor(r) == destLandmark,
+                orElse: () => floorPlan.drawableRooms.last,
+              );
+
+        final updatedPath = RoomPlanBridge.routePathFrom(
+          floorPlan,
+          fromRoomId: originRoom.id,
+          toRoomId: destRoom.id,
+          dynamicScale: scale,
+        );
+        if (updatedPath != null) {
+          _path = updatedPath;
+          if (_registration != null) {
+            _layRouteIntoTheRoom(_registration!);
+          }
+        }
+
+        // Auto-save calibrated scale back to map repository for this floor
+        if (floorPlan.metresPerUnit != scale) {
+          try {
+            if (getIt.isRegistered<RoomPlanRepository>()) {
+              getIt<RoomPlanRepository>().save(
+                floorPlan.copyWith(metresPerUnit: scale),
+              );
+              AppLogger.info(
+                'Auto-saved calibrated scale (${scale.toStringAsFixed(2)} m/unit) to floor plan repository',
+              );
+            }
+          } catch (e) {
+            AppLogger.warn('Could not auto-save calibrated scale: $e');
+          }
+        }
+      }
+    }
+
     _anchorFor(guidance);
   }
 
@@ -956,8 +999,7 @@ class ArGuidanceCubit extends Cubit<ArGuidanceState> {
       final path = session.routePath;
       if (path == null || path.pointsM.length < 2) {
         // No geometry behind this walk — a recorded-walk route, or a traced
-        // plan nobody measured. The leg arrows are the only thing those have,
-        // and they are what this screen did before any of this existed.
+        // plan with no geometry.
         _cannotRegister = true;
         AppLogger.info('No route geometry — AR falls back to leg arrows');
       } else {
@@ -1022,6 +1064,10 @@ class ArGuidanceCubit extends Cubit<ArGuidanceState> {
 
     if (_anchoredLeg == guidance.legIndex) return;
     _anchoredLeg = guidance.legIndex;
+
+    // A route planned over a room plan has full geometric coordinates.
+    // Do NOT send a single-leg dead reckoning fallback which blocks full route drawing!
+    if (_path != null && _path!.pointsM.length >= 2) return;
 
     // A route planned over a photo-traced plan has distances in the fractions
     // of an image nobody measured, so its "metres" are not metres. The

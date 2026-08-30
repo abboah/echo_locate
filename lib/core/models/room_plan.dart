@@ -625,6 +625,35 @@ abstract class RoomPlan with _$RoomPlan {
   /// may speak a distance from it aloud. See [metresPerUnit].
   bool get isMetric => metresPerUnit != null;
 
+  /// Estimates how many metres one plan unit represents based on standard
+  /// architectural dimensions (standard office/classroom is ~6.0m on its longest side).
+  double get estimatedMetresPerUnit {
+    if (metresPerUnit != null && metresPerUnit! > 0) return metresPerUnit!;
+
+    final drawable = drawableRooms.where((r) => !r.isCirculation && r.corners.length >= 3).toList();
+    if (drawable.isNotEmpty) {
+      final roomSpans = drawable.map((r) => r.bounds.longestSide).where((s) => s > 0).toList();
+      if (roomSpans.isNotEmpty) {
+        roomSpans.sort();
+        final medianSpan = roomSpans[roomSpans.length ~/ 2];
+        if (medianSpan > 0) {
+          return 6.0 / medianSpan;
+        }
+      }
+    }
+
+    final totalBox = bounds;
+    final totalSpan = totalBox.longestSide;
+    if (totalSpan > 0) {
+      return 40.0 / totalSpan;
+    }
+
+    return 1.0;
+  }
+
+  /// Returns the measured scale if present, or the architecturally estimated scale.
+  double get effectiveMetresPerUnit => metresPerUnit ?? estimatedMetresPerUnit;
+
   Room? roomOf(String id) {
     for (final room in rooms) {
       if (room.id == id) return room;

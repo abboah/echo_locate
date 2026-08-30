@@ -20,6 +20,7 @@
 // The join is [Room.landmarkId] when a room has been matched to a landmark
 // somebody recorded, and a derived id otherwise — see [landmarkIdFor].
 
+import 'dart:math' as math;
 import 'dart:ui' show Offset;
 
 import '../../core/models/landmark.dart';
@@ -163,18 +164,16 @@ class RoomPlanBridge {
   /// metres, then turn right" has to dead-reckon the twelve metres, and an
   /// arrow handed the actual line can point at the actual corner.
   ///
-  /// In metres, so it is in the same units as ARCore's world and can be
-  /// registered into it directly. Null when the plan has no scale, because
-  /// laying a unitless path into a room in metres would size the building by
-  /// whatever the tracing happened to be drawn at — and null when the two
-  /// rooms are not connected, which is [plannedRouteFrom]'s answer too.
+  /// In metres, using [dynamicScale], [RoomPlan.metresPerUnit], or the estimated
+  /// architectural scale, so it is in the same units as ARCore's world and can be
+  /// registered into it directly.
   static RoutePath? routePathFrom(
     RoomPlan plan, {
     required String fromRoomId,
     required String toRoomId,
+    double? dynamicScale,
   }) {
-    final scale = plan.metresPerUnit;
-    if (scale == null) return null;
+    final scale = dynamicScale ?? plan.effectiveMetresPerUnit;
 
     final graph = RoomNavGraph.build(plan);
     final route = graph.route(fromRoomId: fromRoomId, toRoomId: toRoomId);
@@ -201,11 +200,14 @@ class RoomPlanBridge {
     return RoutePath(
       pointsM: [for (final point in line) point * scale],
       legEndsM: legEnds,
-      // The room the walker said they were in. Kept off the route — the walk
-      // still starts at the doorway — and used only to place them on it. See
-      // [RoutePath.approachFromM].
-      approachFromM: switch (plan.roomOf(fromRoomId)?.centre) {
-        final Offset centre => centre * scale,
+      // Circulation spaces (corridors, stairs, atriums) have no internal room approach —
+      // the walk starts directly on the corridor line.
+      approachFromM: switch (plan.roomOf(fromRoomId)) {
+        final Room r when r.category.isCirculation => null,
+        final Room r => switch (r.centre) {
+          final Offset centre => centre * scale,
+          null => null,
+        },
         null => null,
       },
     );
@@ -492,5 +494,24 @@ extension RoutePathGeometry on RoutePath {
     return pointsM.length < 2
         ? const Offset(0, 1)
         : pointsM.last - pointsM[pointsM.length - 2];
+  }
+
+  /// The dominant direction the initial corridor leg runs along.
+  ///
+  /// Ignores short lateral or diagonal transitions from a side doorway onto the hallway centreline.
+  Offset get corridorDepartureDirection {
+    if (pointsM.length < 2) return const Offset(0, 1);
+    var longest = pointsM[1] - pointsM[0];
+    var maxLen = longest.distance;
+    final limit = math.min(pointsM.length - 1, 4);
+    for (var i = 0; i < limit; i++) {
+      final delta = pointsM[i + 1] - pointsM[i];
+      final len = delta.distance;
+      if (len > maxLen) {
+        maxLen = len;
+        longest = delta;
+      }
+    }
+    return longest;
   }
 }

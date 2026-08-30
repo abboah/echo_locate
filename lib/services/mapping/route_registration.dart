@@ -278,11 +278,6 @@ class Registration {
   }
 
   /// How far [snappedToGrid] may rotate a registration before it refuses.
-  ///
-  /// Half a quadrant would be the most it could ever need — beyond that the
-  /// nearest candidate is a different quarter turn — so this is well inside
-  /// that: it is sized to the error a travel heading plausibly carries, not to
-  /// the error it could theoretically carry.
   static const double _defaultMaxSnapRad = 25 * math.pi / 180;
 
   /// The grid a run of route legs implies, folded to [0, pi/2).
@@ -348,12 +343,12 @@ class Registration {
   /// a square room is a log line nobody can read.
   static double foldToQuarter(double angle) {
     const quarter = math.pi / 2;
-    var folded = angle % quarter;
-    if (folded < 0) folded += quarter;
-    return quarter - folded < 1e-9 ? 0 : folded;
+    var a = angle % quarter;
+    if (a < 0) a += quarter;
+    return (quarter - a < 1e-6) ? 0.0 : a;
   }
 
-  /// The signed difference between two angles, in (-pi, pi].
+  /// Signed difference between two angles in radians, wrapped to (-pi, pi].
   static double signedAngleBetween(double a, double b) {
     var delta = (a - b) % (2 * math.pi);
     if (delta > math.pi) delta -= 2 * math.pi;
@@ -362,7 +357,7 @@ class Registration {
   }
 
   /// Shorter than this and a leg is a step round a doorway, not a corridor.
-  static const double _minGridLegM = 2.5;
+  static const double _minGridLegM = 0.5;
 
   /// How far the legs may disagree before they are not a grid.
   static const double _maxGridSpreadRad = 10 * math.pi / 180;
