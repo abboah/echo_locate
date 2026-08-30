@@ -1354,7 +1354,9 @@ void main() {
       final route = bloc.graph.route(fromRoomId: a.id, toRoomId: b.id);
 
       expect(route, isNotNull);
-      expect(route!.roomsPassed.length, 3);
+      // Corridor then Room B — the route starts at Room A's door, so A is not
+      // a room it crosses. See RoomNavGraph._doorToDoor.
+      expect(route!.roomsPassed.length, 2);
       await bloc.close();
     });
   });
@@ -1479,7 +1481,7 @@ void main() {
         final route = bloc.graph.route(fromRoomId: a.id, toRoomId: b.id);
 
         expect(route, isNotNull);
-        expect(route!.roomsPassed.length, 3);
+        expect(route!.roomsPassed.length, 2);
         // The drawn line has more points than the decision points, because it
         // was expanded along the hall's centreline.
         expect(

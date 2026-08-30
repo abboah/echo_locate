@@ -453,19 +453,57 @@ class ArCoreCaptureService {
   /// Anchors cost ARCore tracking work every frame, so a session that never
   /// releases them gets slower the longer a building is walked — which is
   /// exactly the session that can least afford it.
-  Future<void> releaseCorners(List<CapturedCorner> corners) async {
-    if (!_running) return;
-    final ids = [
-      for (final corner in corners)
-        if (corner.anchorId != null) corner.anchorId!,
-    ];
-    if (ids.isEmpty) return;
+  Future<void> releaseCorners(List<CapturedCorner> corners) => releaseAnchorIds([
+    for (final corner in corners)
+      if (corner.anchorId != null) corner.anchorId!,
+  ]);
+
+  /// Detaches anchors by id, for the ones no [CapturedCorner] is holding.
+  ///
+  /// A door is the case: its tapped point becomes an opening in the plan and
+  /// the corner object it arrived in is discarded, so by the time the door is
+  /// removed its id is all that is left of it.
+  Future<void> releaseAnchorIds(List<String> ids) async {
+    if (!_running || ids.isEmpty) return;
     try {
       await _method.invokeMethod<void>('releaseAnchors', {'ids': ids});
     } on PlatformException catch (e) {
       AppLogger.warn('Anchor release failed: ${e.message}');
     } on MissingPluginException {
       // Nothing native to release.
+    }
+  }
+
+  /// Tells the preview which anchors to draw over the camera, and in what order.
+  ///
+  /// [cornerIds] is the draft polygon **in tapped order** — native joins them
+  /// into the outline, so the order is the shape rather than a detail. [doorIds]
+  /// are independent marks.
+  ///
+  /// This is what makes a bad hit-test visible. A corner that lands a metre
+  /// from the finger produces exactly the same crosshair, count and hint as one
+  /// that lands correctly, and the plan it quietly deforms is only inspected
+  /// afterwards — by which point the walk is over. Drawing each anchor where
+  /// ARCore believes it is means the error shows up in the viewfinder, while
+  /// the contributor is still standing in the room and can undo it.
+  ///
+  /// Sent on change — a few times per room — not per frame: the projection
+  /// itself happens natively, in the same frame that draws the camera, so the
+  /// markers cannot drift against the image they are drawn over.
+  Future<void> setMarkers({
+    required List<String> cornerIds,
+    required List<String> doorIds,
+  }) async {
+    if (!_running) return;
+    try {
+      await _method.invokeMethod<void>('setMarkers', {
+        'corners': cornerIds,
+        'doors': doorIds,
+      });
+    } on PlatformException catch (e) {
+      AppLogger.warn('Marker update failed: ${e.message}');
+    } on MissingPluginException {
+      // Nothing native to draw with.
     }
   }
 

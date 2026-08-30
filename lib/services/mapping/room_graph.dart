@@ -39,14 +39,22 @@ import '../../core/models/room_plan.dart';
 import 'room_geometry.dart';
 
 /// What a waypoint on a route physically is.
+///
+/// ## Both ends are doors
+///
+/// [start] and [destination] used to sit at the middle of their rooms, and a
+/// route drawn from one to the other began and ended in the middle of a floor
+/// with no door in sight. Both now sit on the doorway — see
+/// [RoomNavGraph._doorToDoor] — while keeping the room they belong to, because
+/// the last thing a walker hears has to name the room and not the door in it.
 enum WaypointKind {
-  /// Where the walker starts — the middle of the origin room.
+  /// Where the walk begins: the door it leaves the origin room by.
   start,
 
   /// A door or archway being passed through.
   opening,
 
-  /// The middle of the destination room.
+  /// Where the walk ends: the door into the destination room.
   destination,
 }
 
@@ -263,12 +271,61 @@ class RoomNavGraph {
     final path = _search(start, goal);
     if (path == null) return null;
 
-    final waypoints = _waypointsFor(path, fromRoomId, toRoomId);
+    final walked = _doorToDoor(path);
+    final waypoints = _waypointsFor(walked, fromRoomId, toRoomId);
     return RoomRoute(
       waypoints: waypoints,
-      roomsPassed: _roomsAlong(path),
+      roomsPassed: _roomsPassedFor(walked, toRoomId),
       polyline: _drawnPath(waypoints),
     );
+  }
+
+  /// The searched path with its two room nodes trimmed off, so the walk runs
+  /// door to door.
+  ///
+  /// ## Why the search still goes room to room
+  ///
+  /// Because that is what picks the doors. A room node is joined to every door
+  /// of its room, so A\* leaving `room:A` already compares "out through the
+  /// north door then down the corridor" against "out through the south door and
+  /// round", and takes the cheaper. Searching from a door chosen in advance
+  /// would be choosing it by some rule other than the length of the resulting
+  /// walk. So the room nodes earn their place in the search and are dropped
+  /// immediately after it: they were scaffolding, not part of the walk.
+  ///
+  /// ## What is lost with them, deliberately
+  ///
+  /// The stretch from the middle of the origin room to its door, and from the
+  /// destination's door to the middle of that room. Neither is a walk anybody
+  /// needs directions for — you can see the door of the room you are standing
+  /// in — and quoting them made every route longer than the part of it that
+  /// needed guiding.
+  ///
+  /// ## The one case that keeps its room nodes
+  ///
+  /// Two rooms joined by a single shared door. Trimming leaves one waypoint,
+  /// which is not a line and cannot be drawn or walked, so the untrimmed path
+  /// stands. It is the one shape where "start at a door and end at a door"
+  /// would mean starting and ending at the same point.
+  static List<String> _doorToDoor(List<String> path) {
+    final inner = path.length > 2 ? path.sublist(1, path.length - 1) : path;
+    return inner.length >= 2 ? inner : path;
+  }
+
+  /// Rooms the walk crosses, with the destination room on the end.
+  ///
+  /// The destination is no longer *crossed* — the walk stops at its door — but
+  /// legs are named by consecutive pairs of this list, so without it on the end
+  /// the last leg has nothing to be walking towards and the sentence that names
+  /// the destination is never generated. It is the room the walker is arriving
+  /// at; that it is reached at its threshold rather than at its centroid does
+  /// not make it any less the answer to "where am I going".
+  List<String> _roomsPassedFor(List<String> path, String toRoomId) {
+    final rooms = _roomsAlong(path);
+    // Already there on the untrimmed fallback, where the final edge really does
+    // cross the destination room.
+    if (rooms.isEmpty || rooms.last != toRoomId) rooms.add(toRoomId);
+    return rooms;
   }
 
   /// The waypoints expanded into the line a walker follows.
@@ -371,7 +428,16 @@ class RoomNavGraph {
           _ when i == path.length - 1 => WaypointKind.destination,
           _ => WaypointKind.opening,
         },
-        roomId: _nodeRooms[path[i]],
+        // The two ends carry the room the walk is *from* and *to* even though
+        // they now stand on that room's door rather than inside it. The last
+        // sentence a walker hears is read off this field — "Walk 15 metres to
+        // the Reading Hall" — and a terminal waypoint that knew only which
+        // door it was would say "to the door" and never name the place.
+        roomId: switch (i) {
+          0 => _nodeRooms[path[i]] ?? fromRoomId,
+          _ when i == path.length - 1 => _nodeRooms[path[i]] ?? toRoomId,
+          _ => _nodeRooms[path[i]],
+        },
         openingId: path[i].startsWith('door:') ? path[i].substring(5) : null,
       ),
   ];

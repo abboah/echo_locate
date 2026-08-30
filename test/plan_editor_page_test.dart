@@ -4,6 +4,7 @@ import 'package:echo_locate/features/buildings/building_repository.dart';
 import 'package:echo_locate/features/plan_editor/bloc/plan_editor_cubit.dart';
 import 'package:echo_locate/features/room_trace/room_plan_repository.dart';
 import 'package:echo_locate/ui/pages/plan_editor/plan_editor_page.dart';
+import 'package:echo_locate/ui/widgets/room_plan_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -122,5 +123,123 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
+  });
+
+  group('setting the scale', () {
+    /// The state every traced floor is in until somebody measures it.
+    void planWithNoScale() {
+      when(() => plans.planFor(any(), any())).thenAnswer(
+        (_) async => twoWings().copyWith(metresPerUnit: null),
+      );
+    }
+
+    testWidgets('an unscaled floor is called out as a problem', (tester) async {
+      planWithNoScale();
+
+      await tester.pumpWidget(host());
+      await tester.pumpAndSettle();
+
+      // Nothing else on this screen would reveal it: the plan draws and routes
+      // perfectly without a scale.
+      expect(find.textContaining('no scale'), findsOneWidget);
+      expect(find.text('Set scale'), findsOneWidget);
+    });
+
+    testWidgets('a scaled floor says nothing about it', (tester) async {
+      await tester.pumpWidget(host()); // twoWings() is metric.
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('no scale'), findsNothing);
+    });
+
+    testWidgets('the measure mode opens and takes over the plan', (
+      tester,
+    ) async {
+      planWithNoScale();
+
+      await tester.pumpWidget(host());
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Set scale'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('the ends of a corridor'), findsOneWidget);
+      // The floor actions stand down while a tap means something else.
+      expect(find.text('Square up floor'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('two taps on the plan mark a span', (tester) async {
+      planWithNoScale();
+
+      await tester.pumpWidget(host());
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Set scale'));
+      await tester.pumpAndSettle();
+
+      final plan = find.byType(RoomPlanView);
+      final box = tester.getRect(plan);
+      await tester.tapAt(box.centerLeft + const Offset(20, 0));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('One end placed'), findsOneWidget);
+
+      await tester.tapAt(box.centerRight - const Offset(20, 0));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Both ends placed'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the whole flow sets a scale and saves it', (tester) async {
+      planWithNoScale();
+
+      await tester.pumpWidget(host());
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Set scale'));
+      await tester.pumpAndSettle();
+
+      final box = tester.getRect(find.byType(RoomPlanView));
+      await tester.tapAt(box.centerLeft + const Offset(20, 0));
+      await tester.pumpAndSettle();
+      await tester.tapAt(box.centerRight - const Offset(20, 0));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Set distance'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).first, '30');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Set scale').last);
+      await tester.pumpAndSettle();
+
+      // The warning is gone because the floor now has one, and the mode has
+      // closed itself. Save is left enabled rather than pressed: the scale is
+      // an edit like any other and rides out with the rest of them, which
+      // `plan_editor_cubit_test` checks against the repository.
+      expect(find.textContaining('no scale'), findsNothing);
+      expect(find.textContaining('the ends of a corridor'), findsNothing);
+      expect(
+        tester
+            .widget<TextButton>(find.widgetWithText(TextButton, 'Save'))
+            .onPressed,
+        isNotNull,
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the scale menu is in the app bar in both themes', (
+      tester,
+    ) async {
+      for (final brightness in Brightness.values) {
+        await tester.pumpWidget(host(brightness: brightness));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byTooltip('Scale'));
+        await tester.pumpAndSettle();
+
+        expect(find.textContaining('the scale'), findsWidgets);
+        expect(tester.takeException(), isNull);
+
+        await tester.tapAt(const Offset(5, 5)); // Dismiss.
+        await tester.pumpAndSettle();
+      }
+    });
   });
 }

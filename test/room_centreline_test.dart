@@ -341,7 +341,7 @@ void main() {
       final route = graph.route(fromRoomId: 'a', toRoomId: 'd')!;
 
       final spoken = const RoomDirections(
-        metric: true,
+        metresPerUnit: 1,
       ).describe(graph, route).map((i) => i.text).join(' ');
 
       // Second, not third: the walk starts by coming *out* of the first door,

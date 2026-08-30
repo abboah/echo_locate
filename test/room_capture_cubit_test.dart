@@ -121,11 +121,24 @@ class _FakeCapture implements ArCoreCaptureService {
   ];
 
   @override
-  Future<void> releaseCorners(List<CapturedCorner> corners) async {
-    released.addAll([
-      for (final corner in corners)
-        if (corner.anchorId != null) corner.anchorId!,
-    ]);
+  Future<void> releaseCorners(List<CapturedCorner> corners) => releaseAnchorIds([
+    for (final corner in corners)
+      if (corner.anchorId != null) corner.anchorId!,
+  ]);
+
+  @override
+  Future<void> releaseAnchorIds(List<String> ids) async => released.addAll(ids);
+
+  /// What the preview was last told to draw. Null until the first sync, which
+  /// is how "never asked" is told from "asked for nothing".
+  (List<String>, List<String>)? markers;
+
+  @override
+  Future<void> setMarkers({
+    required List<String> cornerIds,
+    required List<String> doorIds,
+  }) async {
+    markers = (cornerIds, doorIds);
   }
 
   @override
@@ -352,6 +365,108 @@ void main() {
       // Reported rather than averaged away — a room built mostly from these is
       // worth recapturing, and the evaluation report should be able to say so.
       expect(cubit.state.lowConfidenceCorners, 1);
+      await cubit.close();
+    });
+  });
+
+  group('markers drawn over the camera', () {
+    test('the outline is sent in tapped order, because order is the '
+        'shape', () async {
+      final cubit = await started();
+      capture.hits.addAll([
+        corner(0, 0, id: 'a1'),
+        corner(4, 0, id: 'a2'),
+        corner(4, 3, id: 'a3'),
+      ]);
+
+      for (var i = 0; i < 3; i++) {
+        await cubit.tapCorner(0.5, 0.8);
+      }
+
+      // Native joins consecutive ids into walls, so a reordered list is a
+      // different polygon rather than the same one drawn differently.
+      expect(capture.markers?.$1, ['a1', 'a2', 'a3']);
+      await cubit.close();
+    });
+
+    test('undo takes the marker with it', () async {
+      final cubit = await started();
+      capture.hits.addAll([corner(0, 0, id: 'a1'), corner(4, 0, id: 'a2')]);
+      await cubit.tapCorner(0.5, 0.8);
+      await cubit.tapCorner(0.5, 0.8);
+
+      await cubit.undoCorner();
+
+      expect(capture.markers?.$1, ['a1']);
+      // And the anchor behind it is detached, not merely undrawn.
+      expect(capture.released, contains('a2'));
+      await cubit.close();
+    });
+
+    test('closing the room clears the outline it drew', () async {
+      final cubit = await started();
+      await captureSquare(cubit);
+
+      // From here the room is in the plan preview. Left drawn, it would read as
+      // the beginning of the next room.
+      expect(capture.markers?.$1, isEmpty);
+      await cubit.close();
+    });
+
+    test('a recorded door is marked, and removing it releases its '
+        'anchor', () async {
+      final cubit = await started();
+      await captureSquare(cubit, label: 'Room A');
+      capture.hits.addAll([
+        corner(4, 0),
+        corner(8, 0),
+        corner(8, 3),
+        corner(4, 3),
+      ]);
+      for (var i = 0; i < 4; i++) {
+        await cubit.tapCorner(0.5, 0.8);
+      }
+      await cubit.closeRoom(category: RoomCategory.office, label: 'Room B');
+      await cubit.setMode(RoomCaptureMode.doors);
+
+      capture.hits.add(corner(4, 1.5, id: 'door-anchor'));
+      await cubit.tapDoor(0.5, 0.8);
+
+      // Marking tagged doorways is what stops the same one being tapped again
+      // from the other side.
+      expect(capture.markers?.$2, ['door-anchor']);
+
+      await cubit.removeDoor(cubit.state.plan.openings.single.id);
+
+      expect(capture.markers?.$2, isEmpty);
+      expect(capture.released, contains('door-anchor'));
+      await cubit.close();
+    });
+
+    test('a door tap that lands nowhere near a wall does not leak its '
+        'anchor', () async {
+      final cubit = await started();
+      await captureSquare(cubit, label: 'Room A');
+      capture.hits.addAll([
+        corner(4, 0),
+        corner(8, 0),
+        corner(8, 3),
+        corner(4, 3),
+      ]);
+      for (var i = 0; i < 4; i++) {
+        await cubit.tapCorner(0.5, 0.8);
+      }
+      await cubit.closeRoom(category: RoomCategory.office, label: 'Room B');
+      await cubit.setMode(RoomCaptureMode.doors);
+
+      // Out in the middle of nowhere: rejected, but ARCore still created an
+      // anchor for it, and an anchor nothing refers to costs tracking work for
+      // the rest of the walk.
+      capture.hits.add(corner(40, 40, id: 'stray'));
+      await cubit.tapDoor(0.5, 0.8);
+
+      expect(cubit.state.plan.openings, isEmpty);
+      expect(capture.released, contains('stray'));
       await cubit.close();
     });
   });
@@ -917,8 +1032,10 @@ void main() {
         ).route(fromRoomId: a.id, toRoomId: c.id);
 
         expect(route, isNotNull);
-        expect(route!.roomsPassed, hasLength(3));
-        expect(plan.roomOf(route.roomsPassed[1])!.isCirculation, isTrue);
+        // Corridor then Room C: door to door, so Room A is where the walker is
+        // standing rather than a room the route crosses.
+        expect(route!.roomsPassed, hasLength(2));
+        expect(plan.roomOf(route.roomsPassed[0])!.isCirculation, isTrue);
         await cubit.close();
       },
     );

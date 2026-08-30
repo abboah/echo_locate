@@ -150,7 +150,7 @@ String joined(List<RoomInstruction> instructions) =>
 void main() {
   const east = Offset(1, 0);
   const west = Offset(-1, 0);
-  const directions = RoomDirections();
+  const directions = RoomDirections(metresPerUnit: 1);
 
   group('graph structure', () {
     test('routes from the lobby to a room off the corridor', () {
@@ -158,26 +158,89 @@ void main() {
       final route = graph.route(fromRoomId: 'lobby', toRoomId: 'n2');
 
       expect(route, isNotNull);
-      expect(route!.roomsPassed, ['lobby', 'corridor', 'n2']);
-      // lobby centre → lobby door → n2 door → n2 centre.
-      expect(route.waypoints.length, 4);
+      // The lobby is not on the list any more: the walk starts at its door, so
+      // the lobby is where the walker *is*, not somewhere they cross. The
+      // destination stays on the end even though it is only reached at its
+      // threshold — the last leg has to have somewhere to be going.
+      expect(route!.roomsPassed, ['corridor', 'n2']);
+
+      // THE POINT: door to door. Two waypoints, both openings, and no room
+      // centre at either end.
+      expect(route.waypoints.length, 2);
+      expect(route.waypoints.first.openingId, 'd-lobby');
+      expect(route.waypoints.last.openingId, 'd-n2');
+      // Their *roles* survive the move, which is what keeps the last spoken
+      // sentence naming the room rather than the door in it.
       expect(route.waypoints.first.kind, WaypointKind.start);
       expect(route.waypoints.last.kind, WaypointKind.destination);
-      expect(route.waypoints[1].openingId, 'd-lobby');
-      expect(route.waypoints[2].openingId, 'd-n2');
+      expect(route.waypoints.first.roomId, 'lobby');
+      expect(route.waypoints.last.roomId, 'n2');
     });
 
-    test('distance is the walked polyline, not centroid to centroid', () {
+    test('distance is door to door, not centroid to centroid', () {
       final graph = RoomNavGraph.build(buildWing());
       final route = graph.route(fromRoomId: 'lobby', toRoomId: 'n3')!;
 
-      // lobby centre (-3,0) → (0,0) → (12,1) → n3 centre (12,3.5):
-      // 3 + ~12.04 + 2.5.
-      expect(route.totalDistanceM, closeTo(17.54, 0.05));
+      // The corridor and nothing else: (0,0) → (12,1) is ~12.04. The 3 m from
+      // the lobby's middle to its door and the 2.5 m from n3's door into n3
+      // are both gone, because neither is a walk anybody needs directions for.
+      expect(route.totalDistanceM, closeTo(12.04, 0.05));
 
       // A centroid graph would have quoted lobby→corridor→n3, which is
-      // 10 + 10.6 = 20.6 — a fifth longer and down a line nobody walks.
+      // 10 + 10.6 = 20.6 — down a line nobody walks.
       expect(route.totalDistanceM, lessThan(19));
+    });
+
+    test('two rooms sharing one door keep their room nodes', () {
+      // The one shape where door-to-door has nothing left to draw: trimming
+      // both ends leaves a single point, which is not a line and cannot be
+      // walked. The untrimmed route stands instead — see
+      // RoomNavGraph._doorToDoor — because a degenerate route would read
+      // downstream as "these rooms are not connected", which is a lie about a
+      // pair of rooms with a door between them.
+      final plan = RoomPlan(
+        buildingId: 'b1',
+        floorId: 'gf',
+        codePrefix: 'GF',
+        storedRooms: [
+          rectRoom(
+            id: 'a',
+            code: 'GF 1',
+            category: RoomCategory.office,
+            label: 'Room A',
+            left: 0,
+            right: 4,
+            bottom: 0,
+            top: 4,
+          ),
+          rectRoom(
+            id: 'b',
+            code: 'GF 2',
+            category: RoomCategory.office,
+            label: 'Room B',
+            left: 4,
+            right: 8,
+            bottom: 0,
+            top: 4,
+          ),
+        ],
+        storedOpenings: [
+          doorAt(id: 'd-ab', roomA: 'a', roomB: 'b', x: 4, y: 2),
+        ],
+      );
+
+      final route = RoomNavGraph.build(plan).route(
+        fromRoomId: 'a',
+        toRoomId: 'b',
+      );
+
+      expect(route, isNotNull);
+      expect(route!.isEmpty, isFalse);
+      // The pre-door-to-door shape, kept whole: across A, through the shared
+      // door, into B.
+      expect(route.roomsPassed, ['a', 'b']);
+      expect(route.waypoints, hasLength(3));
+      expect(route.waypoints.last.roomId, 'b');
     });
 
     test('a stub room has no node and never asks for its own centroid', () {
@@ -442,12 +505,15 @@ void main() {
       final route = graph.route(fromRoomId: 'lobby', toRoomId: 'n2')!;
       final spoken = joined(
         const RoomDirections(
-          metric: false,
+          metresPerUnit: null,
         ).describe(graph, route, initialHeading: east),
       );
 
       expect(spoken, isNot(contains('metres')));
-      expect(spoken, contains('Continue to'));
+      // The destination is still named — it is the door count that names it
+      // now that the walk ends on the threshold rather than in the middle of
+      // the room, and that sentence is true at any scale.
+      expect(spoken, contains('Digital Forensic Office'));
     });
 
     test('metric plans do speak distances', () {

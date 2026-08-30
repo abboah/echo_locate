@@ -123,6 +123,16 @@ class RoomNavigateCubit extends Cubit<RoomNavigateState> {
       // A traced plan nobody measured routes correctly and cannot be spoken in
       // metres; guidance leans on reading the door plate instead.
       metric: plan.isMetric,
+      // The line itself, for the AR layer to lay into the room. Null on a plan
+      // with no scale — see [RoomPlanBridge.routePathFrom].
+      routePath: RoomPlanBridge.routePathFrom(
+        plan,
+        fromRoomId: from,
+        toRoomId: to,
+      ),
+      // The floor itself, so the guidance screen can draw the route through
+      // the rooms it passes rather than across an empty card.
+      floorPlan: plan,
     );
   }
 }

@@ -46,6 +46,7 @@ import 'sensing/detection_service.dart';
 import 'sensing/landmark_matcher.dart';
 import 'sensing/text_recognition_service.dart';
 import 'speech/speech_service.dart';
+import 'vision/ar_guidance_service.dart';
 import 'vision/arcore_capture_service.dart';
 import 'vision/arcore_depth_service.dart';
 import 'vision/depth_reliability.dart';
@@ -119,8 +120,17 @@ Future<void> configureDependencies() async {
   getIt.registerLazySingleton<TextRecognitionService>(
     () => TextRecognitionService(),
   );
+  // AR guidance owns a session whose camera frames DetectionService can use.
+  // Registered before it, and handed to it, because the choice of frame source
+  // is made inside `DetectionService.start()`: an AR session that is already
+  // streaming wins, since ARCore holds the camera exclusively and the plugin
+  // could not open it anyway.
+  getIt.registerLazySingleton<ArGuidanceService>(() => ArGuidanceService());
   getIt.registerLazySingleton<DetectionService>(
-    () => DetectionService(textRecognition: getIt<TextRecognitionService>()),
+    () => DetectionService(
+      textRecognition: getIt<TextRecognitionService>(),
+      arFrames: getIt<ArGuidanceService>(),
+    ),
   );
   // Pure matching rules, no hardware — see LandmarkMatcher for why the spec's
   // plain Levenshtein tolerance was tightened.

@@ -81,6 +81,11 @@ class PlanEditorView extends StatelessWidget {
             ),
             title: const Text('Edit this floor'),
             actions: [
+              if (state.status == PlanEditorStatus.ready)
+                _ScaleMenu(
+                  cubit: context.read<PlanEditorCubit>(),
+                  state: state,
+                ),
               TextButton(
                 onPressed: state.isDirty
                     ? () => context.read<PlanEditorCubit>().save()
@@ -144,35 +149,66 @@ class _Editor extends StatelessWidget {
     final cubit = context.read<PlanEditorCubit>();
     final state = context.watch<PlanEditorCubit>().state;
 
-    return Column(
-      children: [
-        if (state.hasWings) _WingPicker(cubit: cubit, state: state),
-        Expanded(
-          child: RoomPlanView(
-            plan: state.plan,
-            highlightedRoomId: state.selectedRoomId ?? state.editingRoomId,
-            // While a shape is open, a tap on the plan picks a handle rather
-            // than opening another room's sheet — otherwise every miss throws
-            // the contributor out of the edit they are halfway through.
-            onRoomTap: state.editingRoomId != null
-                ? null
-                : (id) => _editRoom(context, cubit, id),
-            editingRoomId: state.editingRoomId,
-            selectedPoint: state.selectedPoint,
-            onPointSelected: cubit.selectPoint,
-            onPointMoved: (index, to) =>
-                cubit.movePoint(state.editingRoomId!, index, to),
+    return LayoutBuilder(
+      builder: (context, constraints) => Column(
+        children: [
+          if (state.hasWings) _WingPicker(cubit: cubit, state: state),
+          Expanded(
+            child: RoomPlanView(
+              plan: state.plan,
+              highlightedRoomId: state.selectedRoomId ?? state.editingRoomId,
+              // While a shape is open, a tap on the plan picks a handle rather
+              // than opening another room's sheet — otherwise every miss throws
+              // the contributor out of the edit they are halfway through.
+              onRoomTap: state.editingRoomId != null || state.settingScale
+                  ? null
+                  : (id) => _editRoom(context, cubit, id),
+              // And while the scale is being measured, a tap is a position
+              // rather than a room. The two ends of a known span are a
+              // corridor's ends or a doorway's jambs, neither of which is a
+              // room's middle.
+              onPlanTap: state.settingScale ? cubit.tapScalePoint : null,
+              markedPoints: state.scalePoints,
+              editingRoomId: state.editingRoomId,
+              selectedPoint: state.selectedPoint,
+              onPointSelected: cubit.selectPoint,
+              onPointMoved: (index, to) =>
+                  cubit.movePoint(state.editingRoomId!, index, to),
+            ),
           ),
-        ),
-        if (state.editingRoomId != null)
-          _ShapeControls(cubit: cubit, state: state)
-        else ...[
-          _Problems(cubit: cubit, state: state),
-          _FloorControls(cubit: cubit, state: state),
+          // The controls take the height they need, up to half the screen, and
+          // scroll past that.
+          //
+          // They used to be plain children of this column, which meant their
+          // combined natural height had to fit whatever was left after the
+          // plan — and with a wing selected, a problem list, and the floor
+          // actions, it already very nearly did not. Every addition was one
+          // overflow stripe away from being a layout bug, on the screen whose
+          // job is fixing other people's mistakes.
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: constraints.maxHeight / 2),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (state.settingScale)
+                    _ScaleControls(cubit: cubit, state: state)
+                  else if (state.editingRoomId != null)
+                    _ShapeControls(cubit: cubit, state: state)
+                  else ...[
+                    _Problems(cubit: cubit, state: state),
+                    _FloorControls(cubit: cubit, state: state),
+                  ],
+                  if (state.hasWings &&
+                      state.selectedWingId != null &&
+                      !state.settingScale)
+                    _WingControls(cubit: cubit, state: state),
+                ],
+              ),
+            ),
+          ),
         ],
-        if (state.hasWings && state.selectedWingId != null)
-          _WingControls(cubit: cubit, state: state),
-      ],
+      ),
     );
   }
 }
@@ -328,6 +364,217 @@ class _FloorControls extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The scale menu, in the app bar.
+///
+/// Up here rather than under the floor controls, for the reason the tracing
+/// screen puts it in a menu too: the controls column already carries the
+/// squaring buttons, the problem list and the wing nudges, and on a phone it
+/// is one addition away from overflowing. What the floor's scale *is* still
+/// belongs on screen — [_Problems] carries that, and only when it is missing.
+class _ScaleMenu extends StatelessWidget {
+  const _ScaleMenu({required this.cubit, required this.state});
+
+  final PlanEditorCubit cubit;
+  final PlanEditorState state;
+
+  @override
+  Widget build(BuildContext context) => PopupMenuButton<_ScaleAction>(
+    icon: const Icon(PhosphorIcons.ruler),
+    tooltip: 'Scale',
+    onSelected: (action) => switch (action) {
+      _ScaleAction.measure => cubit.setScaleMode(on: true),
+      _ScaleAction.clear => cubit.clearScale(),
+    },
+    itemBuilder: (context) => [
+      PopupMenuItem(
+        value: _ScaleAction.measure,
+        child: ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(PhosphorIcons.ruler),
+          title: Text(state.hasScale ? 'Change the scale' : 'Set the scale'),
+          subtitle: Text(
+            state.hasScale
+                // The floor's own width, not the raw metres-per-unit: nobody
+                // knows what a plan unit is, so every way of showing them one
+                // is a number they cannot check. How wide the building is,
+                // they can.
+                ? 'Set — this floor is about '
+                      '${(state.plan.bounds.longestSide * state.plan.metresPerUnit!).round()} m across'
+                : 'Not set — distances cannot be spoken',
+          ),
+        ),
+      ),
+      if (state.hasScale)
+        const PopupMenuItem(
+          value: _ScaleAction.clear,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(PhosphorIcons.x),
+            title: Text('Clear the scale'),
+          ),
+        ),
+    ],
+  );
+}
+
+enum _ScaleAction { measure, clear }
+
+/// The two-tap measurement itself.
+///
+/// Replaces the problem list and the floor actions while it is open, for the
+/// same reason [_ShapeControls] does: a tap on the plan means something
+/// different in here, and leaving the controls that assume the other meaning
+/// on screen is how somebody squares up a floor they meant to measure.
+class _ScaleControls extends StatelessWidget {
+  const _ScaleControls({required this.cubit, required this.state});
+
+  final PlanEditorCubit cubit;
+  final PlanEditorState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final placed = state.scalePoints.length;
+    final underCurrent = state.spanUnderCurrentScale;
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppDimens.pageGutter,
+          AppDimens.space4,
+          AppDimens.pageGutter,
+          AppDimens.space4,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    switch (placed) {
+                      0 =>
+                        'Mark two points you know the real distance between — '
+                            'the ends of a corridor, or the sides of one '
+                            'doorway.',
+                      1 => 'One end placed. Tap the other.',
+                      _ => 'Both ends placed. Say how far apart they really '
+                          'are.',
+                    },
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => cubit.setScaleMode(on: false),
+                  child: const Text('Done'),
+                ),
+              ],
+            ),
+            if (underCurrent != null)
+              Padding(
+                padding: const EdgeInsets.only(top: AppDimens.space4),
+                child: Text(
+                  // The check that catches a scale set off the wrong pair of
+                  // points: if the floor already claims a scale, this span
+                  // should measure roughly what the contributor can see it is.
+                  'Under the current scale that span is '
+                  '${underCurrent.toStringAsFixed(1)} m.',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ),
+            const SizedBox(height: AppDimens.space4),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: placed == 0
+                        ? null
+                        : () => cubit.setScaleMode(on: true),
+                    icon: const Icon(PhosphorIcons.arrowUUpLeft, size: 18),
+                    label: const Text('Start again'),
+                  ),
+                ),
+                const SizedBox(width: AppDimens.space8),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: placed < 2
+                        ? null
+                        : () => _askForDistance(context, cubit),
+                    icon: const Icon(PhosphorIcons.ruler, size: 18),
+                    label: const Text('Set distance'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Asks what the marked span really measures.
+///
+/// The same question the tracing screen asks, worded the same way: a
+/// contributor who has set a scale while tracing should recognise this, and
+/// the hints about doorways and ceiling tiles are the part that makes it
+/// answerable without a tape measure.
+Future<void> _askForDistance(
+  BuildContext context,
+  PlanEditorCubit cubit,
+) async {
+  var metres = '';
+
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      // The field brings a keyboard up under the dialog, which then needs the
+      // height its content asks for.
+      scrollable: true,
+      title: const Text('How far apart?'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'The real-world distance between the two points you marked. This '
+            'sets the scale for the whole floor.',
+          ),
+          const SizedBox(height: AppDimens.space12),
+          SheetTextField(
+            label: 'Metres',
+            hint: '10.5',
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            onChanged: (value) => metres = value,
+          ),
+          const SizedBox(height: AppDimens.space12),
+          Text(
+            'No tape measure? A single doorway is about 0.9 m, a standard '
+            'ceiling tile 0.6 m, and a scale bar printed on the board is best '
+            'of all.',
+            style: Theme.of(dialogContext).textTheme.bodySmall,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(dialogContext).pop(true),
+          child: const Text('Set scale'),
+        ),
+      ],
+    ),
+  );
+
+  final parsed = double.tryParse(metres.trim());
+  if ((confirmed ?? false) && parsed != null) cubit.declareScale(parsed);
 }
 
 class _WingPicker extends StatelessWidget {
@@ -512,7 +759,9 @@ class _Problems extends StatelessWidget {
     final stranded = state.strandedRooms;
     final missing = state.missingConnections;
 
-    if (stranded.isEmpty && missing.isEmpty) return const SizedBox.shrink();
+    if (stranded.isEmpty && missing.isEmpty && state.hasScale) {
+      return const SizedBox.shrink();
+    }
 
     return Padding(
       padding: const EdgeInsets.symmetric(
@@ -522,6 +771,29 @@ class _Problems extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (!state.hasScale)
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    // Listed with the problems because that is what it is, and
+                    // it is the one nothing else on the screen would reveal: a
+                    // floor with no scale draws perfectly and routes perfectly,
+                    // and then cannot tell anybody how far anything is or put
+                    // an arrow on the floor pointing at it.
+                    'This floor has no scale. Distances cannot be spoken and '
+                    'the AR arrow cannot follow it.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: AppColors.warning,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => cubit.setScaleMode(on: true),
+                  child: const Text('Set scale'),
+                ),
+              ],
+            ),
           if (stranded.isNotEmpty)
             Text(
               // The point most easily missed after a good alignment: two wings

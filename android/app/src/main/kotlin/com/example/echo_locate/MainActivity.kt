@@ -9,6 +9,7 @@ class MainActivity : FlutterActivity() {
 
     private var depthHandler: ArCoreDepthHandler? = null
     private var captureHandler: RoomCaptureHandler? = null
+    private var guidanceHandler: ArGuidanceHandler? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -41,6 +42,28 @@ class MainActivity : FlutterActivity() {
             flutterEngine.dartExecutor.binaryMessenger,
             RoomCaptureHandler.EVENT_CHANNEL,
         ).setStreamHandler(capture)
+
+        // AR guidance: same texture arrangement as capture, plus a second event
+        // channel carrying camera frames to ML Kit — ARCore holds the camera
+        // exclusively, so sign reading has to be fed from its session or not at
+        // all while this screen is up.
+        val guidance = ArGuidanceHandler(this, flutterEngine.renderer)
+        guidanceHandler = guidance
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            ArGuidanceHandler.METHOD_CHANNEL,
+        ).setMethodCallHandler(guidance)
+
+        EventChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            ArGuidanceHandler.EVENT_CHANNEL,
+        ).setStreamHandler(guidance)
+
+        EventChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            ArGuidanceHandler.FRAME_CHANNEL,
+        ).setStreamHandler(guidance.frames)
     }
 
     /**
@@ -55,6 +78,11 @@ class MainActivity : FlutterActivity() {
         // hold the camera at once either, so leaving one running is also what
         // makes the *other* fail to start.
         captureHandler?.stop()
+        // Quietly: Dart stops this one itself on the lifecycle event that is
+        // about to follow, and a "the session ended" push from here would reach
+        // it while the framework still thinks the app is in the foreground —
+        // where it reads as the camera having been taken away mid-walk.
+        guidanceHandler?.stop(notify = false)
         super.onPause()
     }
 }

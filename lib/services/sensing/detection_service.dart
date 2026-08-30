@@ -7,6 +7,7 @@ import 'package:google_mlkit_object_detection/google_mlkit_object_detection.dart
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/utils/logger.dart';
+import 'analysis_frame.dart';
 import 'detected_obstacle.dart';
 import 'text_recognition_service.dart';
 
@@ -21,18 +22,41 @@ import 'text_recognition_service.dart';
 /// categories. A custom TFLite classifier (Phase 3) upgrades label detail;
 /// the API here doesn't change.
 class DetectionService {
-  DetectionService({TextRecognitionService? textRecognition})
-    : _textRecognition = textRecognition;
+  DetectionService({
+    TextRecognitionService? textRecognition,
+    AnalysisFrameSource? arFrames,
+  }) : _textRecognition = textRecognition,
+       _arFrames = arFrames;
 
   /// Sign reading, when a screen has switched it on. This class owns the only
   /// camera stream, so OCR cannot open its own — it is handed alternate frames
   /// instead. Null in tests and on screens that never read signage.
   final TextRecognitionService? _textRecognition;
 
+  /// An AR session's camera frames, when one is running.
+  ///
+  /// **This is what keeps a blind user's guidance working on the AR screen.**
+  /// ARCore holds the camera exclusively, so `CameraController` cannot be
+  /// opened while it runs — obstacle detection and sign reading would both stop
+  /// dead. Preferring this source when it is streaming means the analysers, the
+  /// alternation, the label wording and the callout policy below are all
+  /// untouched: only where the pixels came from changes.
+  final AnalysisFrameSource? _arFrames;
+
   CameraController? _cameraController;
   ObjectDetector? _detector;
   bool _busy = false;
   bool _running = false;
+
+  /// Set while frames are arriving from an AR session rather than the camera
+  /// plugin. Read by screens deciding whether to draw a `CameraPreview` — in
+  /// this mode there is no controller to preview, the camera being on screen as
+  /// a `Texture` the AR session draws into.
+  bool _fromAr = false;
+
+  bool get isUsingArFrames => _fromAr;
+
+  StreamSubscription<AnalysisFrame>? _arSubscription;
 
   /// Counts analysed frames so object detection and OCR can take turns.
   int _frameIndex = 0;
@@ -51,6 +75,28 @@ class DetectionService {
   /// to demo mode.
   Future<bool> start() async {
     if (_running) return true;
+
+    // An AR session already has the camera, and nothing else can have it. Its
+    // frames are the same NV21 the plugin would have produced, so everything
+    // below this point is identical either way.
+    //
+    // `holdsCamera` rather than `isStreaming`: a session that is up but has not
+    // turned its frame feed on yet is still holding the camera, and racing it
+    // for one would fail and drop this screen into demo mode permanently.
+    // Subscribing early costs nothing — the frames arrive when they arrive.
+    final ar = _arFrames;
+    if (ar != null && (ar.isStreaming || ar.holdsCamera)) {
+      _detector = _buildDetector();
+      _arSubscription = ar.analysisFrames.listen(_onArFrame);
+      _running = true;
+      _fromAr = true;
+      AppLogger.info(
+        'Detection running on AR session frames'
+        '${ar.isStreaming ? '' : ' (waiting for the feed to start)'}',
+      );
+      return true;
+    }
+
     try {
       final permission = await Permission.camera.request();
       if (!permission.isGranted) {
@@ -77,13 +123,7 @@ class DetectionService {
       );
       await _cameraController!.initialize();
 
-      _detector = ObjectDetector(
-        options: ObjectDetectorOptions(
-          mode: DetectionMode.stream,
-          classifyObjects: true,
-          multipleObjects: true,
-        ),
-      );
+      _detector = _buildDetector();
 
       await _cameraController!.startImageStream(_onFrame);
       _running = true;
@@ -95,8 +135,19 @@ class DetectionService {
     }
   }
 
+  static ObjectDetector _buildDetector() => ObjectDetector(
+    options: ObjectDetectorOptions(
+      mode: DetectionMode.stream,
+      classifyObjects: true,
+      multipleObjects: true,
+    ),
+  );
+
   Future<void> stop() async {
     _running = false;
+    _fromAr = false;
+    await _arSubscription?.cancel();
+    _arSubscription = null;
     try {
       if (_cameraController?.value.isStreamingImages ?? false) {
         await _cameraController?.stopImageStream();
@@ -108,6 +159,48 @@ class DetectionService {
     _detector = null;
   }
 
+  /// One frame from an AR session.
+  ///
+  /// The session sends one at a time and waits to be told it has been analysed
+  /// — see [AnalysisFrameSource.frameHandled] — so the rate is set by how fast
+  /// this returns rather than by a number guessed in advance. The busy flag is
+  /// still here for the case where that answer went missing and the session
+  /// restarted the feed on its timeout: queueing frames behind a slow model is
+  /// how an obstacle warning arrives after the obstacle.
+  Future<void> _onArFrame(AnalysisFrame frame) async {
+    if (_busy || !_running || _detector == null) return;
+    _busy = true;
+    try {
+      final rotation =
+          InputImageRotationValue.fromRawValue(frame.rotationDegrees) ??
+          InputImageRotation.rotation0deg;
+      final input = InputImage.fromBytes(
+        bytes: frame.bytes,
+        metadata: InputImageMetadata(
+          size: Size(frame.width.toDouble(), frame.height.toDouble()),
+          rotation: rotation,
+          format: InputImageFormat.nv21,
+          bytesPerRow: frame.width,
+        ),
+      );
+      await _analyse(
+        input,
+        frameWidth: frame.uprightWidth,
+        frameHeight: frame.uprightHeight,
+        rotation: rotation,
+        sourceWidth: frame.width,
+        sourceHeight: frame.height,
+      );
+    } catch (e, stack) {
+      AppLogger.error('AR frame analysis failed: $e', e, stack);
+    } finally {
+      _busy = false;
+      // Asked for the next one even when this one threw: a single bad frame
+      // must not be the end of obstacle detection for the walk.
+      _arFrames?.frameHandled();
+    }
+  }
+
   Future<void> _onFrame(CameraImage image) async {
     if (_busy || !_running || _detector == null) return;
     _busy = true;
@@ -115,31 +208,59 @@ class DetectionService {
       final input = _toInputImage(image);
       if (input == null) return;
 
-      // Alternate: objects on even frames, signage on odd. Both analysers on
-      // every frame would halve the rate of each on the budget hardware this
-      // targets, and an obstacle warning that arrives late is worse than one
-      // that arrives at half the frame rate.
-      final text = _textRecognition;
-      final readsThisFrame = text != null && text.isActive && _frameIndex.isOdd;
-      _frameIndex++;
-      if (readsThisFrame) {
-        await text.analyze(input);
-        return;
-      }
-
-      final objects = await _detector!.processImage(input);
-      if (!_running) return;
-
-      // Frame dimensions in the rotated (upright) coordinate space that
-      // ML Kit reports boxes in.
       final rotation = _currentRotation();
       final sideways =
           rotation == InputImageRotation.rotation90deg ||
           rotation == InputImageRotation.rotation270deg;
-      final frameW = sideways ? image.height : image.width;
-      final frameH = sideways ? image.width : image.height;
+      await _analyse(
+        input,
+        frameWidth: sideways ? image.height : image.width,
+        frameHeight: sideways ? image.width : image.height,
+        rotation: rotation,
+        sourceWidth: image.width,
+        sourceHeight: image.height,
+      );
+    } catch (e, stack) {
+      AppLogger.error('Frame analysis failed: $e', e, stack);
+    } finally {
+      _busy = false;
+    }
+  }
 
-      final obstacles = objects.map((o) {
+  /// One frame, whatever produced it.
+  ///
+  /// [frameWidth] and [frameHeight] are the **upright** dimensions — the space
+  /// ML Kit reports boxes in — while [sourceWidth] and [sourceHeight] are the
+  /// image as it arrived, and are only for the evidence log. Passing the wrong
+  /// pair swaps the axes of every obstacle's position and height, which reads
+  /// as the detector being wrong rather than the caller.
+  Future<void> _analyse(
+    InputImage input, {
+    required int frameWidth,
+    required int frameHeight,
+    required InputImageRotation rotation,
+    required int sourceWidth,
+    required int sourceHeight,
+  }) async {
+    // Alternate: objects on even frames, signage on odd. Both analysers on
+    // every frame would halve the rate of each on the budget hardware this
+    // targets, and an obstacle warning that arrives late is worse than one
+    // that arrives at half the frame rate.
+    final text = _textRecognition;
+    final readsThisFrame = text != null && text.isActive && _frameIndex.isOdd;
+    _frameIndex++;
+    if (readsThisFrame) {
+      await text.analyze(input);
+      return;
+    }
+
+    final objects = await _detector!.processImage(input);
+    if (!_running) return;
+
+    final frameW = frameWidth;
+    final frameH = frameHeight;
+
+    final obstacles = objects.map((o) {
         final best = o.labels.isEmpty
             ? null
             : (o.labels..sort((a, b) => b.confidence.compareTo(a.confidence)))
@@ -159,24 +280,20 @@ class DetectionService {
         );
       }).toList();
 
-      // Evidence log: one line per analyzed frame (raw ML Kit output +
-      // what the callout policy will see). Grep for ASSIST-FRAME.
-      AppLogger.info(
-        'ASSIST-FRAME ${image.width}x${image.height} '
-        'rot=${rotation.rawValue} objects=${objects.length}'
-        '${obstacles.isEmpty ? '' : ' :: ${obstacles.map((o) => '${o.label}'
-                      '/c${o.confidence.toStringAsFixed(2)}'
-                      '/h${o.heightFraction.toStringAsFixed(2)}'
-                      '/${o.position.name}').join(' | ')}'
-                  ' raw=${objects.map((o) => o.boundingBox).join(' ')}'}',
-      );
+    // Evidence log: one line per analyzed frame (raw ML Kit output +
+    // what the callout policy will see). Grep for ASSIST-FRAME.
+    AppLogger.info(
+      'ASSIST-FRAME ${sourceWidth}x$sourceHeight '
+      '${_fromAr ? 'ar ' : ''}'
+      'rot=${rotation.rawValue} objects=${objects.length}'
+      '${obstacles.isEmpty ? '' : ' :: ${obstacles.map((o) => '${o.label}'
+                    '/c${o.confidence.toStringAsFixed(2)}'
+                    '/h${o.heightFraction.toStringAsFixed(2)}'
+                    '/${o.position.name}').join(' | ')}'
+                ' raw=${objects.map((o) => o.boundingBox).join(' ')}'}',
+    );
 
-      _obstaclesController.add(obstacles);
-    } catch (e, stack) {
-      AppLogger.error('Frame analysis failed: $e', e, stack);
-    } finally {
-      _busy = false;
-    }
+    _obstaclesController.add(obstacles);
   }
 
   static const _deviceOrientations = {

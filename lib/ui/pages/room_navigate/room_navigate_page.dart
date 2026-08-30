@@ -200,6 +200,23 @@ class _Controls extends StatelessWidget {
                   style: theme.textTheme.bodySmall,
                 ),
             ],
+            // Said here because this is the last moment it can be acted on,
+            // and because the failure it warns about is invisible: a plan with
+            // no scale routes correctly, speaks its turns correctly, and puts
+            // an arrow on screen that is dead reckoning from whichever way the
+            // phone happened to be held. Nothing on the walk looks wrong.
+            if (state.hasRoute && state.plan?.isMetric == false)
+              Padding(
+                padding: const EdgeInsets.only(top: AppDimens.space8),
+                child: Text(
+                  'This floor has no scale, so the AR arrow cannot be laid '
+                  'into the building and distances will not be spoken. Set a '
+                  'scale in Trace rooms to fix it.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: AppColors.warning,
+                  ),
+                ),
+              ),
             const SizedBox(height: AppDimens.space12),
             FilledButton.icon(
               onPressed: state.hasRoute

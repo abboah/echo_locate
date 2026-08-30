@@ -1,6 +1,7 @@
 import 'package:echo_locate/core/models/landmark.dart';
 import 'package:echo_locate/core/models/room_plan.dart';
 import 'package:echo_locate/features/guidance/guidance_session.dart';
+import 'package:echo_locate/services/mapping/route_planner.dart';
 import 'package:echo_locate/services/mapping/room_plan_bridge.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -131,6 +132,39 @@ void main() {
         isTrue,
       );
     });
+
+    /// The scale was stored and never applied. A plan measured at 4 m per unit
+    /// came out claiming `metric: true` with edge lengths still in plan units,
+    /// so guidance was handed a number four times too small and labelled
+    /// metres — and setting the scale, which is the thing a user does to make
+    /// distances trustworthy, was what broke them.
+    test('a declared scale converts edge lengths into real metres', () {
+      final unitless = RoomPlanBridge.floorGraphFrom(buildWing());
+      final scaled = RoomPlanBridge.floorGraphFrom(
+        buildWing().copyWith(metresPerUnit: 4),
+      );
+
+      expect(scaled.edges, hasLength(unitless.edges.length));
+      for (var i = 0; i < scaled.edges.length; i++) {
+        expect(
+          scaled.edges[i].distanceM,
+          closeTo(unitless.edges[i].distanceM * 4, 1e-9),
+        );
+      }
+    });
+
+    test('node coordinates are converted with the edges, not left behind', () {
+      final plan = buildWing().copyWith(metresPerUnit: 4);
+      final graph = RoomPlanBridge.floorGraphFrom(plan);
+
+      // Measuring between two nodes has to agree with the edge joining them,
+      // or a caller gets two different answers for one corridor.
+      for (final edge in graph.edges) {
+        final from = graph.nodes[edge.fromId]!;
+        final to = graph.nodes[edge.toId]!;
+        expect(from.distanceTo(to), closeTo(edge.distanceM, 1e-9));
+      }
+    });
   });
 
   group('planned route — what guidance actually walks', () {
@@ -142,9 +176,11 @@ void main() {
         initialHeading: east,
       )!;
 
-      // lobby → corridor → n2.
-      expect(route.legs, hasLength(2));
-      expect(route.landmarkIds, ['room-lobby', 'room-corridor', 'room-n2']);
+      // Door to door: out of the lobby's doorway, down the corridor, stop at
+      // n2's door. The leg that used to cross the lobby to reach its own door
+      // is gone, and with it the only leg nobody needed directions for.
+      expect(route.legs, hasLength(1));
+      expect(route.landmarkIds, ['room-corridor', 'room-n2']);
     });
 
     test('THE POINT: the door count reaches guidance as spoken words', () {
@@ -165,6 +201,34 @@ void main() {
       );
     });
 
+    /// The half of the same bug that reached the arrow: `ArGuidanceCubit` uses
+    /// `leg.distanceM` as metres the moment the session says it is metric, so
+    /// an unconverted leg put the ring at a quarter of the distance to the
+    /// door on a plan measured at 4 m per unit.
+    test('a declared scale reaches the legs guidance walks', () {
+      PlannedRoute routeAt(double? scale) => RoomPlanBridge.plannedRouteFrom(
+        buildWing().copyWith(metresPerUnit: scale),
+        fromRoomId: 'lobby',
+        toRoomId: 'n2',
+        initialHeading: east,
+      )!;
+
+      final unitless = routeAt(null);
+      final scaled = routeAt(4);
+
+      expect(
+        scaled.totalDistanceM,
+        closeTo(unitless.totalDistanceM * 4, 1e-9),
+      );
+      // And the turns are untouched: an angle is the same angle at any scale,
+      // which is the reason a non-metric route was steerable in the first
+      // place.
+      expect(
+        scaled.legs.map((l) => l.turnDeg),
+        unitless.legs.map((l) => l.turnDeg),
+      );
+    });
+
     test('leg distances add up to the walked route', () {
       final route = RoomPlanBridge.plannedRouteFrom(
         buildWing(),
@@ -174,8 +238,9 @@ void main() {
       )!;
 
       // Same total the nav graph reported for this walk — the legs partition
-      // the polyline rather than re-measuring it centre to centre.
-      expect(route.totalDistanceM, closeTo(17.54, 0.05));
+      // the polyline rather than re-measuring it centre to centre. Door to
+      // door now, so the corridor and neither room's interior.
+      expect(route.totalDistanceM, closeTo(12.04, 0.05));
     });
 
     test('turns are carried in the repo convention: positive is right', () {
@@ -236,7 +301,7 @@ void main() {
 
       final spoken = route.legs.map((l) => l.instruction ?? '').join(' ');
 
-      expect(route.legs, hasLength(2));
+      expect(route.legs, hasLength(1));
       expect(spoken, isNot(contains('door on your')));
       expect(spoken, contains('Digital Forensic Office'));
     });

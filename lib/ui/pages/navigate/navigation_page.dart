@@ -9,8 +9,11 @@ import '../../../core/routes/app_routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimens.dart';
 import '../../../features/guidance/guidance_session.dart';
+import '../../../features/profile/profile_repository.dart';
 import '../../../features/routing/bloc/floor_map_bloc.dart';
 import '../../../services/injection_container.dart';
+import '../../../services/mapping/graph_route_path.dart';
+import '../../../services/motion/stride_profile.dart';
 import '../../widgets/floor_plan_painter.dart';
 
 /// The building's map, drawn from the walks contributors recorded.
@@ -436,15 +439,38 @@ class _RoutePicker extends StatelessWidget {
     );
   }
 
-  void _startGuidance(BuildContext context, String destinationId) {
+  Future<void> _startGuidance(BuildContext context, String destinationId) async {
     final plan = state.plan;
     if (plan == null) return;
+
+    // **The one per-user number that changes what the app says out loud.**
+    // Every leg length is divided through it to pace the walk, so a walk
+    // guided on the generic fallback counts down in somebody else's strides —
+    // and this screen was starting every session that way, calibrated or not.
+    // Failure is not fatal: the fallback is what an uncalibrated user gets
+    // anyway, and on a phone running ARCore the odometry displaces it entirely.
+    var stride = StrideProfile.fallback;
+    try {
+      final metres =
+          (await getIt<ProfileRepository>().currentProfile()).strideLengthM;
+      if (metres != null) {
+        final calibrated = StrideProfile(
+          metres: metres,
+          source: StrideSource.calibrated,
+        );
+        if (calibrated.isPlausible) stride = calibrated;
+      }
+    } catch (_) {
+      // Uncalibrated, offline or signed out. Guidance still works.
+    }
+    if (!context.mounted) return;
 
     context.pushNamed(
       RouteNames.guidance,
       extra: GuidanceSession(
         plan: plan,
         landmarks: state.landmarks,
+        stride: stride,
         destinationName:
             state.landmarkOf(destinationId)?.displayName ?? 'your destination',
         // The whole building, so a lost user can be relocated against any sign
@@ -453,6 +479,12 @@ class _RoutePicker extends StatelessWidget {
         // A traced plan nobody measured routes correctly but cannot be spoken
         // in steps; guidance leans on landmark confirmation instead.
         metric: state.graph.metric,
+        // The line itself, read back out of the merged schematic, so the AR
+        // layer can register this walk into the room instead of dead-reckoning
+        // it. Null whenever the merge cannot honestly place the route — see
+        // [routePathThroughGraph], which refuses more often than it accepts and
+        // is meant to.
+        routePath: routePathThroughGraph(state.graph, plan),
       ),
     );
   }

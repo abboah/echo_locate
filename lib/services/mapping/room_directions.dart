@@ -93,24 +93,44 @@ class PassedDoor {
 
 /// Turns a route into sentences.
 ///
-/// [metric] says whether the plan's coordinates are really metres. A plan
-/// traced off a photograph usually is not — nobody measured the wall board —
-/// and quoting "walk twelve metres" from arbitrary plan units is a confidently
-/// wrong number in a blind user's ear. When false, distances are omitted and
-/// the instructions lean on doors and landmarks instead, which are true either
+/// [metresPerUnit] is how long one unit of the plan's coordinate frame is in
+/// the real world, and null means nobody knows. A plan traced off a photograph
+/// starts out that way — nobody measured the wall board — and quoting "walk
+/// twelve metres" from arbitrary plan units is a confidently wrong number in a
+/// blind user's ear. When it is null, distances are omitted and the
+/// instructions lean on doors and landmarks instead, which are true either
 /// way. Same reasoning as `FloorGraph.metric`.
+///
+/// **It is a multiplier, not a flag.** Everything this class emits with a
+/// `distanceM` on it is in metres, converted here, so that a caller cannot
+/// receive a number labelled metres that is really a fraction of a
+/// photograph's width. That was the bug: the scale a user had taken the
+/// trouble to measure was stored, turned `isMetric` true, and was then never
+/// applied to anything — so setting it made the spoken distances worse than
+/// leaving it unset.
 class RoomDirections {
-  const RoomDirections({this.metric = true});
+  const RoomDirections({this.metresPerUnit});
 
   /// Reads the answer off the plan rather than making the caller remember it.
   ///
   /// The safer constructor, and the one screens should use: a caller who
-  /// forgets to pass `metric: false` for a traced plan gets metres invented out
-  /// of arbitrary units, and nothing about the output looks wrong.
+  /// forgets to pass the scale for a traced plan gets metres invented out of
+  /// arbitrary units, and nothing about the output looks wrong.
   factory RoomDirections.forPlan(RoomPlan plan) =>
-      RoomDirections(metric: plan.isMetric);
+      RoomDirections(metresPerUnit: plan.metresPerUnit);
 
-  final bool metric;
+  /// Real-world length of one plan unit, or null when it was never measured.
+  final double? metresPerUnit;
+
+  /// Whether distances may be spoken at all.
+  bool get metric => metresPerUnit != null;
+
+  /// The multiplier from plan units to metres, or 1 when there is no scale.
+  ///
+  /// Only ever used on paths already guarded by [metric], so the fallback
+  /// never reaches a spoken sentence — it exists so the arithmetic below reads
+  /// the same on both branches.
+  double get _scale => metresPerUnit ?? 1;
 
   /// Describes [route], starting from [initialHeading].
   ///
@@ -171,8 +191,8 @@ class RoomDirections {
         if (counted != null) {
           out.add(
             RoomInstruction(
-              text: _doorPhrase(counted, plan),
-              distanceM: leg.distance,
+              text: _doorPhrase(counted, plan, leg.distance * _scale),
+              distanceM: leg.distance * _scale,
               segmentIndex: i,
             ),
           );
@@ -183,15 +203,64 @@ class RoomDirections {
 
       out.add(
         RoomInstruction(
-          text: _walkPhrase(leg.distance, to, plan, throughRoom),
-          distanceM: leg.distance,
+          text: _walkPhrase(leg.distance * _scale, to, plan, throughRoom),
+          distanceM: leg.distance * _scale,
           segmentIndex: i,
         ),
       );
       heading = leg / leg.distance;
     }
 
+    _arrivalTurn(out, route, plan, heading);
     return out;
+  }
+
+  /// The turn into the destination, spoken even though it is no longer walked.
+  ///
+  /// A route runs door to door now (see [RoomNavGraph]), so it stops on the
+  /// destination's threshold and the segment that used to generate this — the
+  /// stretch from that door to the middle of the room — is not part of the walk
+  /// any more. Losing the distance is the point. Losing the *turn* with it was
+  /// not: a walker arriving at the end of a corridor still has to know whether
+  /// the room is on their left or their right, and on a corridor whose door
+  /// ordinals are withheld — declared doors nobody placed — this is the only
+  /// thing left that tells them.
+  ///
+  /// Which side a door is on is something the plan genuinely knows. How far
+  /// into the room somebody then walks is not guidance's business, and is why
+  /// this emits a turn and no distance.
+  void _arrivalTurn(
+    List<RoomInstruction> out,
+    RoomRoute route,
+    RoomPlan plan,
+    Offset? heading,
+  ) {
+    if (heading == null || route.waypoints.length < 2) return;
+
+    final last = route.waypoints.last;
+    // A route that ends inside its destination — the shared-door fallback in
+    // [RoomNavGraph._doorToDoor] — already walked this turn and said it.
+    if (last.kind != WaypointKind.destination || last.openingId == null) return;
+
+    final room = plan.roomOf(last.roomId ?? '');
+    // Asking a stub for its centroid is meaningless, not merely imprecise.
+    if (room == null || room.isStub) return;
+
+    final into = room.centre - last.at;
+    if (into.distanceSquared < 1e-9) return;
+
+    final turn = turnDegreesRight(heading, into);
+    if (turn.abs() < _straightAheadDeg) return;
+
+    out.add(
+      RoomInstruction(
+        text: _turnPhrase(turn),
+        turnDegreesRight: turn,
+        // The last segment, so it lands on the leg that ends at this door
+        // rather than falling off the end of the route.
+        segmentIndex: route.waypoints.length - 2,
+      ),
+    );
   }
 
   /// Below this, a turn is not worth saying.
@@ -233,18 +302,32 @@ class RoomDirections {
     return 'the door';
   }
 
-  String _doorPhrase(_CountedDoors counted, RoomPlan plan) {
+  /// "Walk 12 metres. Reading Hall is the second door on your left."
+  ///
+  /// The distance leads, because it is what the walker acts on first and
+  /// because this sentence is now the *only* one on a route that is a single
+  /// corridor. Door-to-door routing removed the stretch from the destination's
+  /// door to the middle of its room, and that stretch used to be what carried a
+  /// spoken distance on exactly this shape of walk — leaving a metric plan
+  /// describing a whole route without quoting a single number.
+  ///
+  /// Omitted, as everywhere else, when the plan has no scale: plan units read
+  /// out as metres are a confidently wrong number in a blind user's ear.
+  String _doorPhrase(_CountedDoors counted, RoomPlan plan, double distanceM) {
     final ordinal = _ordinal(counted.ordinal);
     final behind = counted.targetRoomId == null
         ? null
         : plan.roomOf(counted.targetRoomId!);
 
     final noun = behind == null || behind.isStub ? 'door' : behind.spokenName;
+    final lead = metric ? 'Walk ${_roundMetres(distanceM)}. ' : '';
 
     if (behind == null || behind.isStub) {
-      return 'Your destination is the $ordinal $noun on your ${counted.side}.';
+      return '${lead}Your destination is the $ordinal $noun on your '
+          '${counted.side}.';
     }
-    return '${_sentenceCase(noun)} is the $ordinal door on your ${counted.side}.';
+    return '$lead${_sentenceCase(noun)} is the $ordinal door on your '
+        '${counted.side}.';
   }
 
   /// Capitalises a room name for the start of a sentence without touching the

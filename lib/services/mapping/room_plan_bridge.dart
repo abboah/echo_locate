@@ -96,17 +96,32 @@ class RoomPlanBridge {
   ///
   /// Marked non-metric whenever the plan is, so nothing downstream turns
   /// arbitrary plan units into a step count. See [RoomPlan.metresPerUnit].
+  ///
+  /// Edge lengths are converted through that scale where there is one, so a
+  /// `metric` graph's distances really are metres. Routing itself does not
+  /// care — A* compares edges against each other and a uniform factor picks
+  /// the same path — but everything that *reads* a distance off the result
+  /// does, and until this conversion existed a measured plan handed guidance
+  /// fractions of a photograph labelled as metres.
   static FloorGraph floorGraphFrom(RoomPlan plan) {
     final rooms = {for (final room in plan.drawableRooms) room.id: room};
     if (rooms.isEmpty) return FloorGraph.empty;
 
+    final scale = plan.metresPerUnit ?? 1;
+
+    // Coordinates converted too, not just the edge lengths, so the graph is
+    // internally consistent: a caller that measures between two nodes gets the
+    // same number the edge between them carries. [FloorGraph.fromPlan] does
+    // the same for a traced landmark plan, and the mismatch is the kind that
+    // hides — nothing looks wrong until a distance derived one way is compared
+    // against one derived the other.
     final nodes = {
       for (final room in rooms.values)
         landmarkIdFor(room): MapNode(
           landmarkId: landmarkIdFor(room),
           floorId: room.floorId,
-          x: room.centre.dx,
-          y: room.centre.dy,
+          x: room.centre.dx * scale,
+          y: room.centre.dy * scale,
         ),
     };
 
@@ -129,12 +144,71 @@ class RoomPlanBridge {
         GraphEdge(
           fromId: from,
           toId: to,
-          distanceM: (a.centre - b.centre).distance,
+          distanceM: (a.centre - b.centre).distance * scale,
         ),
       );
     }
 
     return FloorGraph(nodes: nodes, edges: edges, metric: plan.isMetric);
+  }
+
+  /// The same walk as a line on the floor, in metres, in the plan's frame.
+  ///
+  /// See [RoutePath].
+  ///
+  /// [plannedRouteFrom] collapses the route to one leg per room entered,
+  /// because that is what guidance *speaks*. This keeps what that collapse
+  /// throws away: every vertex of the path, bent round the corridors it
+  /// follows. The AR layer needs it — an arrow that can only be told "twelve
+  /// metres, then turn right" has to dead-reckon the twelve metres, and an
+  /// arrow handed the actual line can point at the actual corner.
+  ///
+  /// In metres, so it is in the same units as ARCore's world and can be
+  /// registered into it directly. Null when the plan has no scale, because
+  /// laying a unitless path into a room in metres would size the building by
+  /// whatever the tracing happened to be drawn at — and null when the two
+  /// rooms are not connected, which is [plannedRouteFrom]'s answer too.
+  static RoutePath? routePathFrom(
+    RoomPlan plan, {
+    required String fromRoomId,
+    required String toRoomId,
+  }) {
+    final scale = plan.metresPerUnit;
+    if (scale == null) return null;
+
+    final graph = RoomNavGraph.build(plan);
+    final route = graph.route(fromRoomId: fromRoomId, toRoomId: toRoomId);
+    if (route == null || route.isEmpty) return null;
+
+    final line = route.drawnLine;
+    if (line.length < 2) return null;
+
+    // Where each leg ends, as a distance along the path. The AR layer measures
+    // the walk against the whole route, and guidance counts down one leg at a
+    // time; without this the two are measuring different things and the spoken
+    // countdown would run to the end of the building.
+    final cumulative = _cumulativeAlong(plan, graph, route);
+    final entryAt = _entryWaypoints(graph, route);
+    final legEnds = <double>[];
+    for (
+      var k = 0;
+      k + 1 < route.roomsPassed.length && k + 1 < entryAt.length + 1;
+      k++
+    ) {
+      legEnds.add(cumulative[_endOfLeg(route, entryAt, k)] * scale);
+    }
+
+    return RoutePath(
+      pointsM: [for (final point in line) point * scale],
+      legEndsM: legEnds,
+      // The room the walker said they were in. Kept off the route — the walk
+      // still starts at the doorway — and used only to place them on it. See
+      // [RoutePath.approachFromM].
+      approachFromM: switch (plan.roomOf(fromRoomId)?.centre) {
+        final Offset centre => centre * scale,
+        null => null,
+      },
+    );
   }
 
   /// A walk between two rooms, as guidance consumes it.
@@ -161,15 +235,31 @@ class RoomPlanBridge {
       plan,
     ).describe(graph, route, initialHeading: initialHeading);
 
-    // Cumulative walked distance at each waypoint, so a leg's length is the
-    // polyline the user follows rather than the straight line between two room
-    // centres.
-    //
-    // Each step measured *along the corridor it crosses* when that corridor was
-    // drawn as a path. A leg round the bend of an L is longer than the straight
-    // line between its ends by however sharp the bend is, and this number is
-    // what becomes "about forty steps" in somebody's ear — so the straight line
-    // would quietly stop them short of the corner every time.
+    final cumulative = _cumulativeAlong(plan, graph, route);
+    final entryAt = _entryWaypoints(graph, route);
+    return _legsFrom(
+      plan: plan,
+      route: route,
+      spoken: spoken,
+      cumulative: cumulative,
+      entryAt: entryAt,
+    );
+  }
+
+  /// Cumulative walked distance at each waypoint, in plan units.
+  ///
+  /// A leg's length is the polyline the user follows rather than the straight
+  /// line between two room centres. Each step is measured *along the corridor
+  /// it crosses* when that corridor was drawn as a path: a leg round the bend
+  /// of an L is longer than the straight line between its ends by however
+  /// sharp the bend is, and this number is what becomes "about forty steps" in
+  /// somebody's ear — so the straight line would quietly stop them short of
+  /// the corner every time.
+  static List<double> _cumulativeAlong(
+    RoomPlan plan,
+    RoomNavGraph graph,
+    RoomRoute route,
+  ) {
     final cumulative = <double>[0];
     for (var i = 0; i + 1 < route.waypoints.length; i++) {
       final from = route.waypoints[i];
@@ -189,10 +279,13 @@ class RoomPlanBridge {
 
       cumulative.add(cumulative.last + step);
     }
+    return cumulative;
+  }
 
-    // Waypoint index at which each room on the walk is entered — one per entry
-    // in `roomsPassed`. The first room is entered at the start; every other at
-    // the door leading into it.
+  /// Waypoint index at which each room on the walk is entered — one per entry
+  /// in `roomsPassed`. The first room is entered at the start; every other at
+  /// the door leading into it.
+  static List<int> _entryWaypoints(RoomNavGraph graph, RoomRoute route) {
     final entryAt = <int>[0];
     var roomCursor = 0;
     for (var i = 0; i + 1 < route.waypoints.length; i++) {
@@ -207,17 +300,30 @@ class RoomPlanBridge {
         entryAt.add(i);
       }
     }
+    return entryAt;
+  }
 
-    /// Where leg [k] stops.
-    ///
-    /// The final leg runs to the last waypoint — the middle of the destination
-    /// room — rather than stopping at its door, so the legs partition the whole
-    /// polyline and their distances sum to the route. Stopping at the door
-    /// instead dropped the last stretch from the total, took the turn into the
-    /// room with it, and lost the sentence that names the destination.
-    int endOf(int k) => k + 2 == route.roomsPassed.length
-        ? route.waypoints.length - 1
-        : entryAt[k + 1];
+  /// Where leg [k] stops, as a waypoint index.
+  ///
+  /// The final leg runs to the last waypoint — the middle of the destination
+  /// room — rather than stopping at its door, so the legs partition the whole
+  /// polyline and their distances sum to the route. Stopping at the door
+  /// instead dropped the last stretch from the total, took the turn into the
+  /// room with it, and lost the sentence that names the destination.
+  static int _endOfLeg(RoomRoute route, List<int> entryAt, int k) =>
+      k + 2 == route.roomsPassed.length
+      ? route.waypoints.length - 1
+      : entryAt[k + 1];
+
+  /// Collapses the walk to one leg per room entered — what guidance speaks.
+  static PlannedRoute? _legsFrom({
+    required RoomPlan plan,
+    required RoomRoute route,
+    required List<RoomInstruction> spoken,
+    required List<double> cumulative,
+    required List<int> entryAt,
+  }) {
+    int endOf(int k) => _endOfLeg(route, entryAt, k);
 
     final legs = <PlannedLeg>[];
     for (
@@ -245,7 +351,11 @@ class RoomPlanBridge {
         PlannedLeg(
           fromLandmarkId: landmarkIdFor(fromRoom),
           toLandmarkId: landmarkIdFor(toRoom),
-          distanceM: cumulative[end] - cumulative[start],
+          // In metres where the plan has a scale, and in plan units where it
+          // has none — which is what `PlannedRoute` means by non-metric, and
+          // what `GuidanceSession.metric` warns its consumers about.
+          distanceM: (cumulative[end] - cumulative[start]) *
+              (plan.metresPerUnit ?? 1),
           // Null rather than an empty string when nothing was generated:
           // guidance treats null as "say something neutral", and an empty
           // instruction would be spoken as silence where a sentence belongs.
@@ -264,5 +374,123 @@ class RoomPlanBridge {
     // guidance to lean harder on landmark confirmation where wording was
     // spliced, and nothing was spliced here.
     return PlannedRoute(legs: legs);
+  }
+}
+
+/// A route as a line on the floor, in metres, in the plan's own frame.
+///
+/// What the AR layer registers into ARCore's world. [PlannedRoute] is the same
+/// walk described as a chain of turns and lengths — enough to *speak*, and the
+/// only thing a phone without ARCore can use — but a chain of relative turns
+/// cannot say where anything is, which is why an arrow driven from one could
+/// only ever point along a guess. This carries the geometry that answers that.
+class RoutePath {
+  const RoutePath({
+    required this.pointsM,
+    required this.legEndsM,
+    this.approachFromM,
+  });
+
+  /// Every vertex of the path, bent round the corridors it follows.
+  ///
+  /// Runs **door to door**: the first point is the origin room's doorway, not
+  /// the middle of that room, because a walker needs no directions to a door
+  /// they can see. See `RoomNavGraph._doorToDoor`.
+  final List<Offset> pointsM;
+
+  /// Where the walker was standing when they said which room they were in.
+  ///
+  /// **Not part of the route, and deliberately not its first point.** The route
+  /// starts at the doorway; this is the place the walker walks *from* to reach
+  /// that doorway, and it is the origin room's centre because that is the best
+  /// the app can know from "I am in room 12".
+  ///
+  /// It exists for exactly one job: registration. ARCore's origin is fixed
+  /// wherever the phone was when the session opened, which is inside the room —
+  /// so pairing that world position with the route's first point declares the
+  /// walker to be standing in their own doorway when they are not. In a reading
+  /// room twenty metres across that is ten metres of pure translation error
+  /// applied to the whole building, and it is the same ten metres however
+  /// accurate the scale and the rotation are.
+  ///
+  /// Null when the origin room has no usable centre, in which case registration
+  /// falls back to treating the doorway as the starting point — the old
+  /// behaviour, and wrong by however far into the room they were standing.
+  final Offset? approachFromM;
+
+  /// How far the walker travels to reach the route's first point.
+  ///
+  /// Zero when there is no [approachFromM] to measure from.
+  double get approachM => approachFromM == null || pointsM.isEmpty
+      ? 0
+      : (pointsM.first - approachFromM!).distance;
+
+  /// The line the walker actually covers, from where they stood to the end.
+  ///
+  /// [pointsM] with the approach stretch on the front. Used only to work out
+  /// how far along they have got — never sent to ARCore, which is given the
+  /// door-to-door route and nothing else.
+  List<Offset> get walkedLineM =>
+      approachFromM == null ? pointsM : [approachFromM!, ...pointsM];
+
+  /// How far along the path each leg of the spoken route ends.
+  ///
+  /// The join between the two descriptions. Native measures progress against
+  /// the whole path; guidance counts down one leg at a time; this is what lets
+  /// one number be turned into the other, so the ring on the floor and the
+  /// voice in the walker's ear are talking about the same corridor.
+  ///
+  /// One entry per leg of the matching [PlannedRoute], in the same order.
+  final List<double> legEndsM;
+
+  /// Total walked length of the path.
+  double get totalM {
+    var total = 0.0;
+    for (var i = 0; i + 1 < pointsM.length; i++) {
+      total += (pointsM[i + 1] - pointsM[i]).distance;
+    }
+    return total;
+  }
+
+  /// How far along the path leg [index] begins.
+  double startOfLeg(int index) =>
+      index <= 0 ? 0 : legEndsM[(index - 1).clamp(0, legEndsM.length - 1)];
+}
+
+extension RoutePathGeometry on RoutePath {
+  /// The point [distanceM] along the path, clamped to its ends.
+  ///
+  /// Used to re-anchor a registration mid-walk: the walker is a known distance
+  /// along the route and physically somewhere ARCore can name, and those two
+  /// facts are a correspondence exactly like the one at the start.
+  Offset pointAtM(double distanceM) {
+    if (pointsM.isEmpty) return Offset.zero;
+    if (distanceM <= 0) return pointsM.first;
+
+    var remaining = distanceM;
+    for (var i = 0; i + 1 < pointsM.length; i++) {
+      final span = (pointsM[i + 1] - pointsM[i]).distance;
+      if (span < 1e-9) continue;
+      if (remaining <= span) {
+        return pointsM[i] + (pointsM[i + 1] - pointsM[i]) * (remaining / span);
+      }
+      remaining -= span;
+    }
+    return pointsM.last;
+  }
+
+  /// The direction the path runs at [distanceM] along it.
+  Offset directionAtM(double distanceM) {
+    var remaining = distanceM.clamp(0.0, double.infinity);
+    for (var i = 0; i + 1 < pointsM.length; i++) {
+      final delta = pointsM[i + 1] - pointsM[i];
+      final span = delta.distance;
+      if (span < 1e-9) continue;
+      if (remaining <= span) return delta;
+      remaining -= span;
+    }
+    return pointsM.length < 2
+        ? const Offset(0, 1)
+        : pointsM.last - pointsM[pointsM.length - 2];
   }
 }

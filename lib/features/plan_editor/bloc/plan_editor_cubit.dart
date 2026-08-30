@@ -30,12 +30,19 @@ part 'plan_editor_state.dart';
 ///  * **Fixing what was captured.** Delete a room traced twice, change a
 ///    category picked wrongly, rename a door plate misread. A floor plan nobody
 ///    can correct is one that gets retraced from scratch instead.
+///  * **Declaring the scale.** What one plan unit is in metres, for a floor
+///    traced off a photograph nobody measured. See [declareScale].
 ///
-/// Rotation and translation only — no scaling, ever. Both capture paths produce
-/// geometry that is internally correct; what is unknown is where a wing *sits*,
-/// which is three numbers. Offering scale would invite somebody to stretch a
-/// wing until it looked right, and a plan that looks right and measures wrong
-/// is worse than one that looks wrong.
+/// Rotation and translation only — no *geometry* scaling, ever. Both capture
+/// paths produce geometry that is internally correct; what is unknown is where
+/// a wing *sits*, which is three numbers. Offering to stretch one would invite
+/// somebody to pull a wing until it looked right, and a plan that looks right
+/// and measures wrong is worse than one that looks wrong.
+///
+/// [declareScale] is not an exception to that and does not move a single
+/// coordinate. It records what the units the plan is *already* drawn in mean
+/// in the world — `RoomPlan.metresPerUnit` — which is the one fact a traced
+/// plan is missing and cannot derive from itself.
 class PlanEditorCubit extends Cubit<PlanEditorState> {
   PlanEditorCubit(this._plans, this._buildings)
     : super(const PlanEditorState());
@@ -226,6 +233,101 @@ class PlanEditorCubit extends Cubit<PlanEditorState> {
       ),
     );
   }
+
+  // --- the scale ------------------------------------------------------------
+
+  /// Opens the two-tap scale measurement, or closes it.
+  ///
+  /// A mode rather than a dialog because the input is two positions on the
+  /// plan, and there is nowhere else to take those from. While it is open a tap
+  /// places a mark instead of opening a room, which is why it also closes any
+  /// shape that was being edited — a screen where a tap does one of three
+  /// things depending on what is selected is one nobody can predict.
+  /// No hint is emitted for any of this: the panel the mode puts on screen
+  /// already says what to do, and the hint channel is a snackbar that would
+  /// both repeat it and sit on top of the buttons it is describing.
+  void setScaleMode({required bool on}) => emit(
+    state.copyWith(
+      settingScale: on,
+      scalePoints: const [],
+      clearEditing: on,
+      clearRoomSelection: on,
+    ),
+  );
+
+  /// Places one end of the span, or starts again once both are placed.
+  ///
+  /// Cycling rather than refusing the third tap: somebody who has put the
+  /// second mark in the wrong place should be able to fix it by tapping, which
+  /// is what they will try, rather than by finding a Clear button first.
+  void tapScalePoint(Offset at) {
+    if (!state.settingScale) return;
+    final points = state.scalePoints.length >= 2
+        ? [at]
+        : [...state.scalePoints, at];
+    emit(state.copyWith(scalePoints: points));
+  }
+
+  /// Records what one plan unit is worth in metres.
+  ///
+  /// **The one number that makes a traced plan navigable.** Until it exists
+  /// the plan is a correct drawing in no unit: it routes perfectly, because A*
+  /// only compares edges against each other, and it can say nothing about
+  /// distance — so guidance withholds every countdown, and the AR layer cannot
+  /// lay the route into the room at all, because a path in unknown units
+  /// cannot be registered against a world measured in metres.
+  ///
+  /// Two taps and one real measurement fix that for the whole floor: a scale
+  /// bar printed on the board, a corridor paced out, or a doorway, which is
+  /// 0.9 m almost everywhere.
+  ///
+  /// Not saved here. It joins the rest of the edits and goes with [save], so
+  /// the contributor can see what it did to the spoken distances first and
+  /// back out with the same Undo as everything else.
+  void declareScale(double metres) {
+    if (state.scalePoints.length < 2) {
+      emit(state.copyWith(hint: 'Tap both ends of the span first.'));
+      return;
+    }
+    if (metres <= 0) {
+      emit(state.copyWith(error: 'That distance has to be more than zero.'));
+      return;
+    }
+
+    final span = (state.scalePoints[1] - state.scalePoints[0]).distance;
+    if (span < 1e-9) {
+      emit(
+        state.copyWith(
+          scalePoints: const [],
+          error: 'Those two points are the same place. Tap further apart.',
+        ),
+      );
+      return;
+    }
+
+    final perUnit = metres / span;
+    AppLogger.info(
+      'SCALE declared ${perUnit.toStringAsFixed(3)} m/unit from '
+      '${metres.toStringAsFixed(1)}m over ${span.toStringAsFixed(3)} units',
+    );
+    emit(
+      state.copyWith(
+        plan: state.plan.copyWith(metresPerUnit: perUnit),
+        scalePoints: const [],
+        settingScale: false,
+        hint: 'Scale set. Distances can be spoken now — save to keep it.',
+      ),
+    );
+  }
+
+  /// Takes the scale back off, returning the floor to unitless.
+  void clearScale() => emit(
+    state.copyWith(
+      plan: state.plan.copyWith(metresPerUnit: null),
+      scalePoints: const [],
+      hint: 'Scale removed. Distances will not be spoken.',
+    ),
+  );
 
   /// Opens [roomId]'s points for dragging, or closes editing when null.
   void editShape(String? roomId) => emit(

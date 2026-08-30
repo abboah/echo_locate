@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 
@@ -45,6 +47,8 @@ class RoomPlanView extends StatelessWidget {
     this.selectedPoint,
     this.onPointSelected,
     this.onPointMoved,
+    this.onPlanTap,
+    this.markedPoints = const [],
   });
 
   final RoomPlan plan;
@@ -86,6 +90,25 @@ class RoomPlanView extends StatelessWidget {
   /// Reports a handle dragged to a new position, in **plan** coordinates.
   final void Function(int index, Offset to)? onPointMoved;
 
+  /// Reports a tap anywhere on the plan, in **plan** coordinates.
+  ///
+  /// Distinct from [onRoomTap], which answers "which room did they mean" and
+  /// says nothing at all about a tap that lands in a gap between two of them.
+  /// Setting the scale needs the position and not the room: the two points
+  /// somebody knows the real distance between are the ends of a corridor or
+  /// the jambs of a doorway, and neither is the middle of anything.
+  ///
+  /// Takes precedence over [onRoomTap] where both are given, because the two
+  /// cannot both act on one tap and the caller that asked for positions is the
+  /// one in a mode.
+  final ValueChanged<Offset>? onPlanTap;
+
+  /// Points to draw on top of the plan, in plan coordinates.
+  ///
+  /// Drawn in order and joined by a line, so two of them read as a span rather
+  /// than as two unrelated dots — which is what the scale step is measuring.
+  final List<Offset> markedPoints;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -119,13 +142,15 @@ class RoomPlanView extends StatelessWidget {
               editingRoomId: editingRoomId,
               editablePoints: editablePoints(),
               selectedPoint: selectedPoint,
+              markedPoints: markedPoints,
             ),
           );
 
           final onTap = onRoomTap;
           final onMoved = onPointMoved;
+          final onPosition = onPlanTap;
           final editing = editingRoomId != null && onMoved != null;
-          if (onTap == null && !editing) return painter;
+          if (onTap == null && onPosition == null && !editing) return painter;
 
           // Tracks which handle a drag started on. Held here rather than in
           // state so a drag survives the rebuild each move causes: looking the
@@ -145,6 +170,14 @@ class RoomPlanView extends StatelessWidget {
               }
               // Inside the zoom, so this is still box coordinates and the
               // viewport computed above is still the one that was drawn.
+              if (onPosition != null) {
+                final at = viewport.toPlan(
+                  details.localPosition.dx,
+                  details.localPosition.dy,
+                );
+                onPosition(Offset(at.x, at.y));
+                return;
+              }
               final hit = roomAt(details.localPosition, viewport);
               if (hit != null) onTap?.call(hit);
             },
@@ -223,9 +256,14 @@ class RoomPlanView extends StatelessWidget {
           for (final corner in room.polygon) (x: corner.x, y: corner.y),
       ],
       width: constraints.maxWidth,
-      height: (constraints.maxHeight - reserved).clamp(
+      // `clamp(1, maxHeight)` throws outright when the box is shorter than a
+      // pixel — its bounds come out inverted — which turned "the controls
+      // below grew and squeezed this" into a crash rather than a plan drawn
+      // very small. A floor with no room to draw in is a layout to survive,
+      // not an argument error.
+      height: math.max(
         1.0,
-        constraints.maxHeight,
+        math.min(constraints.maxHeight - reserved, constraints.maxHeight),
       ),
       // In the plan's own units. A traced plan is unitless and about one
       // unit across, so the metric cap would clamp a whole floor to a few
@@ -335,11 +373,13 @@ class _RoomPlanPainter extends CustomPainter {
     this.editingRoomId,
     this.editablePoints = const [],
     this.selectedPoint,
+    this.markedPoints = const [],
   });
 
   final String? editingRoomId;
   final List<Offset> editablePoints;
   final int? selectedPoint;
+  final List<Offset> markedPoints;
 
   /// How magnified the plan is — see [ZoomablePlan]. Divides every size below
   /// that is meant to be a fixed number of screen pixels.
@@ -401,6 +441,7 @@ class _RoomPlanPainter extends CustomPainter {
     }
 
     _paintHandles(canvas);
+    _paintMarks(canvas);
 
     if (showLegend) _paintLegend(canvas, size, rooms);
   }
@@ -512,6 +553,53 @@ class _RoomPlanPainter extends CustomPainter {
       final radius = _px(selected ? 8 : 5.5);
       canvas.drawCircle(at, radius, selected ? (Paint()..color = AppColors.coral) : fill);
       canvas.drawCircle(at, radius, edge);
+    }
+  }
+
+  /// The points somebody has tapped, and the span between them.
+  ///
+  /// Drawn over the handles rather than under: the two are never on screen at
+  /// once — setting the scale is not editing a shape — but if a future mode
+  /// puts them together, the marks are the thing being placed right now.
+  ///
+  /// A crosshair rather than a filled dot, because what is being marked is a
+  /// *position* the contributor is trying to hit exactly — the end of a
+  /// corridor, the edge of a doorway — and a disc large enough to tap hides
+  /// the very pixel they are aiming at.
+  void _paintMarks(Canvas canvas) {
+    if (markedPoints.isEmpty) return;
+
+    final stroke = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = _px(2)
+      ..color = AppColors.coral;
+
+    final at = [
+      for (final point in markedPoints)
+        Offset(
+          viewport.toCanvasX(point.dx),
+          viewport.toCanvasY(point.dy),
+        ),
+    ];
+
+    // The span first, so the crosshairs sit on top of their own line.
+    for (var i = 0; i + 1 < at.length; i++) {
+      canvas.drawLine(at[i], at[i + 1], stroke);
+    }
+
+    final arm = _px(9);
+    for (final centre in at) {
+      canvas.drawLine(
+        centre.translate(-arm, 0),
+        centre.translate(arm, 0),
+        stroke,
+      );
+      canvas.drawLine(
+        centre.translate(0, -arm),
+        centre.translate(0, arm),
+        stroke,
+      );
+      canvas.drawCircle(centre, _px(4), stroke);
     }
   }
 
@@ -891,7 +979,10 @@ class _RoomPlanPainter extends CustomPainter {
       // the tap would land, the cubit would update, and the point would not
       // look any different.
       old.editingRoomId != editingRoomId ||
-      old.selectedPoint != selectedPoint;
+      old.selectedPoint != selectedPoint ||
+      // Same reason again: the first tap of a scale span changes nothing else
+      // on the plan, and without this it draws nothing and reads as ignored.
+      !listEquals(old.markedPoints, markedPoints);
 
   @override
   bool shouldRebuildSemantics(covariant _RoomPlanPainter old) =>
