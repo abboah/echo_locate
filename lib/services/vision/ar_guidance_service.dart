@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 
 import '../../core/utils/logger.dart';
+import '../sensing/analyser_schedule.dart';
 import '../sensing/analysis_frame.dart';
 import 'depth_frame.dart' show ArCoreAvailability;
 
@@ -491,14 +492,21 @@ class ArGuidanceService implements AnalysisFrameSource {
   /// in advance: too high and camera images are copied only to be dropped, too
   /// low and a door sign goes past unread.
   @override
-  void frameHandled() {
+  void frameHandled({Analyser next = Analyser.objects}) {
     if (!_running || !_analysing) return;
-    unawaited(_ackFrame());
+    unawaited(_ackFrame(next));
   }
 
-  Future<void> _ackFrame() async {
+  Future<void> _ackFrame(Analyser next) async {
     try {
-      await _method.invokeMethod<void>('analysisDone');
+      // The acknowledgement carries what the next frame is for. Native cuts
+      // the sensor image differently for each — a magnified centre crop for
+      // sign reading, the whole field of view for obstacles — and this is the
+      // only round trip that happens once per frame, so it is where the answer
+      // belongs. See `AnalysisFraming` on the native side.
+      await _method.invokeMethod<void>('analysisDone', {
+        'wantsText': next == Analyser.text,
+      });
     } on PlatformException catch (e) {
       AppLogger.warn('Analysis acknowledgement failed: ${e.message}');
     } on MissingPluginException {

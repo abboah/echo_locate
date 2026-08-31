@@ -9,6 +9,7 @@ import 'package:echo_locate/features/guidance/guidance_session.dart';
 import 'package:echo_locate/services/audio/audio_arbiter.dart';
 import 'package:echo_locate/services/haptics/haptic_service.dart';
 import 'package:echo_locate/services/mapping/room_plan_bridge.dart';
+import 'package:echo_locate/services/sensing/analyser_schedule.dart';
 import 'package:echo_locate/services/mapping/route_planner.dart';
 import 'package:echo_locate/services/motion/step_service.dart';
 import 'package:echo_locate/services/motion/stride_profile.dart';
@@ -157,9 +158,13 @@ class _FakeAr implements ArGuidanceService {
   Stream<AnalysisFrame> get analysisFrames => const Stream.empty();
 
   @override
-  void frameHandled() => framesHandled++;
+  void frameHandled({Analyser next = Analyser.objects}) {
+    framesHandled++;
+    lastWanted = next;
+  }
 
   int framesHandled = 0;
+  Analyser? lastWanted;
 }
 
 void main() {

@@ -150,19 +150,10 @@ class ArGuidanceHandler(
          * Whether the route and the leg are pinned to ARCore anchors and
          * rebuilt from them each frame — see [followAnchors].
          *
-         * False keeps the raw world coordinates they were laid down in, which
-         * is what every build before this one did.
-         *
-         * **Turn this off if a registered route looks wrong in a way a leg does
-         * not** — the arrow drifting sideways, the line rotating slowly, rings
-         * landing off the corridor. This is the only code that rewrites the
-         * route's geometry after it is registered, so if the geometry is being
-         * mangled it is either this or nothing.
-         *
-         * The cost of false is that a relocalisation moves the building out
-         * from under the route and the route stays where it was put.
+         * Set to false to keep raw world coordinates fixed in ARCore space,
+         * preventing anchor yaw jitter from rotating 20-metre corridor lines into walls.
          */
-        private const val FOLLOW_ANCHORS = true
+        private const val FOLLOW_ANCHORS = false
 
         /**
          * How far below the phone the floor is assumed to be, in metres.
@@ -445,6 +436,16 @@ class ArGuidanceHandler(
     /** Sensor orientation of the camera ARCore chose, for ML Kit's rotation. */
     @Volatile
     private var sensorOrientation = 90
+
+    /**
+     * Whether the next analysis frame is for sign reading rather than obstacles.
+     *
+     * Set from Dart on each acknowledgement — it is the side that decides whose
+     * turn it is. False to begin with, so the first frame of a session is a
+     * full field of view: obstacles are what a walker can be hurt by.
+     */
+    @Volatile
+    private var analysisWantsText = false
 
     /**
      * The camera claim, held as one object.
@@ -749,6 +750,12 @@ class ArGuidanceHandler(
                 // worth copying. This is the whole pacing mechanism: without it
                 // the feed is a guess at how fast the phone is, and the guess
                 // is either wasteful or slow at reading signs.
+                //
+                // It also carries what the next frame is *for*. Sign reading
+                // wants a magnified crop of the middle and obstacle detection
+                // wants the whole field of view, and Dart is the side that
+                // knows which is next — see [AnalysisFraming].
+                analysisWantsText = call.argument<Boolean>("wantsText") ?: false
                 analysisInFlight = false
                 result.success(null)
             }
@@ -1046,10 +1053,24 @@ class ArGuidanceHandler(
             val filter = CameraConfigFilter(session)
             val configs: List<CameraConfig> = session.getSupportedCameraConfigs(filter)
             if (configs.isEmpty()) return
-            val chosen = configs.minWithOrNull(
-                compareBy<CameraConfig> { it.imageSize.width * it.imageSize.height }
-                    .thenByDescending { it.textureSize.width * it.textureSize.height }
-            ) ?: return
+            // The CPU image is the only thing ML Kit ever sees, and sign
+            // reading is what this app navigates by — so it gets the largest
+            // one the frame loop can afford rather than the smallest on offer.
+            // See [AnalysisFraming].
+            val byOption = LinkedHashMap<CameraOption, CameraConfig>()
+            for (config in configs) {
+                byOption.putIfAbsent(
+                    CameraOption(
+                        cpuWidth = config.imageSize.width,
+                        cpuHeight = config.imageSize.height,
+                        gpuWidth = config.textureSize.width,
+                        gpuHeight = config.textureSize.height,
+                    ),
+                    config,
+                )
+            }
+            val pick = AnalysisFraming.pickCamera(byOption.keys.toList()) ?: return
+            val chosen = byOption[pick] ?: return
             session.cameraConfig = chosen
             Log.i(
                 TAG,
@@ -1689,7 +1710,15 @@ class ArGuidanceHandler(
         travelHeading = if (netSq >=
             MIN_TRAVEL_FOR_HEADING_M * MIN_TRAVEL_FOR_HEADING_M
         ) {
-            bearing
+            val prev = travelHeading
+            if (prev == null) {
+                bearing
+            } else {
+                // Smooth gait sway (EMA filter) so hallway heading is steady
+                val sinAvg = 0.7f * sin(prev) + 0.3f * sin(bearing)
+                val cosAvg = 0.7f * cos(prev) + 0.3f * cos(bearing)
+                atan2(sinAvg, cosAvg)
+            }
         } else {
             null
         }
@@ -2357,9 +2386,18 @@ class ArGuidanceHandler(
         try {
             val acquired = frame.acquireCameraImage()
             image = acquired
-            val width = acquired.width
-            val height = acquired.height
-            val length = toNv21(acquired)
+            // Cut for whichever analyser is next: a magnified centre crop for
+            // sign reading, the whole field of view subsampled for obstacles.
+            // Both land on the same pixel count, so the session costs what it
+            // always cost however large a sensor image is arriving.
+            val framing = AnalysisFraming.framingFor(
+                acquired.width,
+                acquired.height,
+                wantsText = analysisWantsText,
+            )
+            val width = framing.outWidth
+            val height = framing.outHeight
+            val length = toNv21(acquired, framing)
             val bytes = nv21.copyOf(length)
             // Back camera: the sensor image is rotated by its mounting, and the
             // display rotation undoes part of that. Same arithmetic the camera
@@ -2407,9 +2445,11 @@ class ArGuidanceHandler(
      * millisecond or two at the resolution [chooseCameraConfig] asks for.
      * ML Kit reads luminance for both text and boxes anyway.
      */
-    private fun toNv21(image: Image): Int {
-        val width = image.width
-        val height = image.height
+    private fun toNv21(image: Image, framing: Framing): Int {
+        val crop = framing.crop
+        val step = framing.step
+        val width = framing.outWidth
+        val height = framing.outHeight
         val needed = width * height * 3 / 2
         if (nv21.size < needed) nv21 = ByteArray(needed)
 
@@ -2420,10 +2460,23 @@ class ArGuidanceHandler(
         var out = 0
         val yBuffer = yPlane.buffer
         val yRowStride = yPlane.rowStride
-        for (row in 0 until height) {
-            yBuffer.position(row * yRowStride)
-            yBuffer.get(nv21, out, width)
-            out += width
+        val yPixelStride = yPlane.pixelStride
+        if (step == 1 && yPixelStride == 1) {
+            // The common case, and the fast one: whole rows of the crop copied
+            // straight out.
+            for (row in 0 until height) {
+                yBuffer.position((crop.y + row) * yRowStride + crop.x)
+                yBuffer.get(nv21, out, width)
+                out += width
+            }
+        } else {
+            for (row in 0 until height) {
+                var index = (crop.y + row * step) * yRowStride + crop.x * yPixelStride
+                for (col in 0 until width) {
+                    nv21[out++] = yBuffer.get(index)
+                    index += yPixelStride * step
+                }
+            }
         }
 
         val uBuffer = uPlane.buffer
@@ -2432,15 +2485,22 @@ class ArGuidanceHandler(
         val vRowStride = vPlane.rowStride
         val uPixelStride = uPlane.pixelStride
         val vPixelStride = vPlane.pixelStride
+        // Chroma is subsampled two-by-two, so the crop's offsets and the
+        // sampling step both halve here. [AnalysisFraming] guarantees every one
+        // of those numbers is even, which is what keeps this from shearing the
+        // colour planes against the luma one.
+        val chromaX = crop.x / 2
+        val chromaY = crop.y / 2
         for (row in 0 until height / 2) {
-            var uIndex = row * uRowStride
-            var vIndex = row * vRowStride
+            val sourceRow = chromaY + row * step
+            var uIndex = sourceRow * uRowStride + chromaX * uPixelStride
+            var vIndex = sourceRow * vRowStride + chromaX * vPixelStride
             for (col in 0 until width / 2) {
                 // NV21 is V then U, which is the ordering that trips people up.
                 nv21[out++] = vBuffer.get(vIndex)
                 nv21[out++] = uBuffer.get(uIndex)
-                uIndex += uPixelStride
-                vIndex += vPixelStride
+                uIndex += uPixelStride * step
+                vIndex += vPixelStride * step
             }
         }
         return out

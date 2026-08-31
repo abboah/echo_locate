@@ -7,6 +7,7 @@ import 'package:google_mlkit_object_detection/google_mlkit_object_detection.dart
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/utils/logger.dart';
+import 'analyser_schedule.dart';
 import 'analysis_frame.dart';
 import 'detected_obstacle.dart';
 import 'text_recognition_service.dart';
@@ -60,6 +61,22 @@ class DetectionService {
 
   /// Counts analysed frames so object detection and OCR can take turns.
   int _frameIndex = 0;
+
+  /// How far the walker has left on the current leg, or null when nothing is
+  /// measuring it.
+  ///
+  /// Set by `GuidanceBloc`, and used for one decision: how the frames are
+  /// divided between the two analysers. Sign reading is what advances a leg
+  /// without asking the walker anything, and the only place it can happen is
+  /// the last few metres — see [AnalyserSchedule]. Left null on the screens
+  /// that are not walking a route, which is the even-split case.
+  double? legRemainingM;
+
+  /// Which analyser the *next* frame is for, given how the walk is going.
+  Analyser get _nextAnalyser => AnalyserSchedule.analyserFor(
+    index: _frameIndex,
+    remainingM: legRemainingM,
+  );
 
   final _obstaclesController =
       StreamController<List<DetectedObstacle>>.broadcast();
@@ -197,7 +214,10 @@ class DetectionService {
       _busy = false;
       // Asked for the next one even when this one threw: a single bad frame
       // must not be the end of obstacle detection for the walk.
-      _arFrames?.frameHandled();
+      //
+      // The source is told which analyser it is for, because the two want the
+      // frame cut differently and only the source has the sensor image to cut.
+      _arFrames?.frameHandled(next: _nextAnalyser);
     }
   }
 
@@ -242,12 +262,19 @@ class DetectionService {
     required int sourceWidth,
     required int sourceHeight,
   }) async {
-    // Alternate: objects on even frames, signage on odd. Both analysers on
-    // every frame would halve the rate of each on the budget hardware this
-    // targets, and an obstacle warning that arrives late is worse than one
-    // that arrives at half the frame rate.
+    // Both analysers on every frame would halve the rate of each on the budget
+    // hardware this targets, so the frames are handed out — evenly down a
+    // corridor, and weighted toward signage while arriving, because a sign
+    // read is what advances the leg without asking the walker anything. See
+    // [AnalyserSchedule].
     final text = _textRecognition;
-    final readsThisFrame = text != null && text.isActive && _frameIndex.isOdd;
+    final wantsText =
+        AnalyserSchedule.analyserFor(
+          index: _frameIndex,
+          remainingM: legRemainingM,
+        ) ==
+        Analyser.text;
+    final readsThisFrame = text != null && text.isActive && wantsText;
     _frameIndex++;
     if (readsThisFrame) {
       await text.analyze(input);

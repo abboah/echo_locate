@@ -319,6 +319,12 @@ class GuidanceBloc extends Bloc<GuidanceEvent, GuidanceState> {
 
     final remaining = total - metres;
 
+    // Told to the camera, which spends its frames differently once the walker
+    // is close: the sign at the end of this leg is what advances the walk
+    // without asking them to confirm anything, and the last few metres are the
+    // only place it can be read. See `AnalyserSchedule`.
+    _detection.legRemainingM = remaining;
+
     // **The moment of arrival, which nothing else covers.** Distance says they
     // are there; no sign has been read, or the leg would have advanced. The
     // walker is standing at a door the phone cannot see, and until this was
@@ -862,6 +868,10 @@ class GuidanceBloc extends Bloc<GuidanceEvent, GuidanceState> {
     _sightedAtM = 0;
     _cuesSpoken = 0;
     _arReportedAt = null;
+    // Carried into the next leg it would keep the camera reading signs as
+    // though the walker were still arriving somewhere, at the start of a
+    // corridor where there is nothing yet to read.
+    _detection.legRemainingM = null;
     // Left running, it would prompt for a landmark the walker confirmed a
     // corridor ago, naming a place they have already left.
     _arrivalNudge?.cancel();

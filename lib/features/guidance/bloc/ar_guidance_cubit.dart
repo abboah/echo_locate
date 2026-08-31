@@ -461,17 +461,17 @@ class ArGuidanceCubit extends Cubit<ArGuidanceState> {
 
     // Already registered from corridor evidence:
     // Once we have a measured corridor registration, keep it stable unless
-    // the walker has diverged into a wall (off-route > 1.2m) for over 1.2s!
+    // the walker has diverged (off-route > 0.6m) for over 500ms!
     if (_registration != null && !_provisionalRotation) {
-      if (frame.offRouteM > 1.2 &&
+      if (frame.offRouteM > 0.6 &&
           (frame.travelHeadingDeg != null ||
               frame.registrationHeadingDeg != null)) {
         final now = DateTime.now();
         _offRouteSince ??= now;
         if (now.difference(_offRouteSince!) >
-            const Duration(milliseconds: 1200)) {
+            const Duration(milliseconds: 500)) {
           AppLogger.info(
-            'OFF-ROUTE RECALIBRATION: off by ${frame.offRouteM.toStringAsFixed(1)}m — re-aligning to corridor',
+            'OFF-ROUTE RECALIBRATION: off by ${frame.offRouteM.toStringAsFixed(2)}m — re-aligning to corridor',
           );
           _offRouteSince = null;
           // Fall through to re-register against current corridor position!

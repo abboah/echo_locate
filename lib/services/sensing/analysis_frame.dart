@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import 'analyser_schedule.dart';
+
 /// One camera frame, ready for ML Kit, from somewhere other than the camera
 /// plugin.
 ///
@@ -76,5 +78,11 @@ abstract class AnalysisFrameSource {
   ///
   /// Not calling it stalls the feed until the source's own timeout, so call it
   /// exactly once per frame that was actually analysed.
-  void frameHandled();
+  ///
+  /// [next] says which analyser the frame after this one is for, because the
+  /// two want the frame cut differently and only the source can cut it — see
+  /// `AnalysisFraming` on the native side. Sign reading gets a magnified crop
+  /// of the middle; obstacle detection gets the whole field of view. A source
+  /// that cannot vary its framing may ignore this.
+  void frameHandled({Analyser next = Analyser.objects});
 }
