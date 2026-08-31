@@ -109,13 +109,11 @@ class _NavigationView extends StatelessWidget {
                       icon: PhosphorIconsRegular.mapTrifold,
                       title: 'Nobody has mapped this building yet',
                       detail:
-                          'Trace the floor plan posted on its wall, or walk '
-                          'it and record a route. Either becomes this '
+                          'Trace the floor plan posted on its wall. It becomes this '
                           'building’s first map — and its first directions.',
                       action: Column(
                         children: [
                           _TraceButton(buildingId: buildingId),
-                          _RecordButton(buildingId: buildingId, compact: true),
                         ],
                       ),
                     ),
@@ -432,8 +430,6 @@ class _RoutePicker extends StatelessWidget {
           ),
           const SizedBox(height: AppDimens.space8),
           _TraceButton(buildingId: buildingId, compact: true),
-          const SizedBox(height: AppDimens.space8),
-          _RecordButton(buildingId: buildingId, compact: true),
         ],
       ),
     );
@@ -561,37 +557,6 @@ class _TraceButton extends StatelessWidget {
   }
 }
 
-class _RecordButton extends StatelessWidget {
-  const _RecordButton({required this.buildingId, this.compact = false});
-
-  final String buildingId;
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) {
-    final button = OutlinedButton.icon(
-      onPressed: () async {
-        final bloc = context.read<FloorMapBloc>();
-        await context.pushNamed(
-          RouteNames.capture,
-          pathParameters: {'id': buildingId},
-        );
-        // Reload on the way back: a contributor who has just walked the
-        // building expects to see their walk on the map, and without this
-        // they return to the "nobody has walked this yet" screen they left.
-        if (!bloc.isClosed) bloc.add(FloorMapRequested(buildingId));
-      },
-      icon: const Icon(PhosphorIconsRegular.footprints, size: 18),
-      label: const Text('Record a route'),
-    );
-    return compact
-        ? button
-        : Padding(
-            padding: const EdgeInsets.only(top: AppDimens.space16),
-            child: button,
-          );
-  }
-}
 
 class _Message extends StatelessWidget {
   const _Message({

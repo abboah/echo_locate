@@ -14,7 +14,7 @@ import java.nio.FloatBuffer
  *
  * ## Why this exists now, having been avoided before
  *
- * [RoomCaptureHandler] used to stream the camera to Flutter as JPEG frames and
+ * The AR layer used to stream the camera to Flutter as JPEG frames and
  * let `Image.memory` draw them, on the reasoning that a tapping interface needs
  * only enough frames to aim with. On a phone that turned out to be wrong in the
  * way that matters: every frame was subsampled pixel by pixel out of a

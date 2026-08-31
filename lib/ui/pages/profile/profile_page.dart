@@ -267,28 +267,6 @@ class _ProfileView extends StatelessWidget {
                 Card(
                   child: ListTile(
                     title: Text(
-                      'Record a route (dev)',
-                      style: theme.textTheme.titleMedium,
-                    ),
-                    subtitle: Text(
-                      'Capture flow: read a sign, count steps, tap the turn',
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                    trailing: Icon(
-                      PhosphorIconsRegular.caretRight,
-                      size: 18,
-                      color: theme.textTheme.bodyMedium?.color,
-                    ),
-                    onTap: () => context.pushNamed(
-                      RouteNames.capture,
-                      pathParameters: {'id': _demoBuildingId},
-                    ),
-                  ),
-                ),
-                const SizedBox(height: AppDimens.space8),
-                Card(
-                  child: ListTile(
-                    title: Text(
                       'Sonar (dev)',
                       style: theme.textTheme.titleMedium,
                     ),

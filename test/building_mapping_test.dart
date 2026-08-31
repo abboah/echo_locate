@@ -4,9 +4,6 @@ import 'package:echo_locate/features/building_mapping/bloc/building_mapping_cubi
 import 'package:echo_locate/features/buildings/building_repository.dart';
 import 'package:echo_locate/features/room_trace/room_plan_repository.dart';
 import 'package:echo_locate/services/mapping/floor_mapping_status.dart';
-import 'package:echo_locate/services/vision/arcore_capture_service.dart';
-import 'package:echo_locate/services/vision/depth_frame.dart'
-    show ArCoreAvailability;
 import 'package:echo_locate/ui/pages/building_mapping/building_mapping_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -16,17 +13,6 @@ import 'package:mocktail/mocktail.dart';
 class _MockPlans extends Mock implements RoomPlanRepository {}
 
 class _MockBuildings extends Mock implements BuildingRepository {}
-
-class _FakeCapture implements ArCoreCaptureService {
-  ArCoreAvailability availability = ArCoreAvailability.unsupported;
-
-  @override
-  Future<ArCoreAvailability> checkAvailability() async => availability;
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) =>
-      throw UnimplementedError('${invocation.memberName} is not used here');
-}
 
 Room rect(String id, {double left = 0, double right = 4}) => Room(
   id: id,
@@ -63,12 +49,10 @@ RoomPlan finished(String floorId) => RoomPlan(
 void main() {
   late _MockPlans plans;
   late _MockBuildings buildings;
-  late _FakeCapture capture;
 
   setUp(() {
     plans = _MockPlans();
     buildings = _MockBuildings();
-    capture = _FakeCapture();
 
     when(() => buildings.floorsOf(any())).thenAnswer(
       (_) async => const [
@@ -80,7 +64,7 @@ void main() {
   });
 
   BuildingMappingCubit build() =>
-      BuildingMappingCubit(buildings, plans, capture);
+      BuildingMappingCubit(buildings, plans);
 
   group('loading a building', () {
     test('lists every floor with its state', () async {
@@ -109,18 +93,6 @@ void main() {
       // Half-finished beats untouched — that is the one that gets forgotten.
       expect(cubit.state.nextFloor!.floor.id, 'gf');
       expect(cubit.state.nextFloor!.nextActionLabel, 'Add doors');
-      await cubit.close();
-    });
-
-    test('knows up front whether this phone can scan', () async {
-      capture.availability = ArCoreAvailability.supported;
-
-      final cubit = build();
-      await cubit.load('knust-cs');
-
-      // Asked here rather than after somebody has walked to a corridor and
-      // opened the scanner.
-      expect(cubit.state.canScan, isTrue);
       await cubit.close();
     });
 
@@ -181,8 +153,7 @@ void main() {
       expect(find.text('Floor 1'), findsOneWidget);
     });
 
-    testWidgets('an unmapped floor offers only tracing on a phone that cannot '
-        'scan', (tester) async {
+    testWidgets('an unmapped floor offers tracing', (tester) async {
       await tester.pumpWidget(host());
       await tester.pumpAndSettle();
 
@@ -190,24 +161,6 @@ void main() {
         find.widgetWithText(FilledButton, 'Trace a photo'),
         findsNWidgets(2),
       );
-      expect(find.widgetWithText(OutlinedButton, 'Scan in AR'), findsNothing);
-      expect(
-        find.textContaining('not certified for AR scanning'),
-        findsOneWidget,
-      );
-    });
-
-    testWidgets('offers both methods when the phone can scan', (tester) async {
-      capture.availability = ArCoreAvailability.supported;
-
-      await tester.pumpWidget(host());
-      await tester.pumpAndSettle();
-
-      expect(
-        find.widgetWithText(OutlinedButton, 'Scan in AR'),
-        findsNWidgets(2),
-      );
-      expect(find.textContaining('not certified'), findsNothing);
     });
 
     testWidgets('a half-finished floor gets one primary action', (

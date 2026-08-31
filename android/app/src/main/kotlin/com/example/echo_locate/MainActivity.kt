@@ -8,7 +8,6 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
 
     private var depthHandler: ArCoreDepthHandler? = null
-    private var captureHandler: RoomCaptureHandler? = null
     private var guidanceHandler: ArGuidanceHandler? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -27,26 +26,11 @@ class MainActivity : FlutterActivity() {
             ArCoreDepthHandler.EVENT_CHANNEL,
         ).setStreamHandler(handler)
 
-        // The renderer *is* the texture registry. Capture draws the camera into
-        // a texture it registers here rather than shipping frames to Dart, so
-        // it needs the registry, not just a messenger.
-        val capture = RoomCaptureHandler(this, flutterEngine.renderer)
-        captureHandler = capture
-
-        MethodChannel(
-            flutterEngine.dartExecutor.binaryMessenger,
-            RoomCaptureHandler.METHOD_CHANNEL,
-        ).setMethodCallHandler(capture)
-
-        EventChannel(
-            flutterEngine.dartExecutor.binaryMessenger,
-            RoomCaptureHandler.EVENT_CHANNEL,
-        ).setStreamHandler(capture)
-
-        // AR guidance: same texture arrangement as capture, plus a second event
-        // channel carrying camera frames to ML Kit — ARCore holds the camera
-        // exclusively, so sign reading has to be fed from its session or not at
-        // all while this screen is up.
+        // AR guidance draws the camera into a texture it registers with the
+        // renderer — which *is* the texture registry — rather than shipping
+        // frames to Dart. A second event channel carries camera frames to ML
+        // Kit: ARCore holds the camera exclusively, so sign reading has to be
+        // fed from its session or not at all while this screen is up.
         val guidance = ArGuidanceHandler(this, flutterEngine.renderer)
         guidanceHandler = guidance
 
@@ -74,10 +58,6 @@ class MainActivity : FlutterActivity() {
      */
     override fun onPause() {
         depthHandler?.stop()
-        // Both sessions, and for the same reason: two ARCore sessions cannot
-        // hold the camera at once either, so leaving one running is also what
-        // makes the *other* fail to start.
-        captureHandler?.stop()
         // Quietly: Dart stops this one itself on the lifecycle event that is
         // about to follow, and a "the session ended" push from here would reach
         // it while the framework still thinks the app is in the foreground —

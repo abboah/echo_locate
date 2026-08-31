@@ -7,7 +7,6 @@ class BuildingMappingState extends Equatable {
     this.status = BuildingMappingStatus.loading,
     this.buildingId = '',
     this.progress = const BuildingMappingProgress([]),
-    this.canScan = false,
     this.error,
   });
 
@@ -19,7 +18,6 @@ class BuildingMappingState extends Equatable {
   ///
   /// Decided once, up front, so the floor list offers the methods that will
   /// actually work rather than sending somebody to a corridor to find out.
-  final bool canScan;
 
   final String? error;
 
@@ -34,13 +32,11 @@ class BuildingMappingState extends Equatable {
     BuildingMappingStatus? status,
     String? buildingId,
     BuildingMappingProgress? progress,
-    bool? canScan,
     String? error,
   }) => BuildingMappingState(
     status: status ?? this.status,
     buildingId: buildingId ?? this.buildingId,
     progress: progress ?? this.progress,
-    canScan: canScan ?? this.canScan,
     // Not sticky: an error from a failed load must not outlive the reload
     // that worked.
     error: error,
@@ -54,7 +50,6 @@ class BuildingMappingState extends Equatable {
     // plain holder, and a new instance with the same floors is not a
     // change worth rebuilding for.
     [for (final floor in floors) (floor.floor.id, floor.stage)],
-    canScan,
     error,
   ];
 }

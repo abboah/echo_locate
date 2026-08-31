@@ -13,12 +13,11 @@ import '../../../services/injection_container.dart';
 import '../../widgets/app_search_field.dart';
 import '../../widgets/building_glyph.dart';
 import '../../widgets/percent_badge.dart';
-import '../../widgets/scan_capability_gate.dart';
 import '../../widgets/section_label.dart';
 import '../camera_flow.dart';
 
 /// Home tab (Figma 7:488, assist-first): greeting, search, assistance
-/// banner, scan card, recently mapped.
+/// banner, trace card, recently mapped.
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
@@ -79,8 +78,6 @@ class _HomeView extends StatelessWidget {
             const _AssistBanner(),
             const SizedBox(height: AppDimens.space12),
             const _TraceCard(),
-            const SizedBox(height: AppDimens.space12),
-            const ScanCapabilityGate(child: _ScanCard()),
             const SizedBox(height: AppDimens.space24),
             SectionLabel(
               'Recently mapped',
@@ -197,12 +194,13 @@ class _AssistBanner extends StatelessWidget {
   }
 }
 
-/// The contributor action that actually maps a building: trace the floor plan
-/// posted on its wall.
+/// The contributor action that maps a building: trace the floor plan posted on
+/// its wall.
 ///
-/// Above [_ScanCard] because it is the one that works — traced coordinates are
-/// absolute, where a walked capture chains step counts and drifts — and because
-/// it needs no working pedometer, which not every phone has.
+/// The only authoring path, and deliberately so. Traced coordinates are
+/// absolute, it needs neither ARCore nor a working pedometer, and it therefore
+/// works identically on every phone — which is what keeps contributing open to
+/// the handsets most contributors actually own.
 ///
 /// Goes to the "what are you mapping" chooser rather than Explore: Explore
 /// only lists buildings somebody has already added, which strands the
@@ -278,57 +276,6 @@ class _TraceCard extends StatelessWidget {
 /// removed, so this is now the only thing "scan" means. Gated on ARCore
 /// because *this* card promises AR; the trace card beside it is deliberately
 /// ungated, so a phone that cannot scan still has a way to contribute.
-class _ScanCard extends StatelessWidget {
-  const _ScanCard();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Material(
-      color: theme.colorScheme.surface,
-      borderRadius: BorderRadius.circular(AppDimens.radiusLg),
-      child: InkWell(
-        onTap: () => context.pushNamed(
-          RouteNames.mapBuilding,
-          extra: RouteNames.buildingMapping,
-        ),
-        borderRadius: BorderRadius.circular(AppDimens.radiusLg),
-        child: Padding(
-          padding: const EdgeInsets.all(AppDimens.space16),
-          child: Row(
-            children: [
-              Icon(
-                PhosphorIconsRegular.scan,
-                size: 22,
-                color: theme.colorScheme.onSurface,
-              ),
-              const SizedBox(width: AppDimens.space12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Scan a space', style: theme.textTheme.titleMedium),
-                    Text(
-                      'Walk its rooms in AR and tap the corners',
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                  ],
-                ),
-              ),
-              Icon(
-                PhosphorIconsRegular.caretRight,
-                size: 20,
-                color: theme.textTheme.bodyMedium?.color,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _BuildingCard extends StatelessWidget {
   const _BuildingCard({required this.building});
 

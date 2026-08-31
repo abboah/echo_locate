@@ -4,8 +4,6 @@ import 'package:equatable/equatable.dart';
 import '../../../core/models/room_plan.dart';
 import '../../../core/utils/logger.dart';
 import '../../../services/mapping/floor_mapping_status.dart';
-import '../../../services/vision/arcore_capture_service.dart';
-import '../../../services/vision/depth_frame.dart' show ArCoreAvailability;
 import '../../buildings/building_repository.dart';
 import '../../room_trace/room_plan_repository.dart';
 
@@ -22,21 +20,14 @@ part 'building_mapping_state.dart';
 /// it is read, so it cannot fall out of step with the geometry — including
 /// after somebody else edits the same building.
 class BuildingMappingCubit extends Cubit<BuildingMappingState> {
-  BuildingMappingCubit(this._buildings, this._plans, this._capture)
+  BuildingMappingCubit(this._buildings, this._plans)
     : super(const BuildingMappingState());
 
   final BuildingRepository _buildings;
   final RoomPlanRepository _plans;
-  final ArCoreCaptureService _capture;
 
   Future<void> load(String buildingId) async {
     emit(state.copyWith(status: BuildingMappingStatus.loading));
-
-    // Asked once, here, rather than on the capture screen after somebody has
-    // walked to a corridor: whether this phone can scan at all decides which
-    // method the floor list offers, and finding out late wastes a trip.
-    final availability = await _capture.checkAvailability();
-    if (isClosed) return;
 
     try {
       final floors = await _buildings.floorsOf(buildingId);
@@ -58,7 +49,6 @@ class BuildingMappingCubit extends Cubit<BuildingMappingState> {
         state.copyWith(
           status: BuildingMappingStatus.ready,
           buildingId: buildingId,
-          canScan: availability == ArCoreAvailability.supported,
           progress: BuildingMappingProgress(statuses),
         ),
       );

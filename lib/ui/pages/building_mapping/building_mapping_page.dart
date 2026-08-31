@@ -37,7 +37,7 @@ class BuildingMappingPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => BlocProvider(
     create: (_) =>
-        BuildingMappingCubit(getIt(), getIt(), getIt())..load(buildingId),
+        BuildingMappingCubit(getIt(), getIt())..load(buildingId),
     child: BuildingMappingView(buildingName: buildingName),
   );
 }
@@ -125,34 +125,13 @@ class _Floors extends StatelessWidget {
           else if (next != null)
             Text(
               'Next: ${_floorName(next)} — '
-              '${next.nextActionReasonFor(canScan: state.canScan)}',
+              '${next.nextActionReason}',
               style: theme.textTheme.bodySmall,
             ),
-          if (!state.canScan) ...[
-            const SizedBox(height: AppDimens.space12),
-            // Said once, here, rather than after somebody has walked to a
-            // corridor and opened the scanner.
-            Container(
-              padding: const EdgeInsets.all(AppDimens.space12),
-              decoration: BoxDecoration(
-                color: AppColors.warningSoft,
-                borderRadius: BorderRadius.circular(AppDimens.radiusSm),
-              ),
-              child: Text(
-                'This phone is not certified for AR scanning, so floors are '
-                'mapped by tracing the plan on the wall. Same map, and it is '
-                'the quicker way anyway.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: AppColors.ink,
-                ),
-              ),
-            ),
-          ],
           const SizedBox(height: AppDimens.space16),
           for (final floor in state.floors)
             _FloorCard(
               floor: floor,
-              canScan: state.canScan,
               isNext: floor.floor.id == next?.floor.id,
               buildingId: state.buildingId,
             ),
@@ -165,13 +144,11 @@ class _Floors extends StatelessWidget {
 class _FloorCard extends StatelessWidget {
   const _FloorCard({
     required this.floor,
-    required this.canScan,
     required this.isNext,
     required this.buildingId,
   });
 
   final FloorMappingStatus floor;
-  final bool canScan;
   final bool isNext;
   final String buildingId;
 
@@ -209,7 +186,7 @@ class _FloorCard extends StatelessWidget {
             Text(floor.summary, style: theme.textTheme.bodySmall),
             const SizedBox(height: AppDimens.space12),
             if (floor.stage == FloorMappingStage.notStarted)
-              _StartRow(floor: floor, canScan: canScan, buildingId: buildingId)
+              _StartRow(floor: floor, buildingId: buildingId)
             else
               _ContinueRow(floor: floor, buildingId: buildingId),
           ],
@@ -223,31 +200,20 @@ class _FloorCard extends StatelessWidget {
 class _StartRow extends StatelessWidget {
   const _StartRow({
     required this.floor,
-    required this.canScan,
     required this.buildingId,
   });
 
   final FloorMappingStatus floor;
-  final bool canScan;
   final String buildingId;
 
   @override
   Widget build(BuildContext context) => Row(
     children: [
-      if (canScan) ...[
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: () => _go(context, RouteNames.roomCapture),
-            icon: const Icon(PhosphorIcons.cube, size: 18),
-            label: const Text('Scan in AR'),
-          ),
-        ),
-        const SizedBox(width: AppDimens.space8),
-      ],
       Expanded(
-        // The default even where scanning works: tracing a posted plan
-        // takes about fifteen minutes for a floor and scanning it takes
-        // considerably longer, so the quicker path is the prominent one.
+        // Tracing is the only authoring path. A floor takes about fifteen
+        // minutes, needs no ARCore, and produces the same artefact on every
+        // phone — which is what makes contributing possible on the hardware
+        // most contributors actually own.
         child: FilledButton.icon(
           onPressed: () => _go(context, RouteNames.roomTrace),
           icon: const Icon(PhosphorIcons.image, size: 18),
@@ -294,11 +260,6 @@ class _ContinueRow extends StatelessWidget {
             icon: const Icon(PhosphorIcons.pencilSimple, size: 18),
             onPressed: () => _go(context, RouteNames.planEditor),
           ),
-          IconButton.outlined(
-            tooltip: 'Check this floor',
-            icon: const Icon(PhosphorIcons.checkSquare, size: 18),
-            onPressed: () => _go(context, RouteNames.planEvaluation),
-          ),
         ],
       ),
       // Offered the moment a floor is walkable, not only when it is
@@ -338,15 +299,15 @@ class _ContinueRow extends StatelessWidget {
   /// this goes; re-opening it loads the floor as traced so far and continues
   /// it rather than starting again.
   String get _primaryRoute => switch (floor.stage) {
-    FloorMappingStage.disconnected =>
-      floor.method == MappingMethod.scanned
-          ? RouteNames.planEditor
-          : RouteNames.roomTrace,
-    FloorMappingStage.ready => RouteNames.planEvaluation,
-    _ =>
-      floor.method == MappingMethod.scanned
-          ? RouteNames.roomCapture
-          : RouteNames.roomTrace,
+    // A disconnected traced floor is almost always a corridor nobody drew,
+    // and the corridor tool is in the tracer. Re-opening loads the floor as
+    // traced so far and continues it rather than starting again.
+    FloorMappingStage.disconnected => RouteNames.roomTrace,
+    // A finished floor's primary action is to walk it. There is nothing left
+    // to author, and walking is how a contributor finds out whether the floor
+    // they traced actually guides somebody.
+    FloorMappingStage.ready => RouteNames.roomNavigate,
+    _ => RouteNames.roomTrace,
   };
 
   void _go(BuildContext context, String route) {

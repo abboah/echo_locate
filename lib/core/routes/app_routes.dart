@@ -28,15 +28,11 @@ class AppRoutes {
   static const String buildingDetail = '/building/:id';
   static const String navigate = '/building/:id/navigate';
 
-  /// Recording a building by walking it (contributor).
-  static const String capture = '/building/:id/capture';
 
   /// Mapping a building by tracing the floor plan posted on its wall
   /// (contributor). Takes the floor id as `extra`.
   static const String planTrace = '/building/:id/trace';
   static const String roomTrace = '/building/:id/trace-rooms';
-  static const String planEvaluation = '/building/:id/evaluate';
-  static const String roomCapture = '/building/:id/scan-rooms';
   static const String planEditor = '/building/:id/edit-plan';
 
   /// Mapping a building floor by floor — the hub the capture screens hang off.
@@ -79,11 +75,8 @@ class RouteNames {
   static const String locationPrimer = 'locationPrimer';
   static const String buildingDetail = 'buildingDetail';
   static const String navigate = 'navigate';
-  static const String capture = 'capture';
   static const String planTrace = 'planTrace';
   static const String roomTrace = 'roomTrace';
-  static const String planEvaluation = 'planEvaluation';
-  static const String roomCapture = 'roomCapture';
   static const String planEditor = 'planEditor';
   static const String buildingMapping = 'buildingMapping';
   static const String roomNavigate = 'roomNavigate';

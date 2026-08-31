@@ -132,19 +132,15 @@ records what the sensor cannot be asked.
 
 ## 4. Mapping a complete building exceeds what one contributor can do
 
-The system offers two ways to produce a floor plan. A contributor may photograph
-a posted floor plan and trace it, which takes roughly twenty minutes per floor
-and requires that the building has such a board; or they may walk the space and
-place corners in ARCore, which takes roughly twenty minutes per capture session
-and requires no board.
+A contributor produces a floor plan by photographing a posted plan and tracing
+it, which takes roughly twenty minutes per floor and requires that the building
+has such a board.
 
-Neither scales to a whole building in one sitting. A three-storey building with a
-basement, of the kind this work targets, is several hours of contributor effort
-by either route, and the ARCore path additionally requires that tracking survive
-the whole session — a longer walk accumulates drift and a lost session costs
-everything captured in it.
+That does not scale to a whole building in one sitting. A three-storey building
+with a basement, of the kind this work targets, is several hours of contributor
+effort.
 
-This is a limitation of the capture mechanism, and it is the direct justification
+This is a limitation of the authoring mechanism, and it is the direct justification
 for the crowdsourced architecture. The system does not assume one person maps a
 building. Plans are stored per floor, published to a shared backend, and
 retrieved by anyone; the unit of contribution is a floor, or a room, not a
@@ -164,9 +160,9 @@ the capability is present on that path but not on the traced-plan path.
 
 Evaluation is accordingly reported per floor rather than per building.
 
-⟨MEASURE: actual elapsed time to trace one real floor and to capture one real
-room, timed rather than estimated. Two numbers, and they make this section a
-measured constraint instead of a projection.⟩
+⟨MEASURE: actual elapsed time to trace one real floor, timed rather than
+estimated. One number, and it makes this section a measured constraint instead
+of a projection.⟩
 
 ---
 
@@ -204,7 +200,7 @@ on doors and landmarks, which remain true regardless of scale.
 
 ⟨MEASURE: for one traced floor, compare a handful of traced room dimensions
 against tape measurements, and report the topology precision and recall that
-`services/evaluation/plan_evaluation.dart` computes against the adjacencies read
+the traced geometry implies, against the adjacencies read
 off the same board.⟩
 
 ---
@@ -234,31 +230,41 @@ of the current results.⟩
 
 ---
 
-## 7. Depth capture and augmented guidance are Android-only
+## 7. Augmented-reality guidance is Android-only, and optional
 
 All ARCore-dependent capability is gated on the platform and reports itself
 unsupported elsewhere (`services/vision/arcore_depth_service.dart:40`,
-`arcore_capture_service.dart:197`, `ar_guidance_service.dart:217`). This affects
-room capture, the depth readout, and the augmented-reality arrow. Equivalent iOS
-support would require a parallel ARKit implementation, which was outside scope.
+`ar_guidance_service.dart:217`). This affects the depth readout and the
+augmented-reality arrow. Equivalent iOS support would require a parallel ARKit
+implementation, which was outside scope.
 
-Platform-independent capability is unaffected: tracing plans from photographed
-boards, routing, spoken guidance, obstacle detection and sign reading through
-ML Kit, and the crowdsourced backend all operate without ARCore. A device without
-ARCore support is therefore able to consume every published plan and be guided by
-it, and is unable to contribute plans captured by walking.
+What this does *not* affect is navigation itself. Map-and-sound guidance — the
+route drawn over the floor plan, spoken turn by turn, with haptic cues and step
+counting — needs no camera and no ARCore, and is a co-equal mode rather than a
+degraded one. So is every other platform-independent capability: tracing plans
+from photographed boards, routing, obstacle detection and sign reading through
+ML Kit, and the crowdsourced backend.
+
+A device without ARCore therefore authors plans, publishes them, consumes every
+published plan, and is guided along it turn by turn. What it does not get is the
+visual arrow overlaid on the camera — which is of no use to a blind or low-vision
+user in any case. Since ARCore certification is a property of the handset, and
+the phones most widely owned in this project's setting are not certified, the
+mode requiring none of it is expected to be the more used of the two.
 
 ---
 
-## 8. Evaluation data (remove this section once collected)
+## 8. Measurement is not yet quantified (remove this section once collected)
 
-The evaluation instruments are implemented and tested but have not been run
-against real buildings. Section 5's topology scoring, Section 2's classification
-accuracy, Section 1's ranging error and Section 6's walked route audits are all
-currently unpopulated.
+Routes have been walked in real buildings in both navigation modes. Following the
+spoken guidance, a walker arrives at the intended destination; the augmented
+arrow registers and re-anchors but its heading is not consistently accurate over
+a full route. So navigation is no longer untested — but it is unquantified.
 
-This is the largest gap in the present work and it is not a design limitation:
-the instruments exist, the ground truth is free — posted floor plans in buildings
-that can be walked into — and the data collection is a matter of hours rather
-than weeks. Every `⟨MEASURE⟩` marker above identifies a specific table that this
-section will otherwise leave empty.
+Section 5's dimensional accuracy, Section 2's classification accuracy, Section 1's
+ranging error and Section 6's walked route audits remain unpopulated.
+
+This is the largest remaining gap and it is not a design limitation: the ground
+truth is free — posted floor plans in buildings that can be walked into — and the
+data collection is a matter of hours rather than weeks. Every `⟨MEASURE⟩` marker
+above identifies a specific table that this section will otherwise leave empty.

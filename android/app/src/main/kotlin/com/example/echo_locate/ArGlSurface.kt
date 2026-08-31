@@ -18,7 +18,7 @@ import io.flutter.view.TextureRegistry
  * ## Why this is its own class
  *
  * Two screens now run an ARCore session behind a camera preview —
- * [RoomCaptureHandler] and [ArGuidanceHandler] — and both need exactly this:
+ * [ArGuidanceHandler] — which needs exactly this:
  * an `EGL_WINDOW_BIT` context, a window surface on a
  * [TextureRegistry.SurfaceProducer], an external texture for ARCore to write
  * the camera into, and the discipline to rebuild the surface when Flutter

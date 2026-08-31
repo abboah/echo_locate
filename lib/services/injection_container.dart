@@ -19,7 +19,6 @@ import '../features/room_trace/bloc/room_trace_bloc.dart';
 import '../features/room_trace/room_plan_repository.dart';
 import '../features/room_trace/supabase_room_plan_repository.dart';
 import '../features/buildings/supabase_building_repository.dart';
-import '../features/capture/bloc/capture_bloc.dart';
 import '../features/explore/bloc/explore_bloc.dart';
 import '../features/guidance/bloc/guidance_bloc.dart';
 import '../features/home/bloc/home_bloc.dart';
@@ -32,7 +31,6 @@ import '../features/plan_trace/bloc/plan_trace_bloc.dart';
 import '../features/routing/bloc/floor_map_bloc.dart';
 import '../features/routing/route_repository.dart';
 import '../features/routing/supabase_route_repository.dart';
-import '../features/scan/bloc/scan_capability_cubit.dart';
 import '../features/acoustic/bloc/acoustic_bloc.dart';
 import '../features/sonar/bloc/sonar_bloc.dart';
 import 'acoustic/acoustic_fallback_service.dart';
@@ -47,7 +45,6 @@ import 'sensing/landmark_matcher.dart';
 import 'sensing/text_recognition_service.dart';
 import 'speech/speech_service.dart';
 import 'vision/ar_guidance_service.dart';
-import 'vision/arcore_capture_service.dart';
 import 'vision/arcore_depth_service.dart';
 import 'vision/depth_reliability.dart';
 
@@ -81,9 +78,9 @@ Future<void> configureDependencies() async {
         ? SupabaseAuthRepository(Supabase.instance.client)
         : MockAuthRepository(mockAuthBox!),
   );
-  // Landmarks + recorded routes. Shared by both work streams: Stream A reads
-  // it to lay out the 2D schematic and build the A* graph, Stream B to guide
-  // and to upload captures. See docs/landmark-navigation-spec.md.
+  // Landmarks + recorded routes. Read to lay out the 2D schematic and build the
+  // A* graph the walker is guided along.
+  // See docs/archive/landmark-navigation-spec.md for the original design.
   getIt.registerLazySingleton<RouteRepository>(
     () => AppConfig.hasSupabase
         ? SupabaseRouteRepository(Supabase.instance.client)
@@ -155,12 +152,6 @@ Future<void> configureDependencies() async {
     ),
   );
   getIt.registerLazySingleton<ArCoreDepthService>(() => ArCoreDepthService());
-  // AR room capture. A separate session from the depth spike — ARCore holds
-  // the camera exclusively, so the two are never running at once, and the
-  // screens that own them stop one before starting the other.
-  getIt.registerLazySingleton<ArCoreCaptureService>(
-    () => ArCoreCaptureService(),
-  );
 
   // The camera↔sound hand-off (M5). Registered as a pair: DepthReliability
   // decides when camera depth has failed, AcousticFallbackService answers
@@ -178,13 +169,6 @@ Future<void> configureDependencies() async {
   getIt.registerLazySingleton<AuthBloc>(
     () => AuthBloc(getIt<AuthRepository>()),
   );
-  getIt.registerLazySingleton<ScanCapabilityCubit>(
-    () => ScanCapabilityCubit(getIt<ArCoreDepthService>()),
-  );
-  // Kicked off, not awaited: the ARCore query can take a moment on first call
-  // and nothing should hold up first paint for it. The cubit starts in
-  // `checking`, which hides scan entry points until the answer lands.
-  unawaited(getIt<ScanCapabilityCubit>().resolve());
 
   // --- Feature blocs (one fresh instance per screen visit) ---
   getIt.registerFactory<AssistBloc>(
@@ -244,15 +228,6 @@ Future<void> configureDependencies() async {
   );
   getIt.registerFactory<MapBuildingCubit>(
     () => MapBuildingCubit(getIt<BuildingRepository>()),
-  );
-  getIt.registerFactory<CaptureBloc>(
-    () => CaptureBloc(
-      detection: getIt<DetectionService>(),
-      textRecognition: getIt<TextRecognitionService>(),
-      steps: getIt<StepService>(),
-      routes: getIt<RouteRepository>(),
-      matcher: getIt<LandmarkMatcher>(),
-    ),
   );
   getIt.registerFactory<StrideCalibrationCubit>(
     () => StrideCalibrationCubit(

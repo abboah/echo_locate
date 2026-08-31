@@ -7,7 +7,7 @@ import '../../data/repository_mixin.dart';
 /// Landmarks and recorded routes for a building.
 ///
 /// The contract both work streams build against (see
-/// `docs/landmark-navigation-spec.md` §5). Stream A consumes it to lay out the
+/// `docs/archive/landmark-navigation-spec.md` §5). Stream A consumes it to lay out the
 /// 2D schematic and build the A* graph; Stream B consumes it to guide a user
 /// along a route and to upload newly captured ones.
 abstract class RouteRepository {

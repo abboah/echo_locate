@@ -278,6 +278,11 @@ class Registration {
   }
 
   /// How far [snappedToGrid] may rotate a registration before it refuses.
+  ///
+  /// Half a quadrant would be the most it could ever need — beyond that the
+  /// nearest candidate is a different quarter turn — so this is well inside
+  /// that: it is sized to the error a travel heading plausibly carries, not to
+  /// the error it could theoretically carry.
   static const double _defaultMaxSnapRad = 25 * math.pi / 180;
 
   /// The grid a run of route legs implies, folded to [0, pi/2).
@@ -357,7 +362,15 @@ class Registration {
   }
 
   /// Shorter than this and a leg is a step round a doorway, not a corridor.
-  static const double _minGridLegM = 0.5;
+  ///
+  /// The path this is measured over is the corridor centreline, door to door,
+  /// so its short legs are the hop from a doorway onto the centreline — about
+  /// a corridor's width. Those carry no information about which way the
+  /// *building* runs, and letting them vote is how a doorway jink ends up
+  /// rotating the whole floor. A route with no leg this long has not shown
+  /// enough to claim a grid, and `planGridOf` returning null is the correct
+  /// answer there: registration then keeps the yaw it measured.
+  static const double _minGridLegM = 2.5;
 
   /// How far the legs may disagree before they are not a grid.
   static const double _maxGridSpreadRad = 10 * math.pi / 180;

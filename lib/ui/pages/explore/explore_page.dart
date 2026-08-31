@@ -11,10 +11,9 @@ import '../../../features/explore/bloc/explore_bloc.dart';
 import '../../../services/injection_container.dart';
 import '../../widgets/app_search_field.dart';
 import '../../widgets/building_list_tile.dart';
-import '../../widgets/scan_capability_gate.dart';
 
 /// Explore tab (Figma 7:372): search, category chips, nearby buildings,
-/// pinned "Scan a new building" CTA.
+/// pinned "Map a new building" CTA.
 class ExplorePage extends StatefulWidget {
   const ExplorePage({super.key});
 
@@ -128,26 +127,23 @@ class _ExploreView extends StatelessWidget {
                   },
                 ),
               ),
-              // Gates the SafeArea, not just the button, so a device that
-              // can't scan doesn't reserve empty padding where the CTA was.
-              ScanCapabilityGate(
-                child: SafeArea(
-                  top: false,
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: AppDimens.space12),
-                    // The building picker, not the old mock scan screen —
-                    // which is now "Detect environment" and has nothing to do
-                    // with mapping. A contributor standing in a building
-                    // nobody has listed has to be able to add it, which is
-                    // exactly what the picker is for.
-                    child: ElevatedButton.icon(
-                      onPressed: () => context.pushNamed(
-                        RouteNames.mapBuilding,
-                        extra: RouteNames.buildingMapping,
-                      ),
-                      icon: const Icon(PhosphorIconsBold.plus, size: 18),
-                      label: const Text('Scan a new building'),
+              // Shown on every phone. Tracing needs no ARCore, so gating this
+              // on AR capability hid the contributor entry point from exactly
+              // the handsets most contributors own.
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: AppDimens.space12),
+                  // The building picker. A contributor standing in a building
+                  // nobody has listed has to be able to add it, which is
+                  // exactly what the picker is for.
+                  child: ElevatedButton.icon(
+                    onPressed: () => context.pushNamed(
+                      RouteNames.mapBuilding,
+                      extra: RouteNames.buildingMapping,
                     ),
+                    icon: const Icon(PhosphorIconsBold.plus, size: 18),
+                    label: const Text('Map a new building'),
                   ),
                 ),
               ),

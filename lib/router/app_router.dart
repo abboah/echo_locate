@@ -10,7 +10,6 @@ import '../features/auth/bloc/auth_bloc.dart';
 import '../features/guidance/guidance_session.dart';
 import '../services/injection_container.dart';
 import '../ui/pages/assist/assist_page.dart';
-import '../ui/pages/capture/capture_page.dart';
 import '../ui/pages/map_building/map_building_page.dart';
 import '../ui/pages/plan_trace/plan_trace_page.dart';
 import '../ui/pages/guidance/guidance_page.dart';
@@ -27,9 +26,7 @@ import '../ui/pages/onboarding/onboarding_page.dart';
 import '../ui/pages/primers/camera_primer_page.dart';
 import '../ui/pages/depth/depth_probe_page.dart';
 import '../ui/pages/building_mapping/building_mapping_page.dart';
-import '../ui/pages/evaluation/plan_evaluation_page.dart';
 import '../ui/pages/plan_editor/plan_editor_page.dart';
-import '../ui/pages/room_capture/room_capture_page.dart';
 import '../ui/pages/room_navigate/room_navigate_page.dart';
 import '../ui/pages/room_plan/room_plan_probe_page.dart';
 import '../ui/pages/room_trace/room_trace_page.dart';
@@ -187,13 +184,6 @@ final GoRouter appRouter = GoRouter(
       ),
     ),
     GoRoute(
-      path: AppRoutes.capture,
-      name: RouteNames.capture,
-      parentNavigatorKey: _rootNavigatorKey,
-      builder: (context, state) =>
-          CapturePage(buildingId: state.pathParameters['id']!),
-    ),
-    GoRoute(
       path: AppRoutes.mapBuilding,
       name: RouteNames.mapBuilding,
       parentNavigatorKey: _rootNavigatorKey,
@@ -248,32 +238,11 @@ final GoRouter appRouter = GoRouter(
       ),
     ),
     GoRoute(
-      path: AppRoutes.roomCapture,
-      name: RouteNames.roomCapture,
-      parentNavigatorKey: _rootNavigatorKey,
-      builder: (context, state) => RoomCapturePage(
-        buildingId: state.pathParameters['id']!,
-        floorId: state.extra as String? ?? '',
-      ),
-    ),
-    GoRoute(
       path: AppRoutes.planEditor,
       name: RouteNames.planEditor,
       parentNavigatorKey: _rootNavigatorKey,
       builder: (context, state) => PlanEditorPage(
         buildingId: state.pathParameters['id']!,
-        floorId: state.extra as String? ?? 'floor-g',
-      ),
-    ),
-    GoRoute(
-      path: AppRoutes.planEvaluation,
-      name: RouteNames.planEvaluation,
-      parentNavigatorKey: _rootNavigatorKey,
-      builder: (context, state) => PlanEvaluationPage(
-        buildingId: state.pathParameters['id']!,
-        // Which floor's trace to measure. Passed as `extra` rather than in the
-        // path because a floor id is a uuid and does not belong in a URL a
-        // person might read out.
         floorId: state.extra as String? ?? 'floor-g',
       ),
     ),

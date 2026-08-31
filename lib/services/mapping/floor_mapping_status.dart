@@ -38,25 +38,12 @@ enum FloorMappingStage {
   bool get isNavigable => this == ready || this == countsPending;
 }
 
-/// How a floor was mapped, which decides where "continue" goes.
-enum MappingMethod {
-  /// Captured in AR. Coordinates are metres.
-  scanned,
-
-  /// Traced off a photographed wall board. Unitless.
-  traced,
-
-  /// Nothing captured yet, so no method chosen.
-  none,
-}
-
 /// One floor's state, and the single next thing worth doing to it.
 class FloorMappingStatus {
   const FloorMappingStatus({
     required this.floor,
     required this.plan,
     required this.stage,
-    required this.method,
     required this.roomCount,
     required this.doorCount,
     required this.roomsWithoutDoors,
@@ -70,7 +57,6 @@ class FloorMappingStatus {
   final RoomPlan? plan;
 
   final FloorMappingStage stage;
-  final MappingMethod method;
   final int roomCount;
   final int doorCount;
 
@@ -90,7 +76,6 @@ class FloorMappingStatus {
         floor: floor,
         plan: plan,
         stage: FloorMappingStage.notStarted,
-        method: MappingMethod.none,
         roomCount: 0,
         doorCount: 0,
         roomsWithoutDoors: 0,
@@ -135,7 +120,6 @@ class FloorMappingStatus {
         _ when shortfall != 0 => FloorMappingStage.countsPending,
         _ => FloorMappingStage.ready,
       },
-      method: plan.isMetric ? MappingMethod.scanned : MappingMethod.traced,
       roomCount: rooms.length,
       doorCount: plan.openings.length,
       roomsWithoutDoors: doorless,
@@ -173,33 +157,16 @@ class FloorMappingStatus {
   /// [canScan] keeps it honest on a phone that cannot: offering AR to somebody
   /// whose device Google never certified is advice they cannot take, and the
   /// screen has already told them so once.
-  String nextActionReasonFor({required bool canScan}) => switch (stage) {
-    FloorMappingStage.notStarted =>
-      canScan
-          ? 'Scan the rooms in AR, or trace them off the plan on the wall.'
-          : 'Trace the rooms off the plan posted on the wall.',
-    _ => nextActionReason,
-  };
-
   String get nextActionReason => switch (stage) {
     FloorMappingStage.notStarted =>
-      'Scan the rooms in AR, or trace them off the plan on the wall.',
+      'Trace the rooms off the plan posted on the wall.',
     FloorMappingStage.needsDoors =>
       'Rooms with no door are drawn on the map and cannot be walked to. '
           'Stand in each doorway and record it.',
-    // Split by method, because the two are not the same fault. Two AR wings
-    // really can sit side by side and want a door. A traced floor that splits
-    // is nearly always a corridor nobody drew — telling that contributor to
-    // add a door between the wings sends them looking for a doorway that is
-    // not in the building.
     FloorMappingStage.disconnected =>
-      method == MappingMethod.scanned
-          ? 'Part of this floor is an island. Two wings can sit side by side '
-                'and still need a door between them.'
-          : 'Part of this floor is an island. Usually it is a corridor that '
-                'was never drawn: trace the hallway joining the two parts and '
-                'end it on the corridor already there, so the two snap '
-                'together.',
+      'Part of this floor is an island. Usually it is a corridor that '
+          'was never drawn: trace the hallway joining the two parts and '
+          'end it on the corridor already there, so the two snap together.',
     FloorMappingStage.countsPending =>
       'Spoken directions will not say "the second door on your left" until '
           'the doors you counted are all placed.',

@@ -47,7 +47,6 @@ void main() {
       final status = FloorMappingStatus.of(ground, null);
 
       expect(status.stage, FloorMappingStage.notStarted);
-      expect(status.method, MappingMethod.none);
       expect(status.hasPlan, isFalse);
       expect(status.nextActionLabel, 'Start mapping');
     });
@@ -170,25 +169,6 @@ void main() {
       );
 
       expect(small.stage, large.stage);
-    });
-  });
-
-  group('which method was used', () {
-    test('a metric plan was scanned', () {
-      expect(
-        FloorMappingStatus.of(ground, planOf(rooms: [rect('a')])).method,
-        MappingMethod.scanned,
-      );
-    });
-
-    test('a unitless plan was traced off a photo', () {
-      expect(
-        FloorMappingStatus.of(
-          ground,
-          planOf(rooms: [rect('a')], metresPerUnit: null),
-        ).method,
-        MappingMethod.traced,
-      );
     });
   });
 
