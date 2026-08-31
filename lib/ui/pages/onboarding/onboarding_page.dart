@@ -7,6 +7,7 @@ import '../../../core/settings/settings_repository.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimens.dart';
 import '../../../services/injection_container.dart';
+import '../../widgets/responsive.dart';
 
 class _Step {
   const _Step(this.icon, this.title, this.body, {this.inkIcon = false});
@@ -84,7 +85,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
     return Scaffold(
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(AppDimens.pageGutter),
+          padding: Responsive.pagePadding(context),
           child: Column(
             children: [
               Row(
@@ -106,27 +107,34 @@ class _OnboardingPageState extends State<OnboardingPage> {
                   itemBuilder: (context, i) => _StepView(step: _steps[i]),
                 ),
               ),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  for (var i = 0; i < _steps.length; i++) ...[
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      width: i == _index ? 20 : 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: i == _index
-                            ? AppColors.coral
-                            : theme.dividerColor,
-                        borderRadius: BorderRadius.circular(
-                          AppDimens.radiusPill,
+              // Three dots say "1 of 3" to a sighted user and nothing at all
+              // to anybody else. The label carries what the dots draw.
+              Semantics(
+                label: 'Step ${_index + 1} of ${_steps.length}',
+                child: ExcludeSemantics(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      for (var i = 0; i < _steps.length; i++) ...[
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          width: i == _index ? 20 : 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            color: i == _index
+                                ? AppColors.coral
+                                : theme.dividerColor,
+                            borderRadius: BorderRadius.circular(
+                              AppDimens.radiusPill,
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                    if (i != _steps.length - 1)
-                      const SizedBox(width: AppDimens.space8),
-                  ],
-                ],
+                        if (i != _steps.length - 1)
+                          const SizedBox(width: AppDimens.space8),
+                      ],
+                    ],
+                  ),
+                ),
               ),
               const SizedBox(height: AppDimens.space20),
               ElevatedButton(

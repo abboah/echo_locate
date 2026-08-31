@@ -21,6 +21,17 @@ abstract class RoomPlanRepository {
   /// Every floor of a building that has been traced.
   Future<List<RoomPlan>> plansOf(String buildingId);
 
+  /// Every traced floor held on this device, across all buildings.
+  ///
+  /// What the Maps tab is a list of. Asking building by building cannot answer
+  /// it — that needs the building index first, which is exactly the thing that
+  /// is unavailable in the case Maps exists for: a phone with no connection,
+  /// holding floors somebody traced.
+  ///
+  /// Device-local in every implementation, drafts excluded. A floor is on this
+  /// list because it is finished and stored here, not because it is published.
+  Future<List<RoomPlan>> allPlans();
+
   /// Stores a plan, replacing whatever that floor had.
   ///
   /// Replace rather than merge: two contributors tracing the same floor are
@@ -103,6 +114,19 @@ class LocalRoomPlanRepository
         }
         return plans;
       });
+
+  @override
+  Future<List<RoomPlan>> allPlans() async => runOperation('allPlans', () async {
+    final plans = <RoomPlan>[];
+    for (final key in _box.keys) {
+      // `room_plan_draft:…` does not start with `room_plan:`, so drafts
+      // fall out here rather than needing to be filtered afterwards.
+      if (key is! String || !key.startsWith('$_prefix:')) continue;
+      final plan = _decode(_box.get(key));
+      if (plan != null) plans.add(plan);
+    }
+    return plans;
+  });
 
   @override
   Future<void> save(RoomPlan plan) async =>

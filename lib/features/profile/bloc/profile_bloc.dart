@@ -11,6 +11,7 @@ part 'profile_state.dart';
 class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
   ProfileBloc(this._profiles) : super(const ProfileState()) {
     on<ProfileStarted>(_onStarted);
+    on<ProfileNameChanged>(_onNameChanged);
   }
 
   final ProfileRepository _profiles;
@@ -30,6 +31,32 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
       emit(
         state.copyWith(
           status: ProfileStatus.failure,
+          error: OperationFailure.from(error).message,
+        ),
+      );
+    }
+  }
+
+  /// Renaming the contributor.
+  ///
+  /// Emits [ProfileStatus.saving] first so the screen can wait for the write
+  /// rather than assuming it: telling somebody their name is saved when the
+  /// request failed is the failure this screen can least afford.
+  Future<void> _onNameChanged(
+    ProfileNameChanged event,
+    Emitter<ProfileState> emit,
+  ) async {
+    emit(state.copyWith(status: ProfileStatus.saving));
+    try {
+      final profile = await _profiles.updateName(event.fullName);
+      emit(state.copyWith(status: ProfileStatus.success, profile: profile));
+    } catch (error) {
+      emit(
+        // Still `success`: the profile on screen is the old one and is
+        // perfectly valid. A failed rename is not a broken screen, and
+        // dropping it to `failure` would replace the whole tab with an error.
+        state.copyWith(
+          status: ProfileStatus.success,
           error: OperationFailure.from(error).message,
         ),
       );

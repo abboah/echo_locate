@@ -9,6 +9,8 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimens.dart';
 import '../../../features/room_navigate/bloc/room_navigate_cubit.dart';
 import '../../../services/injection_container.dart';
+import '../../widgets/responsive.dart';
+import '../../widgets/room_picker_sheet.dart';
 import '../../widgets/room_plan_view.dart';
 
 /// Walking a mapped floor.
@@ -28,16 +30,24 @@ class RoomNavigatePage extends StatelessWidget {
     super.key,
     required this.buildingId,
     required this.floorId,
+    this.destinationRoomId,
   });
 
   final String buildingId;
   final String floorId;
 
+  /// Set when the user arrived by tapping a room on the building screen, so
+  /// the route opens planned to it instead of asking them to say it twice.
+  final String? destinationRoomId;
+
   @override
   Widget build(BuildContext context) => BlocProvider(
-    create: (_) =>
-        RoomNavigateCubit(getIt())
-          ..load(buildingId: buildingId, floorId: floorId),
+    create: (_) => RoomNavigateCubit(getIt(), getIt())
+      ..load(
+        buildingId: buildingId,
+        floorId: floorId,
+        destinationRoomId: destinationRoomId,
+      ),
     child: const RoomNavigateView(),
   );
 }
@@ -129,7 +139,11 @@ class _Controls extends StatelessWidget {
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.all(AppDimens.space16),
+        padding: Responsive.pagePadding(
+          context,
+          top: AppDimens.space16,
+          bottom: AppDimens.space16,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -144,10 +158,15 @@ class _Controls extends StatelessWidget {
                     onChanged: cubit.selectFrom,
                   ),
                 ),
-                IconButton(
-                  tooltip: 'Swap',
-                  icon: const Icon(PhosphorIcons.arrowsLeftRight),
-                  onPressed: cubit.reverse,
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppDimens.space4,
+                  ),
+                  child: IconButton(
+                    tooltip: 'Swap start and destination',
+                    icon: const Icon(PhosphorIcons.arrowsLeftRight, size: 20),
+                    onPressed: cubit.reverse,
+                  ),
                 ),
                 Expanded(
                   child: _RoomPicker(
@@ -186,20 +205,51 @@ class _Controls extends StatelessWidget {
               // The instructions in full, before setting off. Guidance speaks
               // them one at a time; a contributor checking a floor they mapped
               // needs to read the lot against the building.
-              for (final instruction in state.preview.take(6))
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: Text(
-                    '· ${instruction.text}',
-                    style: theme.textTheme.bodyMedium,
+              //
+              // One semantics node for the whole route rather than one per
+              // line. This is the screen a blind user meets before setting
+              // off, and swiping through six separate unlabelled fragments to
+              // assemble the route in their head is not how anybody wants to
+              // hear directions — they want the route, once, as a sentence.
+              Semantics(
+                label: state.preview.isEmpty
+                    ? ''
+                    : 'The route, ${state.preview.length} '
+                          '${state.preview.length == 1 ? 'step' : 'steps'}. '
+                          '${state.preview.map((i) => i.text).join(' ')}',
+                child: ExcludeSemantics(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (final instruction in state.preview.take(6))
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Text(
+                            '· ${instruction.text}',
+                            style: theme.textTheme.bodyMedium,
+                          ),
+                        ),
+                      if (state.preview.length > 6)
+                        Text(
+                          '…and ${state.preview.length - 6} more',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                    ],
                   ),
                 ),
-              if (state.preview.length > 6)
-                Text(
-                  '…and ${state.preview.length - 6} more',
-                  style: theme.textTheme.bodySmall,
-                ),
+              ),
             ],
+            // Measuring a step, offered where it changes something.
+            //
+            // This lived in Profile as a settings row, which asked for it
+            // before the user had walked anywhere and had any reason to care.
+            // Here the route is drawn, the floor has a scale, and the distance
+            // about to be spoken is a generic adult's rather than theirs.
+            if (state.shouldOfferStride)
+              Padding(
+                padding: const EdgeInsets.only(bottom: AppDimens.space8),
+                child: _StridePrompt(cubit: cubit),
+              ),
             // Said here because this is the last moment it can be acted on,
             // and because the failure it warns about is invisible: a plan with
             // no scale routes correctly, speaks its turns correctly, and puts
@@ -236,6 +286,83 @@ class _Controls extends StatelessWidget {
   }
 }
 
+/// "Distances are estimated" — and the one tap that fixes it.
+///
+/// Deliberately not a warning colour. Nothing is wrong: the route is correct
+/// and walkable, and the fallback stride is a real anthropometric average. It
+/// is simply not *this* walker's, and every leg is divided through it.
+class _StridePrompt extends StatelessWidget {
+  const _StridePrompt({required this.cubit});
+
+  final RoomNavigateCubit cubit;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Semantics(
+      button: true,
+      label:
+          'Distances are estimated from an average step. '
+          'Measure your own step.',
+      child: ExcludeSemantics(
+        child: Material(
+          color: isDark
+              ? AppColors.coral.withValues(alpha: 0.14)
+              : AppColors.coralSoft,
+          borderRadius: BorderRadius.circular(AppDimens.radiusMd),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(AppDimens.radiusMd),
+            onTap: () async {
+              await context.pushNamed(RouteNames.strideCalibration);
+              // Straight back to a screen that no longer asks.
+              await cubit.refreshStride();
+            },
+            child: Padding(
+              padding: const EdgeInsets.all(AppDimens.space12),
+              child: Row(
+                children: [
+                  const Icon(
+                    PhosphorIconsFill.ruler,
+                    size: 18,
+                    color: AppColors.coral,
+                  ),
+                  const SizedBox(width: AppDimens.space8),
+                  Expanded(
+                    child: Text(
+                      'Distances use an average step. Measure yours to make '
+                      'them accurate.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: isDark
+                            ? theme.colorScheme.onSurface
+                            : AppColors.ink,
+                      ),
+                    ),
+                  ),
+                  const Icon(
+                    PhosphorIconsRegular.caretRight,
+                    size: 16,
+                    color: AppColors.coral,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One end of the walk, as a field that opens a proper picker.
+///
+/// This was a `DropdownButtonFormField`. On a floor with forty rooms that
+/// opened a floating menu nearly the height of the screen — unsearchable, every
+/// name clipped to half a row's width, and close to unusable with a screen
+/// reader, which is the audience this screen is for. The sheet behind it can be
+/// searched, groups rooms by what they are, and gives each one a full-width
+/// target.
 class _RoomPicker extends StatelessWidget {
   const _RoomPicker({
     required this.label,
@@ -250,19 +377,76 @@ class _RoomPicker extends StatelessWidget {
   final ValueChanged<String> onChanged;
 
   @override
-  Widget build(BuildContext context) => DropdownButtonFormField<String>(
-    initialValue: rooms.any((room) => room.id == value) ? value : null,
-    isExpanded: true,
-    decoration: InputDecoration(labelText: label, isDense: true),
-    items: [
-      for (final room in rooms)
-        DropdownMenuItem(
-          value: room.id,
-          child: Text(room.spokenName, overflow: TextOverflow.ellipsis),
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final chosen = rooms.where((room) => room.id == value).firstOrNull;
+    final name = chosen?.spokenName ?? 'Choose';
+
+    return Semantics(
+      button: true,
+      label: '$label: $name. Tap to change.',
+      child: ExcludeSemantics(
+        child: Material(
+          color: theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(AppDimens.radiusMd),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(AppDimens.radiusMd),
+            onTap: rooms.isEmpty
+                ? null
+                : () async {
+                    final picked = await RoomPickerSheet.show(
+                      context,
+                      title: label == 'From' ? 'Start from' : 'Go to',
+                      rooms: rooms,
+                      selectedId: value,
+                    );
+                    if (picked != null) onChanged(picked);
+                  },
+            child: Container(
+              // Never a fixed height: the room name is the one piece of text
+              // here and it has to be allowed to wrap.
+              constraints: const BoxConstraints(minHeight: 56),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppDimens.space12,
+                vertical: AppDimens.space8,
+              ),
+              decoration: BoxDecoration(
+                border: Border.all(color: theme.dividerColor),
+                borderRadius: BorderRadius.circular(AppDimens.radiusMd),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(label, style: theme.textTheme.labelSmall),
+                        Text(
+                          name,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            color: chosen == null
+                                ? theme.textTheme.bodyMedium?.color
+                                : theme.colorScheme.onSurface,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    PhosphorIconsRegular.caretDown,
+                    size: 16,
+                    color: theme.textTheme.bodyMedium?.color,
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
-    ],
-    onChanged: (id) {
-      if (id != null) onChanged(id);
-    },
-  );
+      ),
+    );
+  }
 }

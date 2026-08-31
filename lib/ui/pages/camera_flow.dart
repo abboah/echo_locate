@@ -9,9 +9,9 @@ import '../../services/injection_container.dart';
 ///
 /// Shows the camera permission primer once, then continues to the destination.
 ///
-/// Mapping does **not** come through here. "Scan a space" and "Scan a new
-/// building" go to the building picker, which is not a camera screen itself;
-/// the tools past it ask for the camera when they actually need it.
+/// Mapping does **not** come through here. "Map a building" goes to the
+/// building picker, which is not a camera screen itself; the tracer past it
+/// asks for the camera when it actually needs one, to photograph the plan.
 void openAssistFlow(BuildContext context) =>
     _viaPrimer(context, RouteNames.assist);
 

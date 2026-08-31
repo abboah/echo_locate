@@ -73,6 +73,42 @@ void main() {
       expect(await repository.plansOf('other'), hasLength(1));
     });
 
+    test(
+      'allPlans crosses buildings, since the Maps tab is not about one',
+      () async {
+        await repository.save(buildWing());
+        await repository.save(buildWing().copyWith(floorId: 'first'));
+        await repository.save(buildWing().copyWith(buildingId: 'other'));
+
+        final all = await repository.allPlans();
+
+        expect(all, hasLength(3));
+        expect(
+          all.map((plan) => '${plan.buildingId}/${plan.floorId}'),
+          containsAll(['knust-cs/gf', 'knust-cs/first', 'other/gf']),
+        );
+      },
+    );
+
+    test('allPlans leaves drafts out', () async {
+      // A draft is by definition the work somebody has not finished. Listing
+      // it as a walkable floor offers a walk over half a corridor.
+      await repository.save(buildWing());
+      await repository.saveDraft(buildWing().copyWith(floorId: 'first'));
+
+      final all = await repository.allPlans();
+
+      expect(all, hasLength(1));
+      expect(all.single.floorId, 'gf');
+    });
+
+    test(
+      'allPlans on a phone that has traced nothing is empty, not an error',
+      () async {
+        expect(await repository.allPlans(), isEmpty);
+      },
+    );
+
     test('deleting a floor leaves the rest alone', () async {
       await repository.save(buildWing());
       await repository.save(buildWing().copyWith(floorId: 'first'));

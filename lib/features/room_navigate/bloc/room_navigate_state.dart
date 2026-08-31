@@ -10,6 +10,7 @@ class RoomNavigateState extends Equatable {
     this.plan,
     this.fromRoomId,
     this.toRoomId,
+    this.strideCalibrated = true,
     this.error,
   });
 
@@ -19,6 +20,13 @@ class RoomNavigateState extends Equatable {
   final RoomPlan? plan;
   final String? fromRoomId;
   final String? toRoomId;
+
+  /// Whether the user has measured their own step.
+  ///
+  /// Defaults to true so the prompt is never shown on a screen that has not
+  /// checked — an unanswered question is not a reason to nag.
+  final bool strideCalibrated;
+
   final String? error;
 
   /// Rooms worth navigating between, named and sorted.
@@ -37,6 +45,13 @@ class RoomNavigateState extends Equatable {
     final rooms = plan?.drawableRooms.toList() ?? const <Room>[];
     return rooms..sort((a, b) => a.spokenName.compareTo(b.spokenName));
   }
+
+  /// Whether to offer step measurement.
+  ///
+  /// Only on a floor that has a scale: without one no distance is spoken at
+  /// all, so measuring a step would change nothing and the offer would be
+  /// noise. This is the moment it matters and the first screen that knows.
+  bool get shouldOfferStride => !strideCalibrated && (plan?.isMetric ?? false);
 
   /// The walk itself, for drawing.
   RoomRoute? get route {
@@ -96,6 +111,7 @@ class RoomNavigateState extends Equatable {
     RoomPlan? plan,
     String? fromRoomId,
     String? toRoomId,
+    bool? strideCalibrated,
     String? error,
   }) => RoomNavigateState(
     status: status ?? this.status,
@@ -104,6 +120,7 @@ class RoomNavigateState extends Equatable {
     plan: plan ?? this.plan,
     fromRoomId: fromRoomId ?? this.fromRoomId,
     toRoomId: toRoomId ?? this.toRoomId,
+    strideCalibrated: strideCalibrated ?? this.strideCalibrated,
     error: error,
   );
 
@@ -115,6 +132,7 @@ class RoomNavigateState extends Equatable {
     plan,
     fromRoomId,
     toRoomId,
+    strideCalibrated,
     error,
   ];
 }

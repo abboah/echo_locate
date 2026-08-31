@@ -9,6 +9,7 @@ import '../../../services/mapping/room_directions.dart';
 import '../../../services/mapping/room_graph.dart';
 import '../../../services/mapping/room_plan_bridge.dart';
 import '../../guidance/guidance_session.dart';
+import '../../profile/profile_repository.dart';
 import '../../room_trace/room_plan_repository.dart';
 
 part 'room_navigate_state.dart';
@@ -25,13 +26,30 @@ part 'room_navigate_state.dart';
 /// contributor's recording are followed by identical code. The door-counted
 /// sentence rides in as a leg's instruction and is spoken verbatim.
 class RoomNavigateCubit extends Cubit<RoomNavigateState> {
-  RoomNavigateCubit(this._plans) : super(const RoomNavigateState());
+  RoomNavigateCubit(this._plans, [this._profiles])
+    : super(const RoomNavigateState());
 
   final RoomPlanRepository _plans;
 
+  /// Optional so the screen can be tested without one. Used for a single
+  /// question: has this user measured their step? Guidance divides every leg
+  /// through that number, so on a floor with a scale it is the difference
+  /// between a spoken distance that is theirs and one that is a generic
+  /// adult's — and the walk screen is the first place that matters.
+  final ProfileRepository? _profiles;
+
+  /// Opens [floorId] of [buildingId], ready to walk.
+  ///
+  /// [destinationRoomId] is set when the user already said where they were
+  /// going — they tapped a room on the building screen — so the screen opens
+  /// on that route rather than asking them to pick it a second time. A room id
+  /// this floor does not contain is ignored rather than fatal: the plan may
+  /// have been retraced since the link was made, and landing on the floor with
+  /// a sensible default beats an error about a room.
   Future<void> load({
     required String buildingId,
     required String floorId,
+    String? destinationRoomId,
   }) async {
     emit(state.copyWith(status: RoomNavigateStatus.loading));
     try {
@@ -57,10 +75,27 @@ class RoomNavigateCubit extends Cubit<RoomNavigateState> {
         (room) => !room.isCirculation,
         orElse: () => rooms.first,
       );
-      final to = rooms.lastWhere(
-        (room) => !room.isCirculation && room.id != from.id,
-        orElse: () => rooms.last,
-      );
+      final asked = destinationRoomId == null
+          ? null
+          : rooms.where((room) => room.id == destinationRoomId).firstOrNull;
+      final to =
+          asked ??
+          rooms.lastWhere(
+            (room) => !room.isCirculation && room.id != from.id,
+            orElse: () => rooms.last,
+          );
+      // Starting where you are going is not a route. When the tapped room
+      // happens to be the default origin, the origin moves instead — the
+      // destination is the part the user actually chose.
+      final origin = from.id == to.id
+          ? rooms.firstWhere(
+              (room) => !room.isCirculation && room.id != to.id,
+              orElse: () => rooms.firstWhere(
+                (room) => room.id != to.id,
+                orElse: () => from,
+              ),
+            )
+          : from;
 
       emit(
         state.copyWith(
@@ -68,10 +103,14 @@ class RoomNavigateCubit extends Cubit<RoomNavigateState> {
           buildingId: buildingId,
           floorId: floorId,
           plan: plan,
-          fromRoomId: from.id,
+          fromRoomId: origin.id,
           toRoomId: to.id,
         ),
       );
+
+      // After the screen is up, never before: it is a hint, and nothing about
+      // the route waits on it.
+      await refreshStride();
     } catch (error, stack) {
       AppLogger.error('Room navigation load failed', error, stack);
       if (isClosed) return;
@@ -81,6 +120,23 @@ class RoomNavigateCubit extends Cubit<RoomNavigateState> {
           error: 'Could not open this floor.',
         ),
       );
+    }
+  }
+
+  /// Re-reads whether the user has measured their step.
+  ///
+  /// Called on open and again on returning from the calibration screen, so the
+  /// prompt disappears the moment it has been answered.
+  Future<void> refreshStride() async {
+    final profiles = _profiles;
+    if (profiles == null) return;
+    try {
+      final metres = (await profiles.currentProfile()).strideLengthM;
+      if (isClosed) return;
+      emit(state.copyWith(strideCalibrated: metres != null));
+    } catch (_) {
+      // Offline or signed out. The prompt stays hidden rather than nagging
+      // somebody who cannot act on it.
     }
   }
 

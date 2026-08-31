@@ -9,7 +9,36 @@ abstract class BuildingRepository {
   Future<List<Building>> recentlyMapped();
 
   /// Nearby buildings for Explore, filterable by category chip and search.
-  Future<List<Building>> nearby({String category = 'all', String query = ''});
+  ///
+  /// [latitude]/[longitude] are where to measure "nearby" from. Null means the
+  /// server's default origin — which is what every call passed until location
+  /// was wired up, so every user saw the same distances regardless of where
+  /// they were standing.
+  Future<List<Building>> nearby({
+    String category = 'all',
+    String query = '',
+    double? latitude,
+    double? longitude,
+  });
+
+  /// Renames a building, and optionally re-states the area it is in.
+  ///
+  /// The index is crowdsourced and its names are typed by whoever added the
+  /// building first — often before they knew what it was formally called, and
+  /// sometimes simply wrong. Without this the only fix was to add a second
+  /// building beside the first and leave both.
+  Future<Building> rename(String id, {required String name, String? area});
+
+  /// Removes a building the caller added, and everything hanging off it.
+  ///
+  /// Anybody can add a building to a crowdsourced index, which means anybody
+  /// can add one by mistake — or add a test entry that then sits in everybody
+  /// else's Explore list forever.
+  ///
+  /// Refused when somebody else has traced a floor here. One person's tidy-up
+  /// is not a reason to delete another person's twenty minutes of tracing,
+  /// even from a building they added themselves.
+  Future<void> delete(String id);
 
   Future<Building> byId(String id);
 
@@ -97,10 +126,21 @@ class MockBuildingRepository
     });
   }
 
-  List<Building> get _all => [..._buildings, ..._created];
+  /// Seeded and session-created buildings, with any rename applied over the
+  /// top. The seeded list is `const`, so an edit cannot be written back into
+  /// it — it is layered instead.
+  List<Building> get _all => [
+    for (final building in [..._buildings, ..._created])
+      _renamed[building.id] ?? building,
+  ];
 
   @override
-  Future<List<Building>> nearby({String category = 'all', String query = ''}) {
+  Future<List<Building>> nearby({
+    String category = 'all',
+    String query = '',
+    double? latitude,
+    double? longitude,
+  }) {
     // Cache the full list once per session; filter in memory per call.
     return runEphemeralQuery('buildings:all', () async {
       await Future<void>.delayed(_latency);
@@ -109,7 +149,12 @@ class MockBuildingRepository
       final q = query.trim().toLowerCase();
       return all
           .where((b) => category == 'all' || b.category == category)
-          .where((b) => q.isEmpty || b.name.toLowerCase().contains(q))
+          .where(
+            (b) =>
+                q.isEmpty ||
+                b.name.toLowerCase().contains(q) ||
+                b.area.toLowerCase().contains(q),
+          )
           .toList()
         ..sort((a, b) => a.distanceKm.compareTo(b.distanceKm));
     });
@@ -175,7 +220,58 @@ class MockBuildingRepository
   /// Buildings added in this session, alongside the one demo building.
   final List<Building> _created = [];
 
+  /// Renames made this session, by building id.
+  final Map<String, Building> _renamed = {};
+
   final Map<String, List<BuildingFloor>> _createdFloors = {};
+
+  @override
+  Future<Building> rename(String id, {required String name, String? area}) =>
+      runOperation('rename_building', () async {
+        await Future<void>.delayed(_latency);
+        final trimmed = name.trim();
+        if (trimmed.isEmpty) {
+          throw const OperationFailure('A building needs a name.');
+        }
+        final current = _all.firstWhere(
+          (building) => building.id == id,
+          orElse: () => throw const OperationFailure('Building not found'),
+        );
+        final renamed = current.copyWith(
+          name: trimmed,
+          area: area?.trim().isEmpty ?? true ? current.area : area!.trim(),
+        );
+        _renamed[id] = renamed;
+        // The id is the slug of the *original* name and stays put: it is the
+        // key every traced plan, landmark and saved bookmark already points
+        // at, and renaming a building is not a reason to orphan its floors.
+        //
+        // The session cache holds the pre-rename list under `buildings:all`,
+        // so it goes — otherwise the new name shows on the screen that made
+        // the edit and nowhere else until the app restarts.
+        RepositoryMixin.clearEphemeralCache();
+        return renamed;
+      });
+
+  @override
+  Future<void> delete(String id) => runOperation('delete_building', () async {
+    await Future<void>.delayed(_latency);
+    if (!_all.any((building) => building.id == id)) {
+      throw const OperationFailure('That building no longer exists.');
+    }
+    if (_buildings.any((building) => building.id == id)) {
+      // The seeded building is not this user's to remove — the offline path's
+      // stand-in for "you did not add this one".
+      throw const OperationFailure(
+        'Only the person who added a building can remove it.',
+      );
+    }
+    _created.removeWhere((building) => building.id == id);
+    _createdFloors.remove(id);
+    _renamed.remove(id);
+    _saved.remove(id);
+    RepositoryMixin.clearEphemeralCache();
+  });
 
   @override
   Future<Building> create({

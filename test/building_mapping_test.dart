@@ -1,4 +1,5 @@
-import 'package:echo_locate/core/models/building.dart' show BuildingFloor;
+import 'package:echo_locate/core/models/building.dart'
+    show Building, BuildingFloor;
 import 'package:echo_locate/core/models/room_plan.dart';
 import 'package:echo_locate/features/building_mapping/bloc/building_mapping_cubit.dart';
 import 'package:echo_locate/features/buildings/building_repository.dart';
@@ -50,6 +51,17 @@ void main() {
   late _MockPlans plans;
   late _MockBuildings buildings;
 
+  const knust = Building(
+    id: 'knust-cs',
+    name: 'College of Science',
+    area: 'KNUST, Kumasi',
+    floorsCount: 2,
+    mappers: 3,
+    mappedPercent: 40,
+    distanceKm: 0.4,
+    category: 'campus',
+  );
+
   setUp(() {
     plans = _MockPlans();
     buildings = _MockBuildings();
@@ -61,10 +73,12 @@ void main() {
       ],
     );
     when(() => plans.planFor(any(), any())).thenAnswer((_) async => null);
+    when(() => buildings.byId(any())).thenAnswer((_) async => knust);
+    when(() => buildings.isSaved(any())).thenAnswer((_) async => false);
+    when(() => buildings.setSaved(any(), any())).thenAnswer((_) async => true);
   });
 
-  BuildingMappingCubit build() =>
-      BuildingMappingCubit(buildings, plans);
+  BuildingMappingCubit build() => BuildingMappingCubit(buildings, plans);
 
   group('loading a building', () {
     test('lists every floor with its state', () async {
@@ -148,9 +162,29 @@ void main() {
       await tester.pumpWidget(host());
       await tester.pumpAndSettle();
 
-      expect(find.text('CS Block'), findsOneWidget);
+      // The **loaded** name wins over the one the route passed in ('CS
+      // Block'). That is what makes a rename take effect immediately: the
+      // route argument still holds whatever the building was called when the
+      // screen was opened, and the header must not keep showing the name the
+      // user has just corrected.
+      expect(find.text('College of Science'), findsOneWidget);
+      expect(find.text('CS Block'), findsNothing);
       expect(find.text('Ground floor'), findsOneWidget);
       expect(find.text('Floor 1'), findsOneWidget);
+    });
+
+    testWidgets('falls back to the passed-in name when the index is '
+        'unreachable', (tester) async {
+      // The floors are on the device and the name is not. Titling the screen
+      // 'Building' — or nothing — because a lookup failed would make an
+      // offline building look broken rather than merely unnamed.
+      when(() => buildings.byId(any())).thenThrow(Exception('offline'));
+
+      await tester.pumpWidget(host());
+      await tester.pumpAndSettle();
+
+      expect(find.text('CS Block'), findsOneWidget);
+      expect(find.text('Ground floor'), findsOneWidget);
     });
 
     testWidgets('an unmapped floor offers tracing', (tester) async {
@@ -208,6 +242,106 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('the building screen', () {
+    test('names itself from the index', () async {
+      final cubit = build();
+      await cubit.load('knust-cs');
+
+      expect(cubit.state.building?.name, 'College of Science');
+      await cubit.close();
+    });
+
+    test('an index that cannot be read still lists the floors', () async {
+      // The floors are on the device. A building screen that refuses to open
+      // because the *name* could not be fetched is worse than one titled by
+      // whatever it was opened with.
+      when(() => buildings.byId(any())).thenThrow(Exception('offline'));
+
+      final cubit = build();
+      await cubit.load('knust-cs');
+
+      expect(cubit.state.status, BuildingMappingStatus.ready);
+      expect(cubit.state.floors, hasLength(2));
+      expect(cubit.state.building, isNull);
+      await cubit.close();
+    });
+
+    test('the bookmark flips at once and reverts if the write fails', () async {
+      when(
+        () => buildings.setSaved(any(), any()),
+      ).thenThrow(Exception('offline'));
+
+      final cubit = build();
+      await cubit.load('knust-cs');
+      expect(cubit.state.saved, isFalse);
+
+      await cubit.toggleSaved();
+
+      expect(cubit.state.saved, isFalse, reason: 'reverted after the failure');
+      await cubit.close();
+    });
+  });
+
+  group('renaming', () {
+    test('a building can be corrected', () async {
+      // The index is crowdsourced: the name is whatever the first contributor
+      // typed, which is often a working title.
+      when(
+        () => buildings.rename(
+          any(),
+          name: any(named: 'name'),
+          area: any(named: 'area'),
+        ),
+      ).thenAnswer(
+        (_) async => knust.copyWith(name: 'College of Science, KNUST'),
+      );
+
+      final cubit = build();
+      await cubit.load('knust-cs');
+      final ok = await cubit.rename(name: 'College of Science, KNUST');
+
+      expect(ok, isTrue);
+      expect(cubit.state.building?.name, 'College of Science, KNUST');
+      await cubit.close();
+    });
+
+    test('an empty name is refused without a round trip', () async {
+      final cubit = build();
+      await cubit.load('knust-cs');
+
+      final ok = await cubit.rename(name: '   ');
+
+      expect(ok, isFalse);
+      expect(cubit.state.error, isNotNull);
+      verifyNever(
+        () => buildings.rename(
+          any(),
+          name: any(named: 'name'),
+          area: any(named: 'area'),
+        ),
+      );
+      await cubit.close();
+    });
+
+    test('a failed rename leaves the old name in place', () async {
+      when(
+        () => buildings.rename(
+          any(),
+          name: any(named: 'name'),
+          area: any(named: 'area'),
+        ),
+      ).thenThrow(Exception('denied'));
+
+      final cubit = build();
+      await cubit.load('knust-cs');
+      final ok = await cubit.rename(name: 'Something else');
+
+      expect(ok, isFalse);
+      expect(cubit.state.building?.name, 'College of Science');
+      await cubit.close();
     });
   });
 }

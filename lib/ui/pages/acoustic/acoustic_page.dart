@@ -8,6 +8,7 @@ import '../../../core/theme/app_dimens.dart';
 import '../../../features/acoustic/bloc/acoustic_bloc.dart';
 import '../../../services/acoustic/room_classification.dart';
 import '../../../services/injection_container.dart';
+import '../../widgets/responsive.dart';
 
 /// Acoustic room classification — names the surrounding space from how long
 /// it rings (M5).
@@ -49,7 +50,7 @@ class _AcousticView extends StatelessWidget {
 
           return SafeArea(
             child: Padding(
-              padding: const EdgeInsets.all(AppDimens.space16),
+              padding: Responsive.pagePadding(context),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [

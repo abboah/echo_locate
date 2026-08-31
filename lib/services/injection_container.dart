@@ -13,13 +13,13 @@ import '../features/assist/bloc/assist_bloc.dart';
 import '../features/auth/auth_repository.dart';
 import '../features/auth/bloc/auth_bloc.dart';
 import '../features/auth/supabase_auth_repository.dart';
-import '../features/building_detail/bloc/building_detail_bloc.dart';
 import '../features/buildings/building_repository.dart';
 import '../features/room_trace/bloc/room_trace_bloc.dart';
 import '../features/room_trace/room_plan_repository.dart';
 import '../features/room_trace/supabase_room_plan_repository.dart';
 import '../features/buildings/supabase_building_repository.dart';
 import '../features/explore/bloc/explore_bloc.dart';
+import '../features/feedback/feedback_repository.dart';
 import '../features/guidance/bloc/guidance_bloc.dart';
 import '../features/home/bloc/home_bloc.dart';
 import '../features/maps/bloc/maps_bloc.dart';
@@ -37,6 +37,7 @@ import 'acoustic/acoustic_fallback_service.dart';
 import 'audio/audio_arbiter.dart';
 import 'audio/sonar_audio_service.dart';
 import 'haptics/haptic_service.dart';
+import 'location/location_service.dart';
 import 'mapping/plan_photo_service.dart';
 import '../features/profile/supabase_profile_repository.dart';
 import 'motion/step_service.dart';
@@ -104,6 +105,14 @@ Future<void> configureDependencies() async {
         ? SupabaseRoomPlanRepository(Supabase.instance.client)
         : const LocalRoomPlanRepository(),
   );
+  // Problem reports. Queued on the device when the network is not there — a
+  // report is somebody taking the trouble to say something is wrong, and
+  // losing it to a dropped connection is the outcome worth preventing.
+  getIt.registerLazySingleton<FeedbackRepository>(
+    () => AppConfig.hasSupabase
+        ? SupabaseFeedbackRepository(Supabase.instance.client)
+        : const LocalFeedbackRepository(),
+  );
   getIt.registerLazySingleton<ProfileRepository>(
     () => AppConfig.hasSupabase
         ? SupabaseProfileRepository(Supabase.instance.client)
@@ -142,6 +151,9 @@ Future<void> configureDependencies() async {
   // Stateless wrapper round the platform channel; a singleton only to save
   // allocating one per screen.
   getIt.registerLazySingleton<HapticService>(() => const HapticService());
+  // Where the user is. A singleton so the position fetched for Home's header
+  // is the same one Explore sorts by, rather than two fixes seconds apart.
+  getIt.registerLazySingleton<LocationService>(() => LocationService());
   getIt.registerLazySingleton<SpeechService>(
     () => SpeechService(arbiter: getIt<AudioArbiter>()),
   );
@@ -174,14 +186,19 @@ Future<void> configureDependencies() async {
   getIt.registerFactory<AssistBloc>(
     () => AssistBloc(getIt<DetectionService>(), getIt<SpeechService>()),
   );
-  getIt.registerFactory<HomeBloc>(() => HomeBloc(getIt<BuildingRepository>()));
+  getIt.registerFactory<HomeBloc>(
+    () => HomeBloc(
+      getIt<BuildingRepository>(),
+      getIt<RoomPlanRepository>(),
+      getIt<LocationService>(),
+    ),
+  );
   getIt.registerFactory<ExploreBloc>(
-    () => ExploreBloc(getIt<BuildingRepository>()),
+    () => ExploreBloc(getIt<BuildingRepository>(), getIt<LocationService>()),
   );
-  getIt.registerFactory<BuildingDetailBloc>(
-    () => BuildingDetailBloc(getIt<BuildingRepository>()),
+  getIt.registerFactory<MapsBloc>(
+    () => MapsBloc(getIt<BuildingRepository>(), getIt<RoomPlanRepository>()),
   );
-  getIt.registerFactory<MapsBloc>(() => MapsBloc(getIt<BuildingRepository>()));
   getIt.registerFactory<ProfileBloc>(
     () => ProfileBloc(getIt<ProfileRepository>()),
   );

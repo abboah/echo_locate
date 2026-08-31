@@ -5,6 +5,7 @@ import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimens.dart';
+import '../../widgets/responsive.dart';
 import '../../../features/profile/bloc/stride_calibration_cubit.dart';
 import '../../../services/injection_container.dart';
 
@@ -48,7 +49,7 @@ class _CalibrationView extends StatelessWidget {
             final cubit = context.read<StrideCalibrationCubit>();
 
             return ListView(
-              padding: const EdgeInsets.all(AppDimens.space16),
+              padding: Responsive.pagePadding(context),
               children: [
                 Text(
                   'Walk a distance you have measured, at your normal pace.',

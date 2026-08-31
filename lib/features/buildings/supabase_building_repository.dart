@@ -1,3 +1,4 @@
+import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/models/building.dart';
@@ -81,6 +82,8 @@ class SupabaseBuildingRepository
   Future<List<Building>> nearby({
     String category = 'all',
     String query = '',
+    double? latitude,
+    double? longitude,
   }) async {
     final trimmed = query.trim();
     // Filtering happens in SQL (see nearby_buildings), which also sorts by
@@ -88,12 +91,26 @@ class SupabaseBuildingRepository
     Future<List<Building>> fetch() async {
       final rows = await _client.rpc<List<dynamic>>(
         'nearby_buildings',
-        params: {'p_category': category, 'p_query': trimmed},
+        params: {
+          'p_category': category,
+          'p_query': trimmed,
+          // The function has taken these since the first migration and the
+          // client never sent them, so `coalesce(p_lat, o.lat)` fell through
+          // to the server's default origin every time: every user, wherever
+          // they stood, saw one fixed set of distances. Null is still allowed
+          // and still means that — it is now a refused permission rather than
+          // an omission.
+          'p_lat': latitude,
+          'p_lng': longitude,
+        },
       );
       return _buildingsFrom(rows);
     }
 
-    if (category == 'all' && trimmed.isEmpty) {
+    // Only the unpositioned, unfiltered list is cached. A list ordered around
+    // where somebody was standing an hour ago is worse than no list: it looks
+    // current and is not.
+    if (category == 'all' && trimmed.isEmpty && latitude == null) {
       return runOfflineFirstQuery(
         'buildings:all',
         fetch,
@@ -102,6 +119,72 @@ class SupabaseBuildingRepository
       );
     }
     return runOperation('buildings_nearby', fetch);
+  }
+
+  @override
+  Future<Building> rename(String id, {required String name, String? area}) {
+    return runOperation('building_rename', () async {
+      final trimmed = name.trim();
+      if (trimmed.isEmpty) {
+        throw const OperationFailure('A building needs a name.');
+      }
+
+      // The **id is not regenerated**. It is a slug of whatever the building
+      // was first called, and it is the foreign key every floor, traced plan,
+      // landmark and saved bookmark hangs off — re-slugging on rename would
+      // orphan all of them silently. A name that no longer matches its slug is
+      // cosmetic; a floor plan pointing at a building that no longer exists is
+      // not.
+      //
+      // **Through an RPC, not a bare update.** This was
+      // `update({name}).eq('id', id)`, and when the "buildings editable by
+      // contributors" policy filtered the row away PostgREST returned success
+      // having changed nothing — so a rename the user was not allowed to make
+      // was indistinguishable from one that worked. The screen said "Your name
+      // is now …" and the building kept its old one. `rename_building` raises
+      // instead, and the message says who may rename it.
+      await _client.rpc<void>(
+        'rename_building',
+        params: {
+          'p_id': id,
+          'p_name': trimmed,
+          'p_area': area?.trim().isEmpty ?? true ? null : area!.trim(),
+        },
+      );
+      RepositoryMixin.clearEphemeralCache();
+      return byId(id);
+    });
+  }
+
+  @override
+  Future<void> delete(String id) {
+    return runOperation('building_delete', () async {
+      if (_client.auth.currentUser == null) {
+        throw const OperationFailure('Not signed in');
+      }
+      // Same reasoning as the rename: a `delete` filtered away by RLS reports
+      // success and removes nothing. The function decides — creator only, and
+      // only while nobody else has traced a floor here — and raises with a
+      // sentence the screen can show verbatim.
+      await _client.rpc<void>('delete_own_building', params: {'p_id': id});
+      RepositoryMixin.clearEphemeralCache();
+      // The building list is cached in Hive for offline use, and it still has
+      // the row that has just gone.
+      await _forgetCachedList();
+    });
+  }
+
+  /// Drops the persisted `buildings:all` list.
+  ///
+  /// `runOfflineFirstQuery` is network-first, so this only matters when the
+  /// next read fails — but that is exactly when a deleted building would come
+  /// back from the cache looking real.
+  Future<void> _forgetCachedList() async {
+    try {
+      await Hive.box(repoCacheBoxName).delete('buildings:all');
+    } catch (_) {
+      // A cache that cannot be cleared is not worth failing a delete over.
+    }
   }
 
   @override

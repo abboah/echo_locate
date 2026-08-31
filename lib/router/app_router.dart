@@ -17,7 +17,6 @@ import '../ui/pages/profile/stride_calibration_page.dart';
 import '../ui/pages/auth/sign_in_page.dart';
 import '../ui/pages/auth/sign_up_page.dart';
 import '../ui/pages/auth/welcome_page.dart';
-import '../ui/pages/building/building_detail_page.dart';
 import '../ui/pages/explore/explore_page.dart';
 import '../ui/pages/home/home_page.dart';
 import '../ui/pages/maps/maps_page.dart';
@@ -165,15 +164,6 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const LocationPrimerPage(),
     ),
     GoRoute(
-      path: AppRoutes.buildingDetail,
-      name: RouteNames.buildingDetail,
-      parentNavigatorKey: _rootNavigatorKey,
-      builder: (context, state) => BuildingDetailPage(
-        buildingId: state.pathParameters['id']!,
-        building: state.extra as Building?,
-      ),
-    ),
-    GoRoute(
       path: AppRoutes.navigate,
       name: RouteNames.navigate,
       parentNavigatorKey: _rootNavigatorKey,
@@ -188,10 +178,9 @@ final GoRouter appRouter = GoRouter(
       name: RouteNames.mapBuilding,
       parentNavigatorKey: _rootNavigatorKey,
       builder: (context, state) => MapBuildingPage(
-        // Where the chosen building goes next. "Map a building" means tracing;
-        // "Scan a space" means the per-floor hub, which is the only place
-        // "Scan in AR" exists. Without this the scan entry could never reach
-        // AR at all — every path out of the picker ended in tracing.
+        // Where the chosen building goes next. Tracing by default, since that
+        // is what every entry point into this picker now means; a caller that
+        // wants the per-floor hub instead passes its route name as `extra`.
         nextRoute: state.extra as String? ?? RouteNames.roomTrace,
       ),
     ),
@@ -224,17 +213,26 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => RoomNavigatePage(
         buildingId: state.pathParameters['id']!,
         floorId: state.extra as String? ?? '',
+        // The room travels in the query string rather than in `extra`, which
+        // already carries the floor — and so a link to one specific door
+        // survives a cold start.
+        destinationRoomId: state.uri.queryParameters['room'],
       ),
     ),
     GoRoute(
-      path: AppRoutes.buildingMapping,
-      name: RouteNames.buildingMapping,
+      path: AppRoutes.building,
+      name: RouteNames.building,
       parentNavigatorKey: _rootNavigatorKey,
       builder: (context, state) => BuildingMappingPage(
         buildingId: state.pathParameters['id']!,
-        // The building's name, so the hub can title itself without a second
-        // fetch. Absent when the route is opened cold.
-        buildingName: state.extra as String?,
+        // The building's name, so the screen can title itself before the
+        // fetch lands. `extra` may also arrive as a whole Building when the
+        // tap came from a list that already had one. Absent on a deep link.
+        buildingName: switch (state.extra) {
+          final String name => name,
+          final Building building => building.name,
+          _ => null,
+        },
       ),
     ),
     GoRoute(

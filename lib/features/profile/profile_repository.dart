@@ -12,6 +12,22 @@ abstract class ProfileRepository {
   /// per-user value that changes what the app says out loud. Callers must
   /// check `StrideProfile.isPlausible` first — this does not re-validate.
   Future<void> saveStride(double metresPerStep);
+
+  /// Changes the name shown on the user's contributions.
+  ///
+  /// It comes from whatever was typed at sign-up — or from a Google account,
+  /// which is often a legal name somebody would rather not have against every
+  /// building they map.
+  Future<UserProfile> updateName(String fullName);
+
+  /// Deletes the account and signs the user out.
+  ///
+  /// **The traced plans stay.** They are the crowdsourced map other people
+  /// depend on, and leaving is not a reason to unmap a building for everybody
+  /// else — attribution is dropped instead. The confirmation dialog says so
+  /// before it asks, because a destructive action that hides what it destroys
+  /// is not consent.
+  Future<void> deleteAccount();
 }
 
 /// Derives the profile from the signed-in [AuthRepository] user and attaches
@@ -30,6 +46,30 @@ class MockProfileRepository with RepositoryMixin implements ProfileRepository {
     _strideLengthM = metresPerStep;
   }
 
+  /// Session-scoped, like the stride: enough for the screen to read back what
+  /// it just wrote, which is all the offline path promises.
+  String? _fullName;
+
+  @override
+  Future<UserProfile> updateName(String fullName) async {
+    final trimmed = fullName.trim();
+    if (trimmed.isEmpty) {
+      throw const OperationFailure('Your name cannot be empty.');
+    }
+    _fullName = trimmed;
+    RepositoryMixin.clearEphemeralCache();
+    return currentProfile();
+  }
+
+  @override
+  Future<void> deleteAccount() async {
+    // Nothing to delete without a backing store; signing out is the whole of
+    // what "leaving" can mean offline, and the caller does that either way.
+    _fullName = null;
+    _strideLengthM = null;
+    RepositoryMixin.clearEphemeralCache();
+  }
+
   @override
   Future<UserProfile> currentProfile() {
     return runEphemeralQuery('profile:current', () async {
@@ -40,7 +80,7 @@ class MockProfileRepository with RepositoryMixin implements ProfileRepository {
       }
       return UserProfile(
         id: user.id,
-        fullName: user.fullName,
+        fullName: _fullName ?? user.fullName,
         email: user.email,
         buildingsMapped: 3,
         floorsMapped: 7,

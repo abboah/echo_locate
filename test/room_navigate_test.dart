@@ -1,4 +1,6 @@
 import 'package:echo_locate/features/room_navigate/bloc/room_navigate_cubit.dart';
+import 'package:echo_locate/core/models/user_profile.dart';
+import 'package:echo_locate/features/profile/profile_repository.dart';
 import 'package:echo_locate/features/room_trace/room_plan_repository.dart';
 import 'package:echo_locate/ui/pages/room_navigate/room_navigate_page.dart';
 import 'package:flutter/material.dart';
@@ -9,6 +11,8 @@ import 'package:mocktail/mocktail.dart';
 import 'room_directions_test.dart' show buildWing;
 
 class _MockPlans extends Mock implements RoomPlanRepository {}
+
+class _MockProfiles extends Mock implements ProfileRepository {}
 
 void main() {
   late _MockPlans plans;
@@ -58,6 +62,56 @@ void main() {
       expect(cubit.state.origins.any((room) => room.isCirculation), isTrue);
       await cubit.close();
     });
+  });
+
+  group('arriving with a destination already chosen', () {
+    Future<RoomNavigateCubit> openedTo(String? roomId) async {
+      final cubit = RoomNavigateCubit(plans);
+      await cubit.load(
+        buildingId: 'knust-cs',
+        floorId: 'gf',
+        destinationRoomId: roomId,
+      );
+      return cubit;
+    }
+
+    test('opens on the room the user tapped', () async {
+      // Tapping "Digital Forensic Office" on the building screen and then
+      // being asked to pick it again out of a dropdown is the same question
+      // twice.
+      final cubit = await openedTo('n2');
+
+      expect(cubit.state.toRoomId, 'n2');
+      expect(cubit.state.hasRoute, isTrue);
+      await cubit.close();
+    });
+
+    test('never plans a route from a room to itself', () async {
+      // The default origin and the tapped destination can be the same room.
+      final defaults = await openedTo(null);
+      final origin = defaults.state.fromRoomId!;
+      await defaults.close();
+
+      final cubit = await openedTo(origin);
+
+      expect(cubit.state.toRoomId, origin);
+      expect(cubit.state.fromRoomId, isNot(origin));
+      await cubit.close();
+    });
+
+    test(
+      'a room this floor no longer contains falls back to a default',
+      () async {
+        // The plan may have been retraced since the link was made. Landing on
+        // the floor beats an error about a room.
+        final cubit = await openedTo('retraced-away');
+
+        expect(cubit.state.status, RoomNavigateStatus.ready);
+        expect(cubit.state.toRoomId, isNotNull);
+        expect(cubit.state.hasRoute, isTrue);
+        await cubit.close();
+      },
+    );
   });
 
   group('THE POINT: a mapped floor can actually be walked', () {
@@ -229,6 +283,67 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('measuring your step', () {
+    const uncalibrated = UserProfile(
+      id: 'u1',
+      fullName: 'Ama Mensah',
+      email: 'ama@knust.edu.gh',
+    );
+
+    Future<RoomNavigateCubit> openedWith(UserProfile profile) async {
+      final profiles = _MockProfiles();
+      when(() => profiles.currentProfile()).thenAnswer((_) async => profile);
+      final cubit = RoomNavigateCubit(plans, profiles);
+      await cubit.load(buildingId: 'knust-cs', floorId: 'gf');
+      return cubit;
+    }
+
+    test('offered on a floor with a scale when nobody has measured', () async {
+      // The row moved off Profile, where it asked before the user had walked
+      // anywhere. Here the route is drawn and the distance about to be spoken
+      // is a generic adult's rather than theirs.
+      when(
+        () => plans.planFor(any(), any()),
+      ).thenAnswer((_) async => buildWing().copyWith(metresPerUnit: 1));
+
+      final cubit = await openedWith(uncalibrated);
+
+      expect(cubit.state.shouldOfferStride, isTrue);
+      await cubit.close();
+    });
+
+    test('not offered once it has been measured', () async {
+      when(
+        () => plans.planFor(any(), any()),
+      ).thenAnswer((_) async => buildWing().copyWith(metresPerUnit: 1));
+
+      final cubit = await openedWith(
+        uncalibrated.copyWith(strideLengthM: 0.72),
+      );
+
+      expect(cubit.state.shouldOfferStride, isFalse);
+      await cubit.close();
+    });
+
+    test('not offered on a floor with no scale', () async {
+      // Without a scale no distance is spoken at all, so measuring a step
+      // would change nothing and the offer would be noise.
+      final cubit = await openedWith(uncalibrated);
+
+      expect(cubit.state.plan?.isMetric, isFalse);
+      expect(cubit.state.shouldOfferStride, isFalse);
+      await cubit.close();
+    });
+
+    test('a screen with no profile repository never nags', () async {
+      final cubit = RoomNavigateCubit(plans);
+      await cubit.load(buildingId: 'knust-cs', floorId: 'gf');
+
+      expect(cubit.state.shouldOfferStride, isFalse);
+      await cubit.close();
     });
   });
 }

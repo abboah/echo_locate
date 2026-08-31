@@ -6,6 +6,7 @@ import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 import '../../../core/routes/app_routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimens.dart';
+import '../../widgets/responsive.dart';
 import '../../../features/auth/bloc/auth_bloc.dart';
 
 /// Auth landing (Figma 7:1057): Apple / Google / email entry points.
@@ -29,7 +30,7 @@ class WelcomePage extends StatelessWidget {
         },
         child: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.all(AppDimens.pageGutter),
+            padding: Responsive.pagePadding(context),
             child: BlocBuilder<AuthBloc, AuthState>(
               builder: (context, state) {
                 final busy = state is AuthUnauthenticated && state.inProgress;

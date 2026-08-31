@@ -1,6 +1,6 @@
 part of 'profile_bloc.dart';
 
-enum ProfileStatus { initial, loading, success, failure }
+enum ProfileStatus { initial, loading, success, saving, failure }
 
 final class ProfileState extends Equatable {
   const ProfileState({
@@ -21,7 +21,9 @@ final class ProfileState extends Equatable {
     return ProfileState(
       status: status ?? this.status,
       profile: profile ?? this.profile,
-      error: error ?? this.error,
+      // Not sticky: an error from a failed rename must not outlive the retry
+      // that worked, and the screen shows it once in a snackbar.
+      error: error,
     );
   }
 

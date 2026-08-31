@@ -5,8 +5,17 @@ import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 import '../../../core/settings/settings_repository.dart';
 import '../../../core/theme/app_dimens.dart';
 import '../../../services/injection_container.dart';
+import '../../../services/location/location_service.dart';
+import '../../widgets/responsive.dart';
 
 /// Location permission primer (Figma 7:895), shown once before first Explore.
+///
+/// **It now actually asks.** Both buttons used to run identical code — set the
+/// "primer seen" flag and pop — so the screen explained why location was
+/// useful, offered "Allow while using app", and then never put the question to
+/// Android. The permission was never granted however many times somebody
+/// allowed it, which is why every distance in the app was measured from the
+/// server's default origin.
 class LocationPrimerPage extends StatelessWidget {
   const LocationPrimerPage({super.key});
 
@@ -17,7 +26,7 @@ class LocationPrimerPage extends StatelessWidget {
     return Scaffold(
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(AppDimens.pageGutter),
+          padding: Responsive.pagePadding(context, top: AppDimens.space24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -48,11 +57,14 @@ class LocationPrimerPage extends StatelessWidget {
               ),
               const SizedBox(height: AppDimens.space24),
               ElevatedButton(
-                onPressed: () => _finish(context),
+                onPressed: () => _finish(context, ask: true),
                 child: const Text('Allow while using app'),
               ),
               TextButton(
-                onPressed: () => _finish(context),
+                // Declining is a real answer and costs nothing: nearby
+                // ordering falls back to a fixed origin and the header simply
+                // says less. Nothing about walking a building needs this.
+                onPressed: () => _finish(context, ask: false),
                 child: Text("Don't allow", style: theme.textTheme.labelLarge),
               ),
             ],
@@ -62,8 +74,12 @@ class LocationPrimerPage extends StatelessWidget {
     );
   }
 
-  Future<void> _finish(BuildContext context) async {
+  Future<void> _finish(BuildContext context, {required bool ask}) async {
+    // The flag is set either way: it records that the explanation has been
+    // shown, not that permission was granted. Android owns the second answer
+    // and will not ask twice.
     await getIt<SettingsRepository>().setLocationPrimerSeen();
+    if (ask) await getIt<LocationService>().request();
     if (context.mounted) context.pop();
   }
 }

@@ -6,6 +6,13 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
+    <!-- Nearby buildings, and the place name on Home. Coarse is enough: the
+         index sorts buildings by kilometres, and asking for fine location to
+         answer "which campus am I on" is more than the feature needs. Fine is
+         declared too because Android grants coarse-only from the same dialog
+         and geolocator asks for whichever is available. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <!-- Guidance: hardware step counter, for distance between landmarks.
          Runtime-dangerous from API 29, so it is also requested through
          permission_handler; declaring it alone is not enough. -->

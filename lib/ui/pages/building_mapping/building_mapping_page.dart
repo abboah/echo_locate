@@ -9,13 +9,17 @@ import '../../../core/theme/app_dimens.dart';
 import '../../../features/building_mapping/bloc/building_mapping_cubit.dart';
 import '../../../services/injection_container.dart';
 import '../../../services/mapping/floor_mapping_status.dart';
+import '../../widgets/building_actions.dart';
+import '../../widgets/floor_stage_chip.dart';
+import '../../widgets/responsive.dart';
 
-/// Mapping a building, floor by floor.
+/// A building: its floors, what state each is in, and what to do next.
 ///
-/// The screen the feature was missing. Everything under it was capable and
-/// nothing sequenced it: somebody arriving at "I want to map this building"
-/// met a list of tools with nothing to say which floor to do next, what was
-/// half-finished, or when they could stop.
+/// **The building screen.** Tapping a building anywhere — Home, Explore, Maps —
+/// lands here. A separate detail screen used to stand in front of it, showing a
+/// hero, a room list read from a table nothing writes to, and a "Floors and
+/// plans" button that led here anyway. Two taps and a stale room list to reach
+/// the one screen that knew the truth about the building.
 ///
 /// So this answers three questions and nothing else — where does this building
 /// stand, what is the next thing to do, and is it finished. Every floor gets
@@ -36,8 +40,7 @@ class BuildingMappingPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => BlocProvider(
-    create: (_) =>
-        BuildingMappingCubit(getIt(), getIt())..load(buildingId),
+    create: (_) => BuildingMappingCubit(getIt(), getIt())..load(buildingId),
     child: BuildingMappingView(buildingName: buildingName),
   );
 }
@@ -51,24 +54,75 @@ class BuildingMappingView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      BlocBuilder<BuildingMappingCubit, BuildingMappingState>(
-        builder: (context, state) => Scaffold(
-          appBar: AppBar(
-            leading: IconButton(
-              icon: const Icon(PhosphorIcons.arrowLeft),
-              onPressed: () => context.pop(),
+      BlocConsumer<BuildingMappingCubit, BuildingMappingState>(
+        listenWhen: (before, after) =>
+            after.error != null && before.error != after.error,
+        listener: (context, state) => ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(state.error!))),
+        builder: (context, state) {
+          // The loaded name wins over the one passed in: after a rename the
+          // route argument still holds the old name, and the header must not
+          // keep showing what the user has just corrected.
+          final name = state.building?.name ?? buildingName ?? 'Building';
+
+          return Scaffold(
+            appBar: AppBar(
+              leading: IconButton(
+                icon: const Icon(PhosphorIcons.arrowLeft),
+                tooltip: 'Back',
+                onPressed: () => context.pop(),
+              ),
+              title: Text(name, overflow: TextOverflow.ellipsis),
+              actions: [
+                if (state.status == BuildingMappingStatus.ready) ...[
+                  IconButton(
+                    tooltip: 'Rename this building',
+                    icon: const Icon(PhosphorIcons.pencilSimple, size: 20),
+                    onPressed: () => _rename(context, state),
+                  ),
+                  IconButton(
+                    tooltip: state.saved
+                        ? 'Saved for offline. Tap to remove.'
+                        : 'Save for offline',
+                    icon: Icon(
+                      state.saved
+                          ? PhosphorIconsFill.bookmarkSimple
+                          : PhosphorIconsRegular.bookmarkSimple,
+                      size: 20,
+                      color: state.saved ? AppColors.coral : null,
+                    ),
+                    onPressed: () =>
+                        context.read<BuildingMappingCubit>().toggleSaved(),
+                  ),
+                ],
+              ],
             ),
-            title: Text(buildingName ?? 'Map this building'),
-          ),
-          body: switch (state.status) {
-            BuildingMappingStatus.loading => const Center(
-              child: CircularProgressIndicator(),
-            ),
-            BuildingMappingStatus.failed => _Failed(state: state),
-            BuildingMappingStatus.ready => _Floors(state: state),
-          },
-        ),
+            body: switch (state.status) {
+              BuildingMappingStatus.loading => const Center(
+                child: CircularProgressIndicator(),
+              ),
+              BuildingMappingStatus.failed => _Failed(state: state),
+              BuildingMappingStatus.ready => _Floors(state: state),
+            },
+          );
+        },
       );
+
+  Future<void> _rename(BuildContext context, BuildingMappingState state) async {
+    final cubit = context.read<BuildingMappingCubit>();
+    final edited = await showDialog<({String name, String area})>(
+      context: context,
+      // The same dialog the building lists open, so the two cannot drift on
+      // the one line that matters — that the traced floors stay put.
+      builder: (_) => RenameBuildingDialog(
+        name: state.building?.name ?? buildingName ?? '',
+        area: state.building?.area ?? '',
+      ),
+    );
+    if (edited == null) return;
+    await cubit.rename(name: edited.name, area: edited.area);
+  }
 }
 
 class _Failed extends StatelessWidget {
@@ -112,7 +166,7 @@ class _Floors extends StatelessWidget {
     return RefreshIndicator(
       onRefresh: () => context.read<BuildingMappingCubit>().refresh(),
       child: ListView(
-        padding: const EdgeInsets.all(AppDimens.space16),
+        padding: Responsive.pagePadding(context),
         children: [
           Text(state.progress.summary, style: theme.textTheme.titleMedium),
           const SizedBox(height: AppDimens.space4),
@@ -179,7 +233,7 @@ class _FloorCard extends StatelessWidget {
                     style: theme.textTheme.titleMedium,
                   ),
                 ),
-                _StageChip(stage: floor.stage),
+                FloorStageChip(stage: floor.stage),
               ],
             ),
             const SizedBox(height: AppDimens.space4),
@@ -198,10 +252,7 @@ class _FloorCard extends StatelessWidget {
 
 /// A floor nobody has touched: choose how to map it.
 class _StartRow extends StatelessWidget {
-  const _StartRow({
-    required this.floor,
-    required this.buildingId,
-  });
+  const _StartRow({required this.floor, required this.buildingId});
 
   final FloorMappingStatus floor;
   final String buildingId;
@@ -319,38 +370,6 @@ class _ContinueRow extends StatelessWidget {
           extra: floor.floor.id,
         )
         .then((_) => cubit.refresh());
-  }
-}
-
-class _StageChip extends StatelessWidget {
-  const _StageChip({required this.stage});
-
-  final FloorMappingStage stage;
-
-  @override
-  Widget build(BuildContext context) {
-    final (label, colour) = switch (stage) {
-      FloorMappingStage.notStarted => ('Not mapped', AppColors.inkMuted),
-      FloorMappingStage.needsDoors => ('Needs doors', AppColors.warning),
-      FloorMappingStage.disconnected => ('Not joined up', AppColors.warning),
-      FloorMappingStage.countsPending => ('Counts pending', AppColors.warning),
-      FloorMappingStage.ready => ('Ready', AppColors.success),
-    };
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: colour.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(AppDimens.radiusPill),
-      ),
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: colour,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
   }
 }
 

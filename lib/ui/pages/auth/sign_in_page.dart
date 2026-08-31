@@ -6,6 +6,7 @@ import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 import '../../../core/routes/app_routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimens.dart';
+import '../../widgets/responsive.dart';
 import '../../../features/auth/bloc/auth_bloc.dart';
 
 /// Email sign-in (Figma 7:1010).
@@ -47,7 +48,7 @@ class _SignInPageState extends State<SignInPage> {
             final error = unauthenticated?.error;
 
             return ListView(
-              padding: const EdgeInsets.all(AppDimens.pageGutter),
+              padding: Responsive.pagePadding(context),
               children: [
                 _BackCircle(onTap: () => context.pop()),
                 const SizedBox(height: AppDimens.space24),
@@ -139,13 +140,24 @@ class _SignInPageState extends State<SignInPage> {
                       style: theme.textTheme.bodyMedium,
                       children: [
                         WidgetSpan(
-                          child: GestureDetector(
-                            onTap: () =>
-                                context.pushReplacementNamed(RouteNames.signUp),
-                            child: Text(
-                              'Create account',
-                              style: theme.textTheme.labelLarge?.copyWith(
-                                color: AppColors.coral,
+                          // Inline in a sentence, so it cannot be a button
+                          // widget — but it still has to announce itself as
+                          // one, or the only way on to the other auth screen
+                          // is read out as ordinary prose.
+                          child: Semantics(
+                            button: true,
+                            label: 'Create account',
+                            child: GestureDetector(
+                              onTap: () => context.pushReplacementNamed(
+                                RouteNames.signUp,
+                              ),
+                              child: ExcludeSemantics(
+                                child: Text(
+                                  'Create account',
+                                  style: theme.textTheme.labelLarge?.copyWith(
+                                    color: AppColors.coral,
+                                  ),
+                                ),
                               ),
                             ),
                           ),

@@ -10,6 +10,7 @@ import '../../../core/theme/app_dimens.dart';
 import '../../../features/map_building/bloc/map_building_cubit.dart';
 import '../../../services/injection_container.dart';
 import '../../widgets/section_label.dart';
+import '../../widgets/responsive.dart';
 
 /// What are you mapping?
 ///
@@ -22,12 +23,14 @@ class MapBuildingPage extends StatelessWidget {
 
   /// Where a chosen building goes next.
   ///
-  /// This picker serves two entry points that mean different things.
-  /// "Map a building" means tracing, and goes straight to the tool.
-  /// **"Scan a space" means AR**, and the only place "Scan in AR" exists is the
-  /// per-floor hub — so it goes there instead. Before this existed, every path
-  /// out of this screen ended in tracing, and the scan entry point could not
-  /// reach AR at all no matter what its card promised.
+  /// One destination now, and the parameter is kept only so a caller can send
+  /// somebody to the per-floor hub instead of straight into the tracer.
+  ///
+  /// It used to carry a second meaning: "Scan a space" pointed the picker at
+  /// the hub, and the screen changed its own copy to promise walking the rooms
+  /// in AR and tapping each corner. That capture path was removed, the copy was
+  /// not, and Explore's button was still sending people down it — so the screen
+  /// described a feature the build no longer contains.
   final String nextRoute;
 
   @override
@@ -43,8 +46,6 @@ class _MapBuildingView extends StatelessWidget {
   const _MapBuildingView({required this.nextRoute});
 
   final String nextRoute;
-
-  bool get _isScanning => nextRoute == RouteNames.buildingMapping;
 
   @override
   Widget build(BuildContext context) {
@@ -87,7 +88,7 @@ class _MapBuildingView extends StatelessWidget {
             child: state.status == MapBuildingStatus.creating
                 ? const Center(child: CircularProgressIndicator())
                 : ListView(
-                    padding: const EdgeInsets.all(AppDimens.pageGutter),
+                    padding: Responsive.pagePadding(context),
                     children: [
                       Text(
                         'Which building are you in?',
@@ -95,14 +96,9 @@ class _MapBuildingView extends StatelessWidget {
                       ),
                       const SizedBox(height: AppDimens.space4),
                       Text(
-                        // Says what actually happens next, which now depends
-                        // on which card opened this picker.
-                        _isScanning
-                            ? 'Add it if nobody has yet. Then pick a floor and '
-                                  'walk its rooms in AR, tapping each corner.'
-                            : 'Add it if nobody has yet. You will photograph '
-                                  'the floor plan on its wall and trace its '
-                                  'rooms onto it.',
+                        'Add it if nobody has yet. You will photograph the '
+                        'floor plan posted on its wall and trace its rooms '
+                        'onto it.',
                         style: theme.textTheme.bodySmall,
                       ),
                       const SizedBox(height: AppDimens.space20),
@@ -250,10 +246,10 @@ class _ListedBuilding extends StatelessWidget {
         size: 18,
         color: AppColors.coral,
       ),
-      // Wherever this picker was opened to go — tracing for "Map a building",
-      // the per-floor hub for "Scan a space". No `extra`: that slot is a floor
-      // id for tracing and a building name for the hub, and guessing wrong
-      // sends one of them a string it will misread.
+      // Wherever this picker was opened to go — the tracer by default, the
+      // per-floor hub when a caller asked for it. No `extra`: that slot is a
+      // floor id for tracing and a building name for the hub, and guessing
+      // wrong sends one of them a string it will misread.
       onTap: () => context.pushReplacementNamed(
         nextRoute,
         pathParameters: {'id': building.id},

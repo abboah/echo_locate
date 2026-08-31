@@ -6,6 +6,7 @@ import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 import '../../../core/settings/settings_repository.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimens.dart';
+import '../../widgets/responsive.dart';
 import '../../../services/injection_container.dart';
 
 /// Camera permission primer (Figma 7:939), shown once before the first
@@ -24,7 +25,7 @@ class CameraPrimerPage extends StatelessWidget {
     return Scaffold(
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(AppDimens.pageGutter),
+          padding: Responsive.pagePadding(context),
           child: Column(
             children: [
               const Spacer(),

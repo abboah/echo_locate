@@ -14,6 +14,7 @@ import '../../../features/routing/bloc/floor_map_bloc.dart';
 import '../../../services/injection_container.dart';
 import '../../../services/mapping/graph_route_path.dart';
 import '../../../services/motion/stride_profile.dart';
+import '../../widgets/back_circle.dart';
 import '../../widgets/floor_plan_painter.dart';
 
 /// The building's map, drawn from the walks contributors recorded.
@@ -112,9 +113,7 @@ class _NavigationView extends StatelessWidget {
                           'Trace the floor plan posted on its wall. It becomes this '
                           'building’s first map — and its first directions.',
                       action: Column(
-                        children: [
-                          _TraceButton(buildingId: buildingId),
-                        ],
+                        children: [_TraceButton(buildingId: buildingId)],
                       ),
                     ),
                     FloorMapStatus.ready => _Schematic(state: state),
@@ -154,26 +153,7 @@ class _Header extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Material(
-            color: theme.brightness == Brightness.dark
-                ? AppColors.darkElevated
-                : AppColors.white,
-            shape: const CircleBorder(),
-            elevation: 1,
-            child: InkWell(
-              onTap: () => context.pop(),
-              customBorder: const CircleBorder(),
-              child: SizedBox(
-                width: 42,
-                height: 42,
-                child: Icon(
-                  PhosphorIconsRegular.caretLeft,
-                  size: 20,
-                  color: theme.colorScheme.onSurface,
-                ),
-              ),
-            ),
-          ),
+          const BackCircle(),
           const SizedBox(width: AppDimens.space12),
           Expanded(
             child: Column(
@@ -435,7 +415,10 @@ class _RoutePicker extends StatelessWidget {
     );
   }
 
-  Future<void> _startGuidance(BuildContext context, String destinationId) async {
+  Future<void> _startGuidance(
+    BuildContext context,
+    String destinationId,
+  ) async {
     final plan = state.plan;
     if (plan == null) return;
 
@@ -556,7 +539,6 @@ class _TraceButton extends StatelessWidget {
           );
   }
 }
-
 
 class _Message extends StatelessWidget {
   const _Message({

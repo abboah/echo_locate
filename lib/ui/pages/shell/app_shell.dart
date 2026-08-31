@@ -41,41 +41,57 @@ class AppShell extends StatelessWidget {
           border: Border(top: BorderSide(color: theme.dividerColor)),
         ),
         child: SafeArea(
-          child: SizedBox(
-            height: 64,
-            child: Row(
-              children: [
-                _NavItem(
-                  index: 0,
-                  shell: navigationShell,
-                  icon: PhosphorIconsRegular.house,
-                  activeIcon: PhosphorIconsFill.house,
-                  label: 'Home',
+          // **The bar grows a little with the system font, and then stops.**
+          //
+          // Its five slots are a fixed division of the screen width, so past
+          // about 1.3x the labels stop fitting horizontally however tall the
+          // bar gets — and this is an app whose users are the ones most likely
+          // to have text scaling turned up. Clamping the labels keeps the bar
+          // intact; the icons, which carry the meaning, are unaffected, and
+          // nothing above this line is clamped, so the screens themselves
+          // still scale all the way.
+          child: MediaQuery.withClampedTextScaling(
+            maxScaleFactor: 1.3,
+            child: ConstrainedBox(
+              // Was a fixed 64. At 1.3x the column inside is taller than that
+              // and overflowed with the yellow-and-black stripes.
+              constraints: const BoxConstraints(minHeight: 64),
+              child: IntrinsicHeight(
+                child: Row(
+                  children: [
+                    _NavItem(
+                      index: 0,
+                      shell: navigationShell,
+                      icon: PhosphorIconsRegular.house,
+                      activeIcon: PhosphorIconsFill.house,
+                      label: 'Home',
+                    ),
+                    _NavItem(
+                      index: 1,
+                      shell: navigationShell,
+                      icon: PhosphorIconsRegular.magnifyingGlass,
+                      activeIcon: PhosphorIconsBold.magnifyingGlass,
+                      label: 'Explore',
+                    ),
+                    // Gap under the docked assist FAB.
+                    const Expanded(child: SizedBox()),
+                    _NavItem(
+                      index: 2,
+                      shell: navigationShell,
+                      icon: PhosphorIconsRegular.mapTrifold,
+                      activeIcon: PhosphorIconsFill.mapTrifold,
+                      label: 'Maps',
+                    ),
+                    _NavItem(
+                      index: 3,
+                      shell: navigationShell,
+                      icon: PhosphorIconsRegular.user,
+                      activeIcon: PhosphorIconsFill.user,
+                      label: 'Profile',
+                    ),
+                  ],
                 ),
-                _NavItem(
-                  index: 1,
-                  shell: navigationShell,
-                  icon: PhosphorIconsRegular.magnifyingGlass,
-                  activeIcon: PhosphorIconsBold.magnifyingGlass,
-                  label: 'Explore',
-                ),
-                // Gap under the docked assist FAB.
-                const Expanded(child: SizedBox()),
-                _NavItem(
-                  index: 2,
-                  shell: navigationShell,
-                  icon: PhosphorIconsRegular.mapTrifold,
-                  activeIcon: PhosphorIconsFill.mapTrifold,
-                  label: 'Maps',
-                ),
-                _NavItem(
-                  index: 3,
-                  shell: navigationShell,
-                  icon: PhosphorIconsRegular.user,
-                  activeIcon: PhosphorIconsFill.user,
-                  label: 'Profile',
-                ),
-              ],
+              ),
             ),
           ),
         ),

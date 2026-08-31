@@ -36,6 +36,48 @@ class SupabaseProfileRepository
   }
 
   @override
+  Future<UserProfile> updateName(String fullName) {
+    return runOperation('profile_update_name', () async {
+      final user = _client.auth.currentUser;
+      if (user == null) throw const OperationFailure('Not signed in');
+      final trimmed = fullName.trim();
+      if (trimmed.isEmpty) {
+        throw const OperationFailure('Your name cannot be empty.');
+      }
+
+      await _client
+          .from('profiles')
+          .update({'full_name': trimmed})
+          .eq('id', user.id);
+      // The auth metadata is the fallback `currentProfile` reads when the
+      // profile row predates the trigger, so leaving it stale would make the
+      // name flip back for exactly those users.
+      await _client.auth.updateUser(
+        UserAttributes(data: {'full_name': trimmed}),
+      );
+      RepositoryMixin.clearEphemeralCache();
+      return currentProfile();
+    });
+  }
+
+  @override
+  Future<void> deleteAccount() {
+    return runOperation('profile_delete_account', () async {
+      final user = _client.auth.currentUser;
+      if (user == null) throw const OperationFailure('Not signed in');
+
+      // `delete_own_account()` is security definer and takes no id: it deletes
+      // whoever is calling. See the migration for what it keeps — the traced
+      // plans stay, their attribution does not.
+      await _client.rpc<void>('delete_own_account');
+      RepositoryMixin.clearEphemeralCache();
+      // The session outlives the row it points at, so it has to go too, or the
+      // app sits on a token for a user that no longer exists.
+      await _client.auth.signOut();
+    });
+  }
+
+  @override
   Future<UserProfile> currentProfile() {
     return runOperation('profile_current', () async {
       final user = _client.auth.currentUser;

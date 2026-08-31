@@ -6,6 +6,7 @@ import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 import '../../../core/routes/app_routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimens.dart';
+import '../../widgets/responsive.dart';
 import '../../../features/auth/bloc/auth_bloc.dart';
 
 /// Email sign-up with inline validation error (Figma 7:963).
@@ -65,7 +66,7 @@ class _SignUpPageState extends State<SignUpPage> {
                 : null;
 
             return ListView(
-              padding: const EdgeInsets.all(AppDimens.pageGutter),
+              padding: Responsive.pagePadding(context),
               children: [
                 _BackCircle(onTap: () => context.pop()),
                 const SizedBox(height: AppDimens.space24),
@@ -146,13 +147,24 @@ class _SignUpPageState extends State<SignUpPage> {
                       style: theme.textTheme.bodyMedium,
                       children: [
                         WidgetSpan(
-                          child: GestureDetector(
-                            onTap: () =>
-                                context.pushReplacementNamed(RouteNames.signIn),
-                            child: Text(
-                              'Sign in',
-                              style: theme.textTheme.labelLarge?.copyWith(
-                                color: AppColors.coral,
+                          // Inline in a sentence, so it cannot be a button
+                          // widget — but it still has to announce itself as
+                          // one, or the only way on to the other auth screen
+                          // is read out as ordinary prose.
+                          child: Semantics(
+                            button: true,
+                            label: 'Sign in',
+                            child: GestureDetector(
+                              onTap: () => context.pushReplacementNamed(
+                                RouteNames.signIn,
+                              ),
+                              child: ExcludeSemantics(
+                                child: Text(
+                                  'Sign in',
+                                  style: theme.textTheme.labelLarge?.copyWith(
+                                    color: AppColors.coral,
+                                  ),
+                                ),
                               ),
                             ),
                           ),

@@ -95,6 +95,16 @@ class SupabaseRoomPlanRepository
     ];
   }
 
+  /// Device-local, deliberately — even with a server behind it.
+  ///
+  /// The Maps tab lists the floors this phone can walk right now. Every plan
+  /// the server has ever accepted is a different list, it is unbounded, and
+  /// fetching it is the one thing that cannot work in the case the tab is for.
+  /// A floor arrives here by being traced or by being opened once, both of
+  /// which cache it locally.
+  @override
+  Future<List<RoomPlan>> allPlans() => _local.allPlans();
+
   Future<List<RoomPlan>> _remotePlansOf(String buildingId) {
     return runOperation('room_plans_of', () async {
       final rows = await _client
