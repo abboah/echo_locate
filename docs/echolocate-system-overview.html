@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EchoLocate System Overview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+:root{
+  --ground:#F6F5F2; --card:#FFFFFF; --ink:#1C1B1A; --muted:#6F6862; --faint:#948C85;
+  --rule:#E3DED5; --rule-strong:#CFC8BC;
+  --accent:#FB5B47; --accent-ink:#C33A29; --accent-soft:#FCEBE7;
+  --ok:#2F7D5F; --ok-soft:#E7F1EB; --open:#8A6520; --open-soft:#F6EFDE;
+  --code-bg:#F1EEE8; --code-ink:#54504B;
+  --sans:'Lexend',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,'Cascadia Mono',Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#131211; --card:#1C1A18; --ink:#F1EDE7; --muted:#A49C93; --faint:#7E766E;
+    --rule:#302C28; --rule-strong:#413B35;
+    --accent:#FF7361; --accent-ink:#FF8C7C; --accent-soft:#37211D;
+    --ok:#6FC49B; --ok-soft:#17271F; --open:#D9A94E; --open-soft:#2A2214;
+    --code-bg:#232120; --code-ink:#B4ACA3;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#131211; --card:#1C1A18; --ink:#F1EDE7; --muted:#A49C93; --faint:#7E766E;
+  --rule:#302C28; --rule-strong:#413B35;
+  --accent:#FF7361; --accent-ink:#FF8C7C; --accent-soft:#37211D;
+  --ok:#6FC49B; --ok-soft:#17271F; --open:#D9A94E; --open-soft:#2A2214;
+  --code-bg:#232120; --code-ink:#B4ACA3;
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%; scroll-behavior:smooth}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:var(--sans); font-size:16.5px; line-height:1.68; font-weight:400;
+  -webkit-font-smoothing:antialiased;
+}
+a{color:var(--accent-ink); text-underline-offset:.18em; text-decoration-thickness:1px}
+a:focus-visible{outline:2px solid var(--accent); outline-offset:3px; border-radius:2px}
+
+/* ---------- shell ---------- */
+.wrap{max-width:1180px; margin:0 auto; padding:0 clamp(1.1rem,4vw,2.6rem)}
+.masthead{border-bottom:1px solid var(--rule); padding:clamp(2.6rem,6vw,4.4rem) 0 clamp(1.8rem,4vw,2.8rem)}
+.eyebrow{
+  font-family:var(--mono); font-size:.7rem; font-weight:500; letter-spacing:.15em;
+  text-transform:uppercase; color:var(--accent-ink); margin:0 0 1.1rem
+}
+h1{
+  font-size:clamp(2.05rem,4.6vw,3.05rem); line-height:1.08; font-weight:700;
+  letter-spacing:-.025em; margin:0 0 1.1rem; text-wrap:balance
+}
+.thesis{font-size:clamp(1.05rem,1.9vw,1.24rem); line-height:1.58; color:var(--muted); max-width:64ch; margin:0 0 1.5rem; font-weight:300}
+.thesis strong{color:var(--ink); font-weight:500}
+.constraint{
+  max-width:64ch; margin:0; padding:1rem 1.15rem; background:var(--accent-soft);
+  border:1px solid var(--rule-strong); border-radius:5px;
+  font-size:.97rem; line-height:1.6
+}
+.constraint b{font-weight:600}
+
+.stats{display:flex; flex-wrap:wrap; margin-top:2.2rem; border-top:1px solid var(--rule)}
+.stat{padding:1rem 1.6rem 0 0; margin-right:1.6rem; border-right:1px solid var(--rule); padding-right:1.6rem}
+.stat:last-child{border-right:0; margin-right:0}
+.stat b{display:block; font-family:var(--mono); font-size:1.32rem; font-weight:700; letter-spacing:-.02em; font-variant-numeric:tabular-nums}
+.stat span{font-size:.78rem; color:var(--faint); letter-spacing:.02em}
+
+/* ---------- layout ---------- */
+.grid{display:grid; grid-template-columns:210px minmax(0,1fr); gap:clamp(2rem,5vw,4rem); padding:clamp(2rem,4vw,3.2rem) 0 5rem; align-items:start}
+nav.rail{position:sticky; top:1.8rem; font-size:.845rem}
+nav.rail p{font-family:var(--mono); font-size:.66rem; letter-spacing:.15em; text-transform:uppercase; color:var(--faint); margin:0 0 .8rem}
+nav.rail ol{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:.1rem}
+nav.rail a{display:block; padding:.32rem 0 .32rem .75rem; color:var(--muted); text-decoration:none; border-left:2px solid var(--rule); line-height:1.4}
+nav.rail a:hover{color:var(--ink); border-left-color:var(--accent)}
+main{max-width:70ch; min-width:0}
+
+/* ---------- sections ---------- */
+section + section{margin-top:3.4rem; padding-top:2.6rem; border-top:1px solid var(--rule)}
+h2{font-size:clamp(1.42rem,2.6vw,1.72rem); line-height:1.22; font-weight:600; letter-spacing:-.018em; margin:0 0 .35rem; text-wrap:balance}
+.sec-note{color:var(--faint); font-size:.9rem; margin:0 0 1.9rem; max-width:60ch}
+h3{font-size:1.1rem; font-weight:600; letter-spacing:-.008em; margin:2.4rem 0 .6rem; text-wrap:balance}
+h4{font-size:.95rem; font-weight:600; margin:1.7rem 0 .45rem}
+p{margin:0 0 1.05rem; max-width:68ch}
+ul,ol.body{margin:0 0 1.15rem; padding-left:1.15rem; max-width:68ch}
+li{margin-bottom:.5rem}
+li::marker{color:var(--faint)}
+strong{font-weight:600}
+
+/* component headers */
+.comp{display:flex; align-items:baseline; gap:.7rem; margin:3rem 0 .5rem}
+.comp .n{font-family:var(--mono); font-size:.8rem; font-weight:700; color:var(--accent-ink); letter-spacing:.02em; flex:none}
+.comp h3{margin:0; font-size:1.16rem}
+
+/* code + paths */
+code{font-family:var(--mono); font-size:.855em; background:var(--code-bg); color:var(--code-ink); padding:.12em .38em; border-radius:3px; word-break:break-word}
+.files{display:flex; flex-wrap:wrap; gap:.35rem; margin:0 0 1.15rem; padding:0; list-style:none; max-width:68ch}
+.files li{margin:0}
+.files code{background:transparent; border:1px solid var(--rule-strong); color:var(--muted); padding:.2em .5em; font-size:.78rem}
+
+/* why panel */
+.why{background:var(--card); border:1px solid var(--rule); border-radius:5px; padding:1.05rem 1.2rem; margin:0 0 1.2rem; max-width:68ch}
+.why > span{font-family:var(--mono); font-size:.64rem; letter-spacing:.16em; text-transform:uppercase; color:var(--accent-ink); display:block; margin-bottom:.5rem}
+.why p{font-size:.955rem; margin-bottom:.7rem}
+.why p:last-child{margin-bottom:0}
+.why ul{margin-bottom:0; font-size:.955rem}
+
+/* tables */
+.scroll{overflow-x:auto; margin:0 0 1.5rem; border:1px solid var(--rule); border-radius:5px; background:var(--card)}
+table{border-collapse:collapse; width:100%; font-size:.87rem; line-height:1.5}
+th,td{text-align:left; padding:.62rem .85rem; border-bottom:1px solid var(--rule); vertical-align:top}
+thead th{font-family:var(--mono); font-size:.68rem; letter-spacing:.09em; text-transform:uppercase; color:var(--faint); font-weight:500; white-space:nowrap; background:var(--ground)}
+tbody tr:last-child td{border-bottom:0}
+td.num,th.num{font-family:var(--mono); font-variant-numeric:tabular-nums; white-space:nowrap}
+td code{font-size:.8em}
+caption{caption-side:bottom; text-align:left; padding:.65rem .85rem; font-size:.78rem; color:var(--faint); border-top:1px solid var(--rule)}
+
+/* status chips */
+.chip{display:inline-block; font-family:var(--mono); font-size:.66rem; font-weight:500; letter-spacing:.07em; text-transform:uppercase; padding:.18em .5em; border-radius:3px; white-space:nowrap}
+.chip.ok{background:var(--ok-soft); color:var(--ok)}
+.chip.open{background:var(--open-soft); color:var(--open)}
+.chip.bad{background:var(--accent-soft); color:var(--accent-ink)}
+
+/* principle */
+.principle{margin:1.6rem 0; padding:1.15rem 1.3rem; background:var(--card); border:1px solid var(--rule-strong); border-radius:5px; max-width:68ch}
+.principle b{display:block; font-size:1.06rem; font-weight:600; letter-spacing:-.01em; margin-bottom:.4rem; line-height:1.4}
+.principle p{margin:0; font-size:.94rem; color:var(--muted)}
+
+footer{border-top:1px solid var(--rule); padding:2rem 0 3.5rem; font-size:.83rem; color:var(--faint)}
+footer p{max-width:68ch}
+
+@media (max-width:940px){
+  .grid{grid-template-columns:1fr; gap:1.5rem}
+  nav.rail{position:static; border:1px solid var(--rule); border-radius:5px; background:var(--card); padding:1rem 1.15rem}
+  nav.rail ol{display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:0 1rem}
+  main{max-width:none}
+  .stat{padding-right:1.1rem; margin-right:1.1rem}
+}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="wrap">
+    <p class="eyebrow">System overview &middot; KNUST final year project &middot; Group 4</p>
+    <h1>EchoLocate</h1>
+    <p class="thesis">A Flutter app where ordinary people <strong>trace metrically-scaled 2D floor plans</strong> of unmapped buildings, publish them to a shared repository, and anyone can then <strong>navigate those buildings turn by turn</strong> &mdash; including fully eyes-free &mdash; using only a commodity phone.</p>
+    <p class="constraint">The constraint behind nearly every design decision: <b>the phones the target users own are not ARCore-certified.</b> So navigation must work with no camera and no AR, and the AR layer sits on top of it &mdash; never underneath.</p>
+    <div class="stats">
+      <div class="stat"><b>40,389</b><span>lines of Dart &middot; 179 files</span></div>
+      <div class="stat"><b>4,749</b><span>lines of Kotlin &middot; AR layer</span></div>
+      <div class="stat"><b>927</b><span>tests passing &middot; 64 files</span></div>
+      <div class="stat"><b>24</b><span>screens &middot; light + dark</span></div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+<div class="grid">
+
+  <nav class="rail" aria-label="Contents">
+    <p>Contents</p>
+    <ol>
+      <li><a href="#departures">Why the build diverged</a></li>
+      <li><a href="#components">The seven components</a></li>
+      <li><a href="#together">How it holds together</a></li>
+      <li><a href="#data">Data and storage</a></li>
+      <li><a href="#results">Verified, and still open</a></li>
+      <li><a href="#map">File map</a></li>
+    </ol>
+  </nav>
+
+  <main>
+
+  <!-- ============ 1. DEPARTURES ============ -->
+  <section id="departures">
+    <h2>Why the build diverged from the proposal</h2>
+    <p class="sec-note">Three things the proposal promised were built, tested on hardware, and replaced. This is the &ldquo;why&rdquo; that explains most of the codebase.</p>
+
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Proposed</th><th>Built instead</th><th>Reason</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Automatic floor-plan generation from ARCore depth, with RANSAC and Hough line fitting</td>
+            <td><strong>Human-in-the-loop tracing</strong></td>
+            <td>Depth capture depends on tracking quality, so it works only on certified phones. Tracing works on <em>every</em> Android phone and takes about 20 minutes per floor &mdash; so contributing is open to everyone. Depth survives only as a diagnostic probe screen.</td>
+          </tr>
+          <tr>
+            <td>TensorFlow Lite learned acoustic classifier</td>
+            <td><strong>Rule-based classifier</strong> over reverberation features</td>
+            <td>Sabine&rsquo;s relation ties RT60 to volume and absorption, so classes separate along RT60 <em>for physical reasons</em> and every decision is defensible from room acoustics. A network trained on the handful of samples obtainable in twelve weeks could not be. Thresholds are constructor parameters so they can be re-fitted; the interface is unchanged so a learned model can still drop in.</td>
+          </tr>
+          <tr>
+            <td>Acoustic <strong>ranging</strong> (phone sonar)</td>
+            <td>Acoustic <strong>classification</strong></td>
+            <td>Uncalibrated phone ranging floors out around 0.6&nbsp;m &mdash; useless at obstacle-aid distances. The sonar screen survives as a demonstration only.</td>
+          </tr>
+        </tbody>
+      </table>
+      <caption>The three substantive departures. Chapters 1&ndash;3 were revised to specify what was built, not what was proposed.</caption>
+    </div>
+
+    <p>Two smaller corrections belong here too. The proposal named Riverpod and Drift; the build is <strong>flutter_bloc and hive_ce</strong> throughout. And the FMCW sweep moved from 2&ndash;8&nbsp;kHz over 40&nbsp;ms to <strong>13&ndash;19&nbsp;kHz over 120&nbsp;ms</strong> &mdash; above where speech, footsteps and HVAC put their energy, so ambient noise stops contributing to the correlation, with the time&ndash;bandwidth product rising from 240 to 720 (roughly 24&nbsp;dB to 28.6&nbsp;dB of matched-filter gain) at unchanged bandwidth, so range resolution is unaffected.</p>
+
+    <div class="why">
+      <span>Consequence &mdash; recorded honestly</span>
+      <p>That band change was assessed for its effect on the ambient noise floor but <em>not</em> for its effect on the dynamic range above that floor, which is the thing reverberation measurement actually depends on. Section&nbsp;4.3.6 of the report records what followed, and it is summarised under <a href="#results">Verified, and still open</a>.</p>
+    </div>
+  </section>
+
+  <!-- ============ 2. COMPONENTS ============ -->
+  <section id="components">
+    <h2>The seven core components</h2>
+    <p class="sec-note">Numbered as in Table&nbsp;3.1 of the report. Each entry gives what it does, where it lives, and the decision that shaped it.</p>
+
+    <!-- 1 -->
+    <div class="comp"><span class="n">01</span><h3>Floor-plan authoring</h3></div>
+    <ul class="files">
+      <li><code>services/mapping/room_cleanup.dart</code></li>
+      <li><code>floor_squaring.dart</code></li>
+      <li><code>plan_photo_service.dart</code></li>
+      <li><code>plan_editing.dart</code></li>
+    </ul>
+    <p>Photograph the plan posted on the building&rsquo;s wall (or trace the space directly), mark <strong>one known distance</strong> to set the metric scale, trace closed polygons for rooms and corridors, mark the door openings, tag each room&rsquo;s type. Corners are captured with +x east and +y north.</p>
+
+    <div class="why">
+      <span>Why geometry is cleaned, not trusted</span>
+      <p>A finger on a photograph gives you a 3.94&nbsp;m wall and an 87&deg; corner, and a slipped tap leaves a 4&nbsp;cm edge nobody meant to draw. The cleanup exploits the one piece of prior knowledge the problem actually offers &mdash; <strong>institutional buildings are rectilinear</strong> &mdash; and snaps to a grid the polygon itself declares.</p>
+      <p>The order is enforced and matters: drop edges too short to be a wall, merge runs of near-collinear edges, then snap survivors to the dominant grid and re-intersect. Snapping before dropping lets a 4&nbsp;cm slip rotate an entire wall; snapping before merging can square one physical wall two different ways and put a step in it.</p>
+    </div>
+
+    <p>Room categories in <code>room_plan.dart</code> are a <strong>university wall-board vocabulary</strong>, not a building-code classification &mdash; a contributor picks one while standing in a corridor, so the list is short and every entry is identifiable from a doorway. A large floor is traced a wing at a time, and wings are reconciled by dragging one into place against another: human-in-the-loop alignment in place of pose-graph optimisation, on the grounds that the latter is weeks of work and the former is a contributor who can see the building.</p>
+
+    <!-- 2 -->
+    <div class="comp"><span class="n">02</span><h3>Graph derivation and A* routing</h3></div>
+    <ul class="files">
+      <li><code>room_graph.dart</code></li>
+      <li><code>floor_graph.dart</code></li>
+      <li><code>route_planner.dart</code></li>
+      <li><code>room_directions.dart</code></li>
+      <li><code>room_plan_bridge.dart</code></li>
+    </ul>
+    <p>There are in fact <strong>two graphs</strong>, which the report compresses into one:</p>
+    <ul>
+      <li>The <strong>room graph</strong> has a node per <em>opening</em> (at the door&rsquo;s midpoint) plus a node per room. Not centroids &mdash; centroid nodes quote half of a 40&nbsp;m hallway, and door counting becomes arbitrary because the leg runs roughly perpendicular to the corridor. It is a navigation mesh at its simplest.</li>
+      <li>The <strong>landmark graph</strong> is what <code>GuidanceBloc</code> actually consumes: points with readable signs joined by corridors. It needs no ARCore, and OCR confirms the walker against it.</li>
+    </ul>
+    <p><code>room_plan_bridge.dart</code> converts the room graph into the landmark graph &mdash; in that direction only, because guidance is the finished, tested part already speaking to users. A traced plan arrives as a <code>PlannedRoute</code> and a list of <code>Landmark</code>s, and <strong>nothing in <code>GuidanceBloc</code> changes at all</strong>.</p>
+
+    <p>A* uses a straight-line Euclidean heuristic, admissible because the plan preserves recorded distances, and a list scan rather than a heap &mdash; a floor holds tens of landmarks, so the constant factor of a priority queue is not worth the code. Two details separate it from the textbook algorithm:</p>
+    <ul>
+      <li><strong>Both endpoints sit on doorways, not room centres.</strong> A route between centres begins and ends in open floor with no door in sight. The final spoken instruction still names the room.</li>
+      <li><strong>Waypoints and the drawn polyline are deliberately separate.</strong> Waypoints are decision points producing one instruction per pair; the polyline expands each corridor leg along its centreline so the route follows the hallway round a corner. Merging them would speak an instruction for every bend.</li>
+    </ul>
+
+    <div class="why">
+      <span>Why directions are harder than they look</span>
+      <p>The plan is <strong>allocentric</strong> &mdash; fixed coordinates in a frame with no relation to anybody&rsquo;s body. Speech has to be <strong>egocentric</strong>. So a virtual heading is carried through the route and updated leg by leg, exactly as the walker&rsquo;s own would be.</p>
+      <p>Left and right are measured against the corridor&rsquo;s <strong>spine</strong>, not the door-to-door line: both doors sit on walls, so the straight line between them cuts diagonally across the corridor and puts doors on the wrong side near the ends.</p>
+      <p>And directions <strong>refuse to count doors</strong> when <code>corridorIsComplete</code> fails. &ldquo;Your destination is the second door on your left&rdquo; is the single most dangerous sentence the app can say: confidently wrong, no error state, no hedge in the voice, whenever the map is missing a door the walker will nonetheless walk past.</p>
+    </div>
+
+    <!-- 3 -->
+    <div class="comp"><span class="n">03</span><h3>Augmented-reality route registration</h3></div>
+    <ul class="files">
+      <li><code>services/mapping/route_registration.dart</code></li>
+      <li><code>ArGuidanceHandler.kt</code></li>
+      <li><code>RegisteredRoute.kt</code></li>
+    </ul>
+    <p>The largest component in the system, and it exists because the arrow specified in Chapter Three could not work without it.</p>
+    <p><strong>The problem is coordinate frames.</strong> Plan geometry uses the plan&rsquo;s own frame: +x east, +y north, origin wherever tracing began. ARCore uses a frame it invents at session start, +y up, floor in the x&ndash;z plane. Guidance originally bridged the two by refusing to &mdash; it walked a chain of relative turns, each measured from the last. That chain is only as good as the direction its first link hung from, and that was whichever way the phone happened to be pointing.</p>
+
+    <div class="why">
+      <span>Why one point and one direction is exactly enough</span>
+      <p>A planar similarity transform has four unknowns, but scale is not among them here: <code>metresPerUnit</code> is set by the contributor, so both frames are already metric. That leaves three &mdash; and one point plus one direction supplies exactly three constraints.</p>
+      <ul>
+        <li><strong>The point</strong> &mdash; the walker&rsquo;s plan position when guidance starts, known because they chose the room they are in. Their ARCore position at that instant is the same place in the other frame.</li>
+        <li><strong>The direction</strong> &mdash; a few steps later, ARCore&rsquo;s direction of travel against the plan&rsquo;s bearing for the first leg.</li>
+      </ul>
+    </div>
+
+    <p>The implementation also corrects for <strong>handedness</strong>: the plan is right-handed read from above, while the floor of ARCore&rsquo;s world read the same way is left-handed. The transform is a rotation <em>and</em> a flip, and the flip is invisible to any test that only checks distances &mdash; so <code>route_registration_test</code> walks a square in both frames to pin it down.</p>
+
+    <p>The heading assumption is the technique&rsquo;s whole risk, and deliberately a small one: it is made as a walker sets off toward a destination they have just chosen, down the only corridor leaving the room they said they were in. A confidence value lets callers decide whether to trust it, and <strong>every confirmed landmark re-solves the transform</strong>, replacing the assumption with a measurement.</p>
+
+    <h4>The wall-grid refinement</h4>
+    <p>Because corridors are rectilinear, the route&rsquo;s legs imply a grid. Leg bearings are summed as unit vectors at <strong>four times their bearing</strong>, weighted by length. Quadrupling makes legs at 0&deg;, 90&deg;, 180&deg; and 270&deg; reinforce rather than cancel &mdash; averaging bearings directly would place a corridor and the one crossing it at 45&deg;, the one answer that cannot be right. Measured yaw selects the quarter turn; the grid supplies the value.</p>
+
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Kotlin file</th><th class="num">Lines</th><th>Role</th></tr></thead>
+        <tbody>
+          <tr><td><code>ArGuidanceHandler.kt</code></td><td class="num">2,508</td><td>Session lifecycle, pose streaming, route anchoring</td></tr>
+          <tr><td><code>ArrowRenderer.kt</code></td><td class="num">636</td><td>OpenGL rendering of the guidance arrow</td></tr>
+          <tr><td><code>ArCoreDepthHandler.kt</code></td><td class="num">453</td><td>Depth API access and availability checks</td></tr>
+          <tr><td><code>RegisteredRoute.kt</code></td><td class="num">358</td><td>The route as laid into the world frame</td></tr>
+          <tr><td><code>ArGlSurface.kt</code></td><td class="num">263</td><td>External-texture surface shared with Flutter</td></tr>
+          <tr><td><code>CameraBackgroundRenderer.kt</code></td><td class="num">239</td><td>Camera feed as the AR background</td></tr>
+          <tr><td><code>AnalysisFraming.kt</code></td><td class="num">193</td><td>Camera configuration for the ML Kit analysis stream</td></tr>
+          <tr><td><code>MainActivity.kt</code></td><td class="num">68</td><td>Platform-channel registration</td></tr>
+          <tr><td><code>ArCoreSessionOwner.kt</code></td><td class="num">31</td><td>Arbitrates the exclusive ARCore camera between screens</td></tr>
+        </tbody>
+      </table>
+      <caption>The native AR layer, written directly rather than taken from a plugin. <code>ArGlSurface.kt</code> carries the significant performance decision: the camera preview reaches Flutter as an external texture rather than encoded frames, removing a per-frame encode and decode from the render path. Measured at 60.1&nbsp;fps on the test handset.</caption>
+    </div>
+
+    <!-- 4 -->
+    <div class="comp"><span class="n">04</span><h3>Semantic detection</h3></div>
+    <ul class="files">
+      <li><code>services/sensing/detection_service.dart</code></li>
+      <li><code>text_recognition_service.dart</code></li>
+      <li><code>landmark_matcher.dart</code></li>
+      <li><code>callout_policy.dart</code></li>
+    </ul>
+    <p>Google ML Kit object detection and text recognition run against the live camera feed to raise obstacle alerts and read room numbers and signage aloud. Both run on-device; no image leaves the phone.</p>
+    <p><strong>There is only one camera stream.</strong> ARCore holds the camera exclusively, so the detection service resolves its frame source at start and prefers an already-streaming AR session. OCR cannot open its own stream &mdash; it is handed alternate frames instead.</p>
+
+    <div class="why">
+      <span>Why the match tolerance was tightened</span>
+      <p><code>landmark_matcher.dart</code> narrows the edit-distance tolerance the specification originally allowed. Room codes differ by single characters, so a tolerant match confidently reports the <em>wrong</em> room &mdash; which is worse than reporting nothing. What gets announced, and how often, lives separately in <code>callout_policy.dart</code> so it can be tuned without touching detection.</p>
+    </div>
+
+    <!-- 5 -->
+    <div class="comp"><span class="n">05</span><h3>Acoustic DSP pipeline</h3></div>
+    <ul class="files">
+      <li><code>services/dsp/chirp_generator.dart</code></li>
+      <li><code>cross_correlation_service.dart</code></li>
+      <li><code>services/acoustic/reverb_analyzer.dart</code></li>
+      <li><code>room_classifier.dart</code></li>
+    </ul>
+    <p>The project&rsquo;s DSP contribution. A 13&ndash;19&nbsp;kHz linear FMCW up-sweep of 120&nbsp;ms at 44.1&nbsp;kHz is emitted and recorded, then correlated against the transmitted sweep &mdash; the matched-filter output <em>is</em> an impulse-response estimate. Schroeder backward integration recovers a smooth energy decay curve, and a line is fitted to a reliable stretch of it and extrapolated.</p>
+    <p>Four quantities come out: <strong>RT60</strong>, <strong>early decay time</strong> (the same slope over the first 10&nbsp;dB), <strong>fit quality r&sup2;</strong>, and <strong>usable decay range in dB</strong>. The last two act as a gate: an estimate derived from noise, or from too short a capture, is rejected rather than classified.</p>
+
+    <div class="why">
+      <span>Why EDT/RT60 is the discriminator, not RT60 alone</span>
+      <p>In a diffuse room, energy arrives from all directions and decays at one rate throughout, so early and late decay agree and the ratio sits near 1.0. A corridor is not diffuse: hard parallel walls return strong early reflections that die away quickly while sound trapped along the length lingers, so early decay outruns late decay and the ratio drops.</p>
+      <p>That is why <strong>decay shape is tested before decay duration</strong> in the classifier &mdash; a corridor can share an RT60 with a room, so duration alone cannot separate them. Every classification also returns a <em>reason</em> string, so a wrong answer can be diagnosed rather than merely observed.</p>
+    </div>
+
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Threshold</th><th class="num">Value</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>smallRoomMaxRt60</code></td><td class="num">0.6 s</td><td>At or below, a small, well-absorbing space</td></tr>
+          <tr><td><code>hallMinRt60</code></td><td class="num">1.2 s</td><td>At or above, a large, lightly absorbing volume</td></tr>
+          <tr><td><code>maxDiffuseRatio</code></td><td class="num">0.8</td><td>Below, the field is non-diffuse &mdash; a corridor</td></tr>
+          <tr><td><code>minCorridorRt60</code></td><td class="num">0.4 s</td><td>Floor below which a corridor reading is not believed</td></tr>
+        </tbody>
+      </table>
+      <caption>Every threshold is a constructor parameter, not a constant, so evaluation can re-fit them against measured rooms without touching the classifier.</caption>
+    </div>
+
+    <!-- 6 -->
+    <div class="comp"><span class="n">06</span><h3>Accessibility and motion services</h3></div>
+    <ul class="files">
+      <li><code>services/audio/audio_arbiter.dart</code></li>
+      <li><code>services/motion/step_service.dart</code></li>
+      <li><code>speech/speech_service.dart</code></li>
+      <li><code>haptics/haptic_service.dart</code></li>
+      <li><code>stride_calibration_cubit.dart</code></li>
+    </ul>
+    <p>Guidance is delivered as synthesised speech and haptic patterns, so the system is usable with the phone in a pocket and the screen dark.</p>
+
+    <h4>One arbiter for the audio hardware</h4>
+    <p>The voice interface and the acoustic pipeline want the same microphone and speaker, so a single <code>AudioArbiter</code> ranks every claim on it: <code>ranging</code> &lt; <code>speech</code> &lt; <code>guidanceProgress</code> &lt; <code>landmarkReached</code> &lt; <code>urgentSpeech</code>. An obstacle warning must be able to cut off a running sonar sweep &mdash; queueing it behind five seconds of ranging makes the warning useless by the time it arrives.</p>
+
+    <h4>Steps from hardware, not from arithmetic</h4>
+    <p><code>StepService</code> wraps Android&rsquo;s <code>TYPE_STEP_COUNTER</code> rather than deriving steps from raw accelerometer data, so holding the phone up to read a sign does not invent steps. The sensor reports a count since boot; the service publishes steps <em>since the last reset</em>, and an OCR landmark match performs that reset. That is the mechanism that stops step error accumulating over a route. Distances are stored in metres but spoken in the walker&rsquo;s own paces, with an uncalibrated user falling back to a documented default rather than being blocked.</p>
+
+    <div class="principle">
+      <b>Distance is a measurement, never a decision.</b>
+      <p>Where ARCore is available it measures along-leg progress better than counting footfalls against an estimated stride, and that number is reported to the guidance engine. It can never advance a leg, end a route, or move a walker onto another one &mdash; <strong>landmarks do all of that</strong>, and a distance disagreeing with a sign is the distance that is wrong. This single rule is what keeps the route working unchanged on phones with no ARCore and no step counter.</p>
+    </div>
+
+    <p><code>GuidanceBloc</code> pairs two senses that cover each other&rsquo;s blind spot: the clock says how far along a leg the walker is, and reading the sign at the end says they have arrived. Dead reckoning alone drifts without bound; sign reading alone cannot say how far to walk. One exception exists &mdash; a sign read while the clock says the walker is still most of a corridor away is treated as <em>seeing</em> the landmark rather than reaching it, because a directory board is legible from the far end of a hall and advancing there would anchor the next leg metres short.</p>
+
+    <!-- 7 -->
+    <div class="comp"><span class="n">07</span><h3>Crowdsource and persistence</h3></div>
+    <ul class="files">
+      <li><code>features/room_trace/room_plan_repository.dart</code></li>
+      <li><code>supabase_room_plan_repository.dart</code></li>
+      <li><code>data/repository_mixin.dart</code></li>
+      <li><code>services/injection_container.dart</code></li>
+    </ul>
+    <p>Local-first hive_ce on device; everything works offline. Published plans synchronise with a thin Supabase (PostgreSQL) tier. Storage is reached through an abstract interface, and the implementation is selected once at startup, so no screen knows which is in use.</p>
+    <p>Three decisions in this layer are worth knowing, and all three are covered under <a href="#data">Data and storage</a>.</p>
+  </section>
+
+  <!-- ============ 3. TOGETHER ============ -->
+  <section id="together">
+    <h2>How the pieces hold together</h2>
+    <p class="sec-note">Three conventions were held throughout, because a multimodal system accumulates coupling quickly without them.</p>
+
+    <ul>
+      <li><strong>Blocs own screen state; services own hardware.</strong> Sensing services are GetIt singletons that Blocs subscribe to. No screen opens the camera itself &mdash; which matters because ARCore holds it exclusively.</li>
+      <li><strong>Repositories return typed models</strong> behind abstract interfaces, so on-device and cloud implementations are interchangeable.</li>
+      <li><strong>Every screen is built in light and dark from one token set,</strong> so the dark theme is a redefinition of tokens rather than a second set of screens. No screen carries a hard-coded colour.</li>
+    </ul>
+
+    <p>Routing is go_router over a dual guest and authenticated tree; the router listens to <code>AuthBloc</code> and redirects whenever it emits. Permission priming uses dedicated primer screens shown once before the first camera or location request, because a user who denies a permission unexpectedly is expensive to recover.</p>
+
+    <h3>Why the AR layer is a separate cubit</h3>
+    <p><code>GuidanceBloc</code> is the route. It works with no camera, no ARCore and no screen &mdash; the mode a blind user walks in, and the mode a typical uncertified phone is stuck in. Folding an ARCore session into it would make the thing that always works depend on the thing that usually cannot, and every test of the route would have to mock a renderer. So <code>ArGuidanceCubit</code> <em>listens</em> to that bloc and mirrors it into the world: when the leg changes the arrow is re-anchored, and when the walk ends the arrow is cleared. <strong>If the cubit never starts, the route is unaffected.</strong></p>
+
+    <h3>The two navigation modes</h3>
+    <p>Not a primary mode and a fallback &mdash; co-equal features driven by the same <code>GuidanceBloc</code> over the same A* route, with identical instructions and arrival logic.</p>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Mode</th><th>Delivery</th><th>Requires</th><th>Built for</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Map-and-sound</strong></td><td>Drawn line, spoken turn-by-turn, haptic cues, step counting</td><td>Nothing beyond a speaker and a screen &mdash; no camera, no ARCore</td><td>Blind and low-vision users, and every uncertified handset. Expected to be the more used of the two.</td></tr>
+          <tr><td><strong>Augmented reality</strong></td><td>Adds a registered arrow laid into the building; toggleable mid-walk</td><td>ARCore certification</td><td>A sighted walker who would rather see the way than hear it</td></tr>
+        </tbody>
+      </table>
+      <caption>ARCore certification is a property of the handset. A system whose navigation depended on it would be unavailable to most of the people it is meant to serve &mdash; so map-and-sound was built to a first-class standard, not as graceful degradation.</caption>
+    </div>
+  </section>
+
+  <!-- ============ 4. DATA ============ -->
+  <section id="data">
+    <h2>Data and storage</h2>
+    <p class="sec-note">Fourteen migrations under <code>supabase/migrations/</code> define twelve tables. Foreign keys cascade, so removing a building removes its plans, landmarks and routes with it.</p>
+
+    <p>The tables: <code>buildings</code> with its dependent <code>floors</code> and <code>rooms</code>; <code>room_plans</code> holding traced polygon geometry per floor; <code>traced_plans</code> for the photographed backdrop a plan was traced over; <code>landmarks</code> for the confirmable features placed on it; <code>routes</code> and <code>route_steps</code>; <code>profiles</code> and <code>building_contributors</code> for attribution; <code>saved_maps</code> for a user&rsquo;s library; and <code>feedback</code> for in-app reports.</p>
+
+    <h3>Three decisions worth knowing</h3>
+    <ul>
+      <li><strong>Drafts are isolated by key prefix.</strong> Until publication a plan exists only in memory, so a draft is written on every structural change under a prefix that makes overwriting the published plan <em>impossible</em> &mdash; not merely unlikely.</li>
+      <li><strong>Plans are stored as encoded JSON strings, not maps.</strong> The nested lists of immutable models inside a plan are not types the local store recognises, and it fails at the moment of saving. Encoding once at the boundary makes that failure impossible rather than intermittent.</li>
+      <li><strong>Plan replacement is last-write-wins, by design.</strong> Two contributors tracing the same floor produce two opinions of the same geometry, and merging polygons cannot be done sensibly without asking a person which is right.</li>
+    </ul>
+
+    <p>Round-trip tests matter more here than they look. A plan must survive encoding to JSON, storage in PostgreSQL and decoding back with its nested geometry intact &mdash; a silent change in that path would corrupt plans rather than fail loudly, so the tests pin the exact shape.</p>
+  </section>
+
+  <!-- ============ 5. RESULTS ============ -->
+  <section id="results">
+    <h2>Verified, and still open</h2>
+    <p class="sec-note">All 927 tests pass. <code>flutter analyze</code> reports 12 issues and no errors, and <code>flutter build apk --debug</code> produces a build. Every claim in the report can be checked by running those three commands.</p>
+
+    <h3>Walked trials</h3>
+    <p>Eight routes were walked door to door in the College of Science building at KNUST, on its first floor, against a plan the team traced through the app&rsquo;s own tracing flow. Routes were spread across the floor in both directions rather than repeated along one corridor, so no single run carries the result.</p>
+
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Start</th><th>Destination</th><th>Mode</th><th>Outcome</th></tr></thead>
+        <tbody>
+          <tr><td class="num">FF1</td><td class="num">FF12</td><td>Map-and-sound</td><td><span class="chip ok">Reached</span></td></tr>
+          <tr><td class="num">FF24</td><td class="num">FF17</td><td>Map-and-sound</td><td><span class="chip ok">Reached</span></td></tr>
+          <tr><td class="num">FF12</td><td class="num">FF5</td><td>Map-and-sound</td><td><span class="chip ok">Reached</span></td></tr>
+          <tr><td>Washroom</td><td class="num">FF1</td><td>Augmented reality</td><td><span class="chip ok">Reached</span></td></tr>
+          <tr><td>Stairwell</td><td>Washroom</td><td>Augmented reality</td><td><span class="chip ok">Reached</span></td></tr>
+          <tr><td>Washroom</td><td class="num">FF12</td><td>Augmented reality</td><td><span class="chip bad">Did not reach</span></td></tr>
+          <tr><td>Stairwell</td><td class="num">FF18</td><td>Augmented reality</td><td><span class="chip ok">Reached</span></td></tr>
+          <tr><td class="num">FF1</td><td class="num">FF24</td><td>Augmented reality</td><td><span class="chip bad">Did not reach</span></td></tr>
+        </tbody>
+      </table>
+      <caption>Map-and-sound 3 of 3. Augmented reality 3 of 5 &mdash; the arrow registers and re-anchors, but its heading is not consistently accurate across a full route.</caption>
+    </div>
+
+    <p>A contributing cause was found and corrected while the chapter was being written: the minimum leg length for wall-grid voting had been reduced from 2.5&nbsp;m to 0.5&nbsp;m, letting route segments far too short to indicate a building&rsquo;s orientation vote on the grid that sets the arrow&rsquo;s yaw. Those short legs are the hop from a doorway onto the corridor centreline, so a doorway jink could rotate the estimated grid. The threshold has been restored and the failing test passes again &mdash; but <strong>the walked trials on record predate the fix, so the heading behaviour should be re-observed before any figures are collected.</strong></p>
+
+    <h3>The acoustic pipeline has a diagnosed defect</h3>
+    <p>Three captures in a quiet room of roughly 8&nbsp;m &times; 10&nbsp;m returned an RT60 of 0.002&nbsp;s. No room has a reverberation time of two milliseconds; Sabine&rsquo;s relation places a space of those dimensions between roughly 0.4&nbsp;s and 1.4&nbsp;s, so the estimate is wrong by more than an order of magnitude.</p>
+
+    <div class="why">
+      <span>The part that matters most</span>
+      <p>Capture 1 <em>passed</em> the reliability gate &mdash; r&sup2; of 0.935 across 18.1&nbsp;dB of decay &mdash; and was classified as a small room. Because the confidence term rises as RT60 falls further below <code>smallRoomMaxRt60</code>, it was returned at almost full confidence: <strong>the more physically impossible the measurement, the more certain the classifier appears.</strong></p>
+    </div>
+
+    <p>The cause is neither a dead room nor a failed emission. Matched filtering recovered the sweep cleanly at 2,666 times the noise floor. Re-fitting the energy decay curve over successively later windows shows where the fault actually lies:</p>
+
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Fit window</th><th class="num">RT60 at 13&ndash;19 kHz</th><th class="num">RT60 at 2&ndash;8 kHz</th></tr></thead>
+        <tbody>
+          <tr><td>&minus;5 to &minus;25 dB <em>(implemented)</em></td><td class="num">0.002 s &nbsp;<span style="color:var(--faint)">r&sup2; 0.935</span></td><td class="num">0.026 s &nbsp;<span style="color:var(--faint)">r&sup2; 0.772</span></td></tr>
+          <tr><td>&minus;20 to &minus;40 dB</td><td class="num">0.081 s &nbsp;<span style="color:var(--faint)">r&sup2; 0.867</span></td><td class="num">0.173 s &nbsp;<span style="color:var(--faint)">r&sup2; 0.950</span></td></tr>
+          <tr><td>&minus;30 to &minus;50 dB</td><td class="num">19.2 s &nbsp;<span style="color:var(--faint)">r&sup2; 0.855</span></td><td class="num">0.288 s &nbsp;<span style="color:var(--faint)">r&sup2; 0.993</span></td></tr>
+        </tbody>
+      </table>
+      <caption>The room&rsquo;s decay is present in the recording; the implemented fit window does not reach it. The 19.2&nbsp;s entry is the noise floor being fitted, not a room.</caption>
+    </div>
+
+    <p>ISO 3382 specifies the T20 fit between 5&nbsp;dB and 25&nbsp;dB below the initial level &mdash; a convention that assumes a source separated from the receiver. In EchoLocate both sit on one handset a few centimetres apart, so direct sound dominates the total energy that Schroeder integration normalises against. The entire window closes within six milliseconds, wholly inside the collapse of the compressed direct pulse, and never reaches the reverberant field that begins some 30&nbsp;dB further down. Moved later, the fit converges on 0.288&nbsp;s at r&sup2; 0.993 &mdash; credible for a furnished room of that size.</p>
+
+    <p>The band is a second and lesser constraint. At 13&ndash;19&nbsp;kHz the decay can be followed only to about &minus;40&nbsp;dB before meeting the noise floor: the near-ultrasonic band does lower ambient noise, but it radiates less usable power from a phone speaker and is absorbed faster in air, and for reverberation the quantity being measured is precisely the part that disappears first.</p>
+
+    <p><strong>Two corrections follow, neither yet made.</strong> The fit window must be placed relative to the onset of the reverberant decay rather than to total energy &mdash; either by excluding the direct pulse before integration, or by fitting a later span such as T30. Separately, the analyser needs a physical plausibility floor below which a decay is refused rather than fitted. Until both are in place the classification-accuracy study cannot meaningfully run: the corridor branch requires an RT60 of at least 0.4&nbsp;s, which the pipeline never produces.</p>
+
+    <h3>Status against the revised objectives</h3>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Objective</th><th>Outcome</th></tr></thead>
+        <tbody>
+          <tr><td>Human-in-the-loop plan authoring</td><td><span class="chip ok">Delivered</span> metrically scaled, draft-protected</td></tr>
+          <tr><td>Navigable graph from traced geometry</td><td><span class="chip ok">Delivered</span></td></tr>
+          <tr><td>Graph-based route planning (A*)</td><td><span class="chip ok">Delivered</span> door to door, with spoken instructions</td></tr>
+          <tr><td>Map-and-sound guidance</td><td><span class="chip ok">Delivered</span> walked trials reached the destination</td></tr>
+          <tr><td>AR route registration and arrow</td><td><span class="chip open">Open</span> re-anchoring works; heading accuracy is the issue</td></tr>
+          <tr><td>On-device semantic detection</td><td><span class="chip ok">Delivered</span> obstacle alerts and sign reading</td></tr>
+          <tr><td>Acoustic room classification</td><td><span class="chip open">Open</span> pipeline runs; fit window must be corrected first</td></tr>
+          <tr><td>Crowdsourced repository, local-first</td><td><span class="chip ok">Delivered</span></td></tr>
+          <tr><td>Evaluation and performance boundaries</td><td><span class="chip open">Partial</span> walked trials done, measurement outstanding</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>The other honest gaps</h3>
+    <ul>
+      <li><strong>The camera-to-sound hand-off was designed, not integrated.</strong> <code>DepthReliability</code> and <code>AcousticFallbackService</code> are both implemented and unit-tested, and nothing consumes them.</li>
+      <li><strong>Traced plans carry a residual scale error</strong> from perspective distortion when photographing a board at an angle.</li>
+      <li><strong>Instruction correctness cannot be established by testing.</strong> The suite proves instructions are generated consistently from geometry; it cannot prove the door named is the door seen. Only walking establishes that.</li>
+      <li><strong>Quantitative measurement is outstanding</strong> &mdash; dimensional accuracy against a tape measure across three environments, classification accuracy across room types, and navigation success rate over repeated runs in both modes.</li>
+    </ul>
+  </section>
+
+  <!-- ============ 6. MAP ============ -->
+  <section id="map">
+    <h2>File map</h2>
+    <p class="sec-note">Where to look first, by concern.</p>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>To understand&hellip;</th><th>Read</th></tr></thead>
+        <tbody>
+          <tr><td>Tracing and geometry cleanup</td><td><code>lib/services/mapping/room_cleanup.dart</code>, <code>floor_squaring.dart</code></td></tr>
+          <tr><td>The two graphs and the bridge</td><td><code>room_graph.dart</code>, <code>floor_graph.dart</code>, <code>room_plan_bridge.dart</code></td></tr>
+          <tr><td>A* and instruction generation</td><td><code>route_planner.dart</code>, <code>room_directions.dart</code></td></tr>
+          <tr><td>The plan-to-ARCore transform</td><td><code>route_registration.dart</code> (its header comment is the full derivation)</td></tr>
+          <tr><td>The eyes-free walk</td><td><code>lib/features/guidance/bloc/guidance_bloc.dart</code></td></tr>
+          <tr><td>The AR overlay on top of it</td><td><code>lib/features/guidance/bloc/ar_guidance_cubit.dart</code></td></tr>
+          <tr><td>Chirp, correlation, reverberation, classification</td><td><code>lib/services/dsp/</code>, <code>lib/services/acoustic/</code></td></tr>
+          <tr><td>Hardware arbitration and step counting</td><td><code>audio/audio_arbiter.dart</code>, <code>motion/step_service.dart</code></td></tr>
+          <tr><td>Wiring, and which repository is live</td><td><code>lib/services/injection_container.dart</code></td></tr>
+          <tr><td>The cloud schema</td><td><code>supabase/migrations/</code> &mdash; 14 files</td></tr>
+        </tbody>
+      </table>
+      <caption>Most files in <code>lib/services/mapping/</code> open with a header comment stating the decision the file encodes and the alternative it rejected. Those comments are the primary source for everything above.</caption>
+    </div>
+  </section>
+
+  </main>
+</div>
+</div>
+
+<footer>
+  <div class="wrap">
+    <p>Compiled from <code>docs/GROUP_4_Chapters 1 to 4.docx</code> and verified against the codebase on the <code>v2-sound</code> branch. Figures are those reported in Chapter Four; the test, analyser and build claims are reproducible with <code>flutter test</code>, <code>flutter analyze</code> and <code>flutter build apk --debug</code>.</p>
+  </div>
+</footer>
+
+</body>
+</html>

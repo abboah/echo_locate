@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:hive_ce/hive.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
 
@@ -114,6 +116,20 @@ class SonarAudioService {
   final int pulseCount;
   final Duration pulseGap;
   final Duration reverbTail;
+
+  /// Writes every reverb capture to the app documents directory as a WAV.
+  ///
+  /// OFF in shipped builds — this is an evaluation affordance, not a feature.
+  /// The recordings it leaves behind are what the report's acoustic figures
+  /// are drawn from (`tool/plot_sweep_figure.dart`), and nothing else reads
+  /// them: flip it on, take a measurement in the room being documented,
+  /// `adb pull` the file, flip it back.
+  ///
+  /// Dumping the RECORDING rather than the impulse response is deliberate.
+  /// The response can be recomputed from the recording by the same matched
+  /// filter the app runs, so one file supports every stage of the figure,
+  /// and a stored recording can be re-analysed after the DSP changes.
+  static bool debugDumpReverbCaptures = false;
 
   int get _pulseGapSamples =>
       (pulseGap.inMicroseconds * _params.sampleRate) ~/
@@ -428,6 +444,9 @@ class SonarAudioService {
       if (received.isEmpty) {
         return (response: null, failure: ReverbFailure.captureFailed);
       }
+      if (debugDumpReverbCaptures) {
+        await _dumpReverbCapture(Uint8List.fromList(recordedBytes));
+      }
 
       // Matched filtering compresses the chirp to an impulse, so the result
       // is this room's impulse response — the input reverberation analysis
@@ -446,6 +465,25 @@ class SonarAudioService {
       } catch (_) {}
       _busy = false;
       lease?.release();
+    }
+  }
+
+  /// See [debugDumpReverbCaptures]. Never allowed to fail a measurement —
+  /// a diagnostic that can break the thing it observes is worse than no
+  /// diagnostic, so a failed write is logged and swallowed.
+  Future<void> _dumpReverbCapture(Uint8List pcm16Bytes) async {
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final file = File(
+        '${directory.path}/reverb_capture_'
+        '${DateTime.now().millisecondsSinceEpoch}.wav',
+      );
+      await file.writeAsBytes(
+        wrapPcm16AsWav(pcm16Bytes, sampleRate: _params.sampleRate),
+      );
+      AppLogger.debug('SONAR-REVERB dumped capture :: ${file.path}');
+    } catch (e, stack) {
+      AppLogger.error('Reverb capture dump failed: $e', e, stack);
     }
   }
 
